@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS payments;
+DROP TABLE IF EXISTS claim_activities;
+DROP TABLE IF EXISTS magic_links;
+DROP TABLE IF EXISTS estimates;
+DROP TABLE IF EXISTS documents;
+DROP TABLE IF EXISTS claims;
+DROP TABLE IF EXISTS insurance_policies;
+DROP TABLE IF EXISTS properties;
+DROP TABLE IF EXISTS mortgage_banks;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS organizations;

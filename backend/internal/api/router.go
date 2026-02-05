@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func NewRouter(cfg *config.Config) *gin.Engine {
+func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	r := gin.Default()
 
 	// Parse allowed origins
@@ -34,5 +35,5 @@ func NewRouter(cfg *config.Config) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	return r
+	return r, nil
 }

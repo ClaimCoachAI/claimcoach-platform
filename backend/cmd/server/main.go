@@ -5,7 +5,7 @@ import (
 
 	"github.com/claimcoach/backend/internal/api"
 	"github.com/claimcoach/backend/internal/config"
-	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/claimcoach/backend/internal/database"
 )
 
 func main() {
@@ -14,7 +14,22 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	router := api.NewRouter(cfg)
+	// Connect to database
+	db, err := database.Connect(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	// Run migrations
+	if err := database.RunMigrations(db); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	router, err := api.NewRouter(cfg, db)
+	if err != nil {
+		log.Fatalf("Failed to create router: %v", err)
+	}
 
 	port := cfg.Port
 	if port == "" {
