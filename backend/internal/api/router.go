@@ -7,6 +7,8 @@ import (
 
 	"github.com/claimcoach/backend/internal/auth"
 	"github.com/claimcoach/backend/internal/config"
+	"github.com/claimcoach/backend/internal/handlers"
+	"github.com/claimcoach/backend/internal/services"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -57,6 +59,15 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 				"data":    user,
 			})
 		})
+
+		// Property routes
+		propertyService := services.NewPropertyService(db)
+		propertyHandler := handlers.NewPropertyHandler(propertyService)
+
+		api.POST("/properties", propertyHandler.Create)
+		api.GET("/properties", propertyHandler.List)
+		api.GET("/properties/:id", propertyHandler.Get)
+		api.PATCH("/properties/:id", propertyHandler.Update)
 	}
 
 	return r, nil
