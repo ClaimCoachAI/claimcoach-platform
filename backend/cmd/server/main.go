@@ -6,6 +6,7 @@ import (
 
 	"github.com/claimcoach/backend/internal/api"
 	"github.com/claimcoach/backend/internal/config"
+	_ "github.com/lib/pq" // PostgreSQL driver
 )
 
 func main() {
