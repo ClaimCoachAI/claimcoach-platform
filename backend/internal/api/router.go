@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/gin-contrib/cors"
@@ -11,9 +12,18 @@ import (
 func NewRouter(cfg *config.Config) *gin.Engine {
 	r := gin.Default()
 
+	// Parse allowed origins
+	allowedOrigins := []string{"*"}
+	if cfg.AllowedOrigins != "" {
+		allowedOrigins = strings.Split(cfg.AllowedOrigins, ",")
+		for i, origin := range allowedOrigins {
+			allowedOrigins[i] = strings.TrimSpace(origin)
+		}
+	}
+
 	// CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{cfg.AllowedOrigins},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE"},
 		AllowHeaders:     []string{"Authorization", "Content-Type"},
 		AllowCredentials: true,

@@ -29,6 +29,15 @@ func Load() (*Config, error) {
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
+	if cfg.SupabaseURL == "" {
+		return nil, fmt.Errorf("SUPABASE_URL is required")
+	}
+	if cfg.SupabaseServiceKey == "" {
+		return nil, fmt.Errorf("SUPABASE_SERVICE_KEY is required")
+	}
+	if cfg.SupabaseJWTSecret == "" {
+		return nil, fmt.Errorf("SUPABASE_JWT_SECRET is required")
+	}
 
 	return cfg, nil
 }

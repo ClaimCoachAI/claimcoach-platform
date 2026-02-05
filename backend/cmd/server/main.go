@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"os"
 
 	"github.com/claimcoach/backend/internal/api"
 	"github.com/claimcoach/backend/internal/config"
@@ -17,7 +16,7 @@ func main() {
 
 	router := api.NewRouter(cfg)
 
-	port := os.Getenv("PORT")
+	port := cfg.Port
 	if port == "" {
 		port = "8080"
 	}
