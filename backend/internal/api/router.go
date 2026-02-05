@@ -9,6 +9,7 @@ import (
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/claimcoach/backend/internal/handlers"
 	"github.com/claimcoach/backend/internal/services"
+	"github.com/claimcoach/backend/internal/storage"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -38,6 +39,15 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		cfg.SupabaseURL,
 		cfg.SupabaseServiceKey,
 		cfg.SupabaseJWTSecret,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Supabase Storage client
+	storageClient, err := storage.NewSupabaseStorage(
+		cfg.SupabaseURL,
+		cfg.SupabaseServiceKey,
 	)
 	if err != nil {
 		return nil, err
@@ -85,6 +95,15 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/claims/:id", claimHandler.Get)
 		api.PATCH("/claims/:id/status", claimHandler.UpdateStatus)
 		api.GET("/claims/:id/activities", claimHandler.GetActivities)
+
+		// Document routes
+		documentService := services.NewDocumentService(db, storageClient, claimService)
+		documentHandler := handlers.NewDocumentHandler(documentService)
+
+		api.POST("/claims/:id/documents/upload-url", documentHandler.RequestUploadURL)
+		api.POST("/claims/:id/documents/:documentId/confirm", documentHandler.ConfirmUpload)
+		api.GET("/claims/:id/documents", documentHandler.ListDocuments)
+		api.GET("/documents/:id", documentHandler.GetDocument)
 	}
 
 	return r, nil
