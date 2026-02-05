@@ -2,6 +2,7 @@ package auth
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"strings"
 
@@ -47,7 +48,7 @@ func AuthMiddleware(supabase *SupabaseClient, db *sql.DB) gin.HandlerFunc {
 
 		// Fetch user from database
 		var user models.User
-		err = db.QueryRow(`
+		err = db.QueryRowContext(c.Request.Context(), `
 			SELECT id, organization_id, email, name, role, created_at, updated_at
 			FROM users
 			WHERE id = $1
@@ -68,9 +69,10 @@ func AuthMiddleware(supabase *SupabaseClient, db *sql.DB) gin.HandlerFunc {
 					"code":    "USER_NOT_FOUND",
 				})
 			} else {
+				log.Printf("Database error fetching user %s: %v", userID, err)
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
-					"error":   "Database error",
+					"error":   "Internal server error",
 					"code":    "INTERNAL_ERROR",
 				})
 			}

@@ -7,8 +7,8 @@ import (
 )
 
 type SupabaseClient struct {
-	client    *supabase.Client
-	jwtSecret string
+	client *supabase.Client
+	// Removed jwtSecret - token verification done by Supabase API
 }
 
 func NewSupabaseClient(url, serviceKey, jwtSecret string) (*SupabaseClient, error) {
@@ -18,8 +18,7 @@ func NewSupabaseClient(url, serviceKey, jwtSecret string) (*SupabaseClient, erro
 	}
 
 	return &SupabaseClient{
-		client:    client,
-		jwtSecret: jwtSecret,
+		client: client,
 	}, nil
 }
 
