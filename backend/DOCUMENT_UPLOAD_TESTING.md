@@ -252,11 +252,37 @@ claim-documents/
             estimate_xyz789.pdf
 ```
 
+## Security Limitations
+
+### File Metadata Verification
+
+**Known Limitation:** The actual uploaded file size and MIME type are NOT re-verified after upload to Supabase Storage. This is due to limitations in the Supabase Storage Go client library, which doesn't provide metadata retrieval functionality.
+
+**What This Means:**
+- A user could declare a 1MB file but upload a 100MB file
+- A user could declare `image/jpeg` but upload a PDF
+- The system will accept the upload as long as Supabase Storage policies allow it
+
+**Mitigations in Place:**
+1. **Client-side validation** - First line of defense before upload
+2. **Supabase Storage bucket policies** - Can enforce maximum file sizes at the storage layer
+3. **Activity logging** - Provides audit trail of all uploads
+4. **Pending documents cleanup** - Abandoned uploads older than 24 hours are automatically removed
+
+**Future Improvements:**
+- When Supabase Storage Go client adds metadata retrieval, verification can be added to the ConfirmUpload endpoint
+
+### Abandoned Document Cleanup
+
+The system automatically cleans up pending documents that are older than 24 hours during upload URL requests. This prevents database bloat from incomplete uploads.
+
 ## Notes
 
 - Upload URLs expire after 60 minutes
 - Download URLs expire after 5 minutes
 - Files are uniquely named to prevent collisions (UUID suffix added)
+- Files without extensions are handled gracefully with "file" as the base name
 - Only confirmed documents are returned in list/get operations
 - Document uploads are logged in claim_activities table
 - Organization ownership is verified through claim → property → organization chain
+- Pending documents older than 24 hours are automatically cleaned up

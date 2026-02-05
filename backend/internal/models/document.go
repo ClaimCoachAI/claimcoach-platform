@@ -80,7 +80,11 @@ func IsValidDocumentType(docType string) bool {
 	return false
 }
 
-// ValidateFile validates a file against its document type rules
+// ValidateFile checks if the file meets the document type's requirements.
+//
+// NOTE: This validation happens at upload URL request time, but actual uploaded
+// file size/type is not re-verified due to Supabase Storage client limitations.
+// See ConfirmUpload method for details.
 func ValidateFile(docType string, fileSize int64, mimeType string) error {
 	rule, exists := FileValidationRules[docType]
 	if !exists {

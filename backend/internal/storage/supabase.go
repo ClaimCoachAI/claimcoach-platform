@@ -30,8 +30,14 @@ func NewSupabaseStorage(url, serviceKey string) (*SupabaseStorage, error) {
 func (s *SupabaseStorage) GenerateUploadURL(organizationID, claimID, documentType, fileName string) (string, string, error) {
 	// Generate unique file path to prevent collisions
 	fileExt := filepath.Ext(fileName)
-	fileNameWithoutExt := fileName[:len(fileName)-len(fileExt)]
-	uniqueFileName := fmt.Sprintf("%s_%s%s", fileNameWithoutExt, uuid.New().String()[:8], fileExt)
+	baseName := fileName
+	if len(fileExt) > 0 {
+		baseName = fileName[:len(fileName)-len(fileExt)]
+	}
+	if baseName == "" {
+		baseName = "file"
+	}
+	uniqueFileName := fmt.Sprintf("%s_%s%s", baseName, uuid.New().String()[:8], fileExt)
 
 	// Build storage path: organizations/{org-id}/claims/{claim-id}/{document-type}/{filename}
 	filePath := fmt.Sprintf("organizations/%s/claims/%s/%s/%s",

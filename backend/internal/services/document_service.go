@@ -1,9 +1,11 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/claimcoach/backend/internal/models"
@@ -57,6 +59,11 @@ func (s *DocumentService) RequestUploadURL(claimID string, organizationID string
 		return nil, err
 	}
 
+	// Clean up old pending documents for this claim
+	if err := s.cleanupAbandonedPendingDocuments(claimID); err != nil {
+		log.Printf("Warning: failed to cleanup abandoned documents: %v", err)
+	}
+
 	// Generate presigned upload URL
 	uploadURL, filePath, err := s.storage.GenerateUploadURL(organizationID, claimID, input.DocumentType, input.FileName)
 	if err != nil {
@@ -99,7 +106,20 @@ func (s *DocumentService) RequestUploadURL(claimID string, organizationID string
 	}, nil
 }
 
-// ConfirmUpload marks a document as confirmed and logs the activity
+// ConfirmUpload marks a document as confirmed after successful upload.
+//
+// SECURITY LIMITATION: This method does not re-verify the actual uploaded file size
+// or MIME type against what was declared during RequestUploadURL. The Supabase Storage
+// Go client doesn't provide metadata retrieval functionality. Users could potentially:
+// 1. Declare a 1MB file but upload 100MB
+// 2. Declare image/jpeg but upload a PDF
+//
+// Mitigations:
+// - Supabase Storage bucket policies can enforce max file size
+// - Client-side validation provides first line of defense
+// - Activity logging provides audit trail
+//
+// TODO: When Supabase Storage Go client adds metadata retrieval, add verification here
 func (s *DocumentService) ConfirmUpload(claimID string, documentID string, organizationID string, userID string) (*models.Document, error) {
 	// Verify claim ownership
 	_, err := s.claimService.GetClaim(claimID, organizationID)
@@ -151,7 +171,7 @@ func (s *DocumentService) ConfirmUpload(claimID string, documentID string, organ
 	err = s.createActivity(claimID, &userID, "document_upload", description, &metadataStr)
 	if err != nil {
 		// Don't fail the entire operation if activity logging fails
-		fmt.Printf("Warning: failed to log activity: %v\n", err)
+		log.Printf("Warning: failed to log activity: %v", err)
 	}
 
 	return &doc, nil
@@ -249,6 +269,18 @@ func (s *DocumentService) GetDocument(documentID string, organizationID string) 
 	}
 
 	return &doc, downloadURL, nil
+}
+
+// cleanupAbandonedPendingDocuments removes pending documents older than 24 hours
+func (s *DocumentService) cleanupAbandonedPendingDocuments(claimID string) error {
+	query := `
+		DELETE FROM documents
+		WHERE claim_id = $1
+		  AND status = 'pending'
+		  AND created_at < NOW() - INTERVAL '24 hours'
+	`
+	_, err := s.db.ExecContext(context.Background(), query, claimID)
+	return err
 }
 
 // createActivity is a helper function to log activities
