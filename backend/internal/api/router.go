@@ -75,6 +75,16 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 		api.POST("/properties/:propertyId/policy", policyHandler.Create)
 		api.GET("/properties/:propertyId/policy", policyHandler.Get)
+
+		// Claim routes
+		claimService := services.NewClaimService(db, propertyService)
+		claimHandler := handlers.NewClaimHandler(claimService)
+
+		api.POST("/claims", claimHandler.Create)
+		api.GET("/claims", claimHandler.List)
+		api.GET("/claims/:id", claimHandler.Get)
+		api.PATCH("/claims/:id/status", claimHandler.UpdateStatus)
+		api.GET("/claims/:id/activities", claimHandler.GetActivities)
 	}
 
 	return r, nil
