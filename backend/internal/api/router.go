@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/claimcoach/backend/internal/auth"
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -30,10 +31,33 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		AllowCredentials: true,
 	}))
 
-	// Health check
+	// Supabase client
+	supabase, err := auth.NewSupabaseClient(
+		cfg.SupabaseURL,
+		cfg.SupabaseServiceKey,
+		cfg.SupabaseJWTSecret,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Public routes
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Protected routes
+	api := r.Group("/api")
+	api.Use(auth.AuthMiddleware(supabase, db))
+	{
+		api.GET("/me", func(c *gin.Context) {
+			user := c.MustGet("user")
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"data":    user,
+			})
+		})
+	}
 
 	return r, nil
 }
