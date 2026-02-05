@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Properties from './pages/Properties'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,6 +45,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/properties"
+              element={
+                <ProtectedRoute>
+                  <Properties />
                 </ProtectedRoute>
               }
             />
