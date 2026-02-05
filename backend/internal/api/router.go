@@ -68,6 +68,13 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/properties", propertyHandler.List)
 		api.GET("/properties/:id", propertyHandler.Get)
 		api.PATCH("/properties/:id", propertyHandler.Update)
+
+		// Policy routes
+		policyService := services.NewPolicyService(db, propertyService)
+		policyHandler := handlers.NewPolicyHandler(policyService)
+
+		api.POST("/properties/:propertyId/policy", policyHandler.Create)
+		api.GET("/properties/:propertyId/policy", policyHandler.Get)
 	}
 
 	return r, nil
