@@ -8,6 +8,7 @@ import Claims from './pages/Claims'
 import ClaimDetail from './pages/ClaimDetail'
 import Properties from './pages/Properties'
 import PropertyDetail from './pages/PropertyDetail'
+import ContractorUpload from './pages/ContractorUpload'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,7 +45,11 @@ function App() {
         <ErrorBoundary>
           <BrowserRouter>
             <Routes>
+              {/* Public routes */}
               <Route path="/login" element={<Login />} />
+              <Route path="/upload/:token" element={<ContractorUpload />} />
+
+              {/* Protected routes */}
               <Route
                 path="/dashboard"
                 element={

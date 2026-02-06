@@ -56,7 +56,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	// Initialize services needed for both public and protected routes
 	propertyService := services.NewPropertyService(db)
 	claimService := services.NewClaimService(db, propertyService)
-	magicLinkService := services.NewMagicLinkService(db, cfg, claimService)
+	magicLinkService := services.NewMagicLinkService(db, cfg, storageClient, claimService)
 	magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
 
 	// Public routes
@@ -64,8 +64,10 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Public magic link validation endpoint (no auth required)
+	// Public magic link endpoints (no auth required)
 	r.GET("/api/magic-links/:token/validate", magicLinkHandler.ValidateToken)
+	r.POST("/api/magic-links/:token/documents/upload-url", magicLinkHandler.RequestUploadURL)
+	r.POST("/api/magic-links/:token/documents/:documentId/confirm", magicLinkHandler.ConfirmUpload)
 
 	// Protected routes
 	api := r.Group("/api")

@@ -8,19 +8,22 @@ import (
 
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/claimcoach/backend/internal/models"
+	"github.com/claimcoach/backend/internal/storage"
 	"github.com/google/uuid"
 )
 
 type MagicLinkService struct {
 	db           *sql.DB
 	cfg          *config.Config
+	storage      *storage.SupabaseStorage
 	claimService *ClaimService
 }
 
-func NewMagicLinkService(db *sql.DB, cfg *config.Config, claimService *ClaimService) *MagicLinkService {
+func NewMagicLinkService(db *sql.DB, cfg *config.Config, storageClient *storage.SupabaseStorage, claimService *ClaimService) *MagicLinkService {
 	return &MagicLinkService{
 		db:           db,
 		cfg:          cfg,
+		storage:      storageClient,
 		claimService: claimService,
 	}
 }
@@ -270,6 +273,152 @@ func (s *MagicLinkService) ValidateToken(token string) (*ValidationResult, error
 	}
 
 	return result, nil
+}
+
+// RequestUploadURLWithToken generates a presigned upload URL using magic link token (no auth required)
+func (s *MagicLinkService) RequestUploadURLWithToken(token string, fileName string, fileSize int64, mimeType string, documentType string) (*UploadURLResponse, error) {
+	// Step 1: Validate the token
+	validation, err := s.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	// Step 2: Validate document type and file
+	if !models.IsValidDocumentType(documentType) {
+		return nil, models.ErrInvalidDocumentType
+	}
+
+	err = models.ValidateFile(documentType, fileSize, mimeType)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 3: Get claim and organization info from validation
+	claimID := validation.Claim.ID
+
+	// Get organization ID from claim
+	var organizationID string
+	orgQuery := `
+		SELECT p.organization_id
+		FROM claims c
+		JOIN properties p ON c.property_id = p.id
+		WHERE c.id = $1
+	`
+	err = s.db.QueryRow(orgQuery, claimID).Scan(&organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get organization ID: %w", err)
+	}
+
+	// Step 4: Generate presigned upload URL
+	uploadURL, filePath, err := s.storage.GenerateUploadURL(organizationID, claimID, documentType, fileName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate upload URL: %w", err)
+	}
+
+	// Step 5: Create pending document record (uploaded_by_user_id = NULL for contractor uploads)
+	documentID := uuid.New().String()
+	query := `
+		INSERT INTO documents (
+			id, claim_id, uploaded_by_user_id, document_type, file_url,
+			file_name, file_size_bytes, mime_type, status, created_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id
+	`
+
+	err = s.db.QueryRow(
+		query,
+		documentID,
+		claimID,
+		nil, // uploaded_by_user_id is NULL for contractor uploads
+		documentType,
+		filePath,
+		fileName,
+		fileSize,
+		mimeType,
+		"pending",
+		time.Now(),
+	).Scan(&documentID)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create document record: %w", err)
+	}
+
+	return &UploadURLResponse{
+		UploadURL:  uploadURL,
+		DocumentID: documentID,
+		FilePath:   filePath,
+	}, nil
+}
+
+// ConfirmUploadWithToken confirms a document upload using magic link token (no auth required)
+func (s *MagicLinkService) ConfirmUploadWithToken(token string, documentID string) (*models.Document, error) {
+	// Step 1: Validate the token
+	validation, err := s.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	claimID := validation.Claim.ID
+
+	// Step 2: Update document status to confirmed
+	query := `
+		UPDATE documents
+		SET status = 'confirmed'
+		WHERE id = $1 AND claim_id = $2 AND status = 'pending'
+		RETURNING id, claim_id, uploaded_by_user_id, document_type, file_url,
+			file_name, file_size_bytes, mime_type, metadata, status, created_at
+	`
+
+	var doc models.Document
+	err = s.db.QueryRow(query, documentID, claimID).Scan(
+		&doc.ID,
+		&doc.ClaimID,
+		&doc.UploadedByUserID,
+		&doc.DocumentType,
+		&doc.FileURL,
+		&doc.FileName,
+		&doc.FileSizeBytes,
+		&doc.MimeType,
+		&doc.Metadata,
+		&doc.Status,
+		&doc.CreatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("document not found or already confirmed")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to confirm document: %w", err)
+	}
+
+	// Step 3: Create activity log (no user_id since contractor uploads)
+	metadata := map[string]interface{}{
+		"document_id":      documentID,
+		"document_type":    doc.DocumentType,
+		"file_name":        doc.FileName,
+		"contractor_name":  validation.ContractorName,
+		"uploaded_via":     "magic_link",
+	}
+	metadataJSON, _ := json.Marshal(metadata)
+	metadataStr := string(metadataJSON)
+
+	description := fmt.Sprintf("Contractor uploaded document: %s (%s)", doc.FileName, doc.DocumentType)
+	err = s.claimService.createActivity(claimID, nil, "contractor_document_upload", description, &metadataStr)
+	if err != nil {
+		// Don't fail the entire operation if activity logging fails
+		fmt.Printf("Warning: failed to log activity: %v\n", err)
+	}
+
+	return &doc, nil
 }
 
 // invalidatePreviousLinks marks all active magic links for a claim as expired
