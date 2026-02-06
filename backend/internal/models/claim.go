@@ -15,9 +15,10 @@ type Claim struct {
 	AdjusterName    *string    `json:"adjuster_name" db:"adjuster_name"`
 	AdjusterPhone   *string    `json:"adjuster_phone" db:"adjuster_phone"`
 	MeetingDatetime *time.Time `json:"meeting_datetime" db:"meeting_datetime"`
-	CreatedByUserID string     `json:"created_by_user_id" db:"created_by_user_id"`
-	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
+	CreatedByUserID         string     `json:"created_by_user_id" db:"created_by_user_id"`
+	CreatedAt               time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt               time.Time  `json:"updated_at" db:"updated_at"`
+	ContractorEstimateTotal *float64   `json:"contractor_estimate_total" db:"contractor_estimate_total"`
 }
 
 type ClaimActivity struct {
