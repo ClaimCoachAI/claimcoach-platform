@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 import Layout from '../components/Layout'
@@ -32,6 +32,8 @@ export default function Claims() {
   const {
     data: claims,
     isLoading: loadingClaims,
+    isError: isClaimsError,
+    error: claimsError,
     refetch,
   } = useQuery({
     queryKey: ['claims', statusFilter, propertyFilter],
@@ -49,7 +51,7 @@ export default function Claims() {
   })
 
   // Fetch properties for filter dropdown
-  const { data: properties } = useQuery({
+  const { data: properties, isError: isPropertiesError } = useQuery({
     queryKey: ['properties'],
     queryFn: async () => {
       const response = await api.get('/api/properties')
@@ -61,18 +63,48 @@ export default function Claims() {
     refetch()
   }
 
-  // Calculate stats
-  const stats = {
+  // Calculate stats (memoized for performance)
+  const stats = useMemo(() => ({
     total: claims?.length || 0,
-    active:
-      claims?.filter((c) => !['settled', 'closed'].includes(c.status)).length || 0,
+    active: claims?.filter((c) => !['settled', 'closed'].includes(c.status)).length || 0,
     settled: claims?.filter((c) => c.status === 'settled').length || 0,
     draft: claims?.filter((c) => c.status === 'draft').length || 0,
+  }), [claims])
+
+  // Handle claims error
+  if (isClaimsError) {
+    return (
+      <Layout>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+            <h3 className="text-red-800 font-medium mb-2">Failed to load claims</h3>
+            <p className="text-red-600 text-sm">
+              {claimsError instanceof Error ? claimsError.message : 'An error occurred'}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 text-sm text-red-700 underline hover:text-red-800"
+            >
+              Reload page
+            </button>
+          </div>
+        </div>
+      </Layout>
+    )
   }
 
   return (
     <Layout>
       <div className="space-y-6">
+        {/* Properties Error Warning */}
+        {isPropertiesError && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-yellow-800 text-sm">
+              Failed to load properties for filtering. Some features may be limited.
+            </p>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>

@@ -105,6 +105,20 @@ export default function ReportIncidentModal({
     }
   }, [isOpen])
 
+  // Handle Escape key to close modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose()
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape)
+      return () => document.removeEventListener('keydown', handleEscape)
+    }
+  }, [isOpen, onClose])
+
   if (!isOpen) return null
 
   return (
@@ -132,9 +146,10 @@ export default function ReportIncidentModal({
               {createClaimMutation.isError && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-md">
                   <p className="text-sm text-red-700">
-                    {createClaimMutation.error instanceof Error
-                      ? createClaimMutation.error.message
-                      : 'Failed to create claim. Please try again.'}
+                    {(createClaimMutation.error as any)?.response?.data?.error ||
+                      (createClaimMutation.error instanceof Error
+                        ? createClaimMutation.error.message
+                        : 'Failed to create claim. Please try again.')}
                   </p>
                 </div>
               )}
