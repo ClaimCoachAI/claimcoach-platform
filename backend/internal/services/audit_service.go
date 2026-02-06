@@ -492,6 +492,288 @@ func (s *AuditService) updateAuditReportWithComparison(
 	return nil
 }
 
+// GenerateRebuttal generates a professional rebuttal letter based on comparison data
+func (s *AuditService) GenerateRebuttal(ctx context.Context, auditReportID string, userID string, orgID string) (string, error) {
+	// 1. Get audit report by ID and verify ownership
+	auditReport, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
+	if err != nil {
+		return "", err
+	}
+
+	// 2. Validate comparison_data exists
+	if auditReport.ComparisonData == nil || *auditReport.ComparisonData == "" {
+		return "", fmt.Errorf("comparison data not available")
+	}
+
+	// 3. Parse comparison data
+	var comparisonData map[string]interface{}
+	if err := json.Unmarshal([]byte(*auditReport.ComparisonData), &comparisonData); err != nil {
+		return "", fmt.Errorf("failed to parse comparison data: %w", err)
+	}
+
+	// 4. Get property and policy info for context
+	propertyInfo, policyInfo, claimInfo, err := s.getClaimContext(ctx, auditReport.ClaimID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get claim context: %w", err)
+	}
+
+	// 5. Build rebuttal prompt with comparison data
+	prompt := s.buildRebuttalPrompt(propertyInfo, policyInfo, claimInfo, comparisonData, auditReport)
+
+	// 6. Call LLM to generate professional letter
+	messages := []llm.Message{
+		{
+			Role: "system",
+			Content: `You are a professional insurance claim specialist writing formal rebuttal letters.
+Your task is to create well-structured, professional business letters that present discrepancies
+between carrier estimates and industry-standard pricing with clear justification.
+The tone should be professional, factual, and respectful.`,
+		},
+		{
+			Role:    "user",
+			Content: prompt,
+		},
+	}
+
+	response, err := s.llmClient.Chat(ctx, messages, 0.3, 2000)
+	if err != nil {
+		return "", fmt.Errorf("LLM API call failed: %w", err)
+	}
+
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	rebuttalContent := response.Choices[0].Message.Content
+
+	// 7. Save to rebuttals table
+	rebuttalID, err := s.saveRebuttal(ctx, auditReportID, rebuttalContent)
+	if err != nil {
+		return "", fmt.Errorf("failed to save rebuttal: %w", err)
+	}
+
+	// 8. Set audit_report status to "completed" if not already
+	if auditReport.Status != models.AuditStatusCompleted {
+		err = s.updateAuditReportStatus(ctx, auditReportID, models.AuditStatusCompleted)
+		if err != nil {
+			// Log but don't fail - the rebuttal was created successfully
+			log.Printf("Warning: failed to update audit report status: %v", err)
+		}
+	}
+
+	// 9. Log API usage
+	err = s.logAPIUsage(ctx, orgID, response)
+	if err != nil {
+		// Log the error but don't fail the request
+		log.Printf("Warning: failed to log API usage: %v", err)
+	}
+
+	return rebuttalID, nil
+}
+
+// getClaimContext retrieves property, policy, and claim information for the rebuttal letter
+func (s *AuditService) getClaimContext(ctx context.Context, claimID string) (propertyInfo map[string]interface{}, policyInfo map[string]interface{}, claimInfo map[string]interface{}, err error) {
+	query := `
+		SELECT
+			p.legal_address,
+			pol.policy_number,
+			pol.carrier_name,
+			c.claim_number,
+			c.incident_date
+		FROM claims c
+		INNER JOIN properties p ON c.property_id = p.id
+		INNER JOIN policies pol ON c.policy_id = pol.id
+		WHERE c.id = $1
+	`
+
+	var address, carrierName string
+	var policyNumber, claimNumber *string
+	var incidentDate time.Time
+
+	err = s.db.QueryRowContext(ctx, query, claimID).Scan(
+		&address,
+		&policyNumber,
+		&carrierName,
+		&claimNumber,
+		&incidentDate,
+	)
+
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to get claim context: %w", err)
+	}
+
+	propertyInfo = map[string]interface{}{
+		"address": address,
+	}
+
+	policyInfo = map[string]interface{}{
+		"policy_number": policyNumber,
+		"carrier_name":  carrierName,
+	}
+
+	claimInfo = map[string]interface{}{
+		"claim_number":  claimNumber,
+		"incident_date": incidentDate.Format("January 2, 2006"),
+	}
+
+	return propertyInfo, policyInfo, claimInfo, nil
+}
+
+// buildRebuttalPrompt creates a prompt for generating a rebuttal letter
+func (s *AuditService) buildRebuttalPrompt(propertyInfo, policyInfo, claimInfo map[string]interface{}, comparisonData map[string]interface{}, auditReport *models.AuditReport) string {
+	var builder strings.Builder
+
+	builder.WriteString("Generate a professional rebuttal letter for a property insurance claim.\n\n")
+
+	// Property details
+	builder.WriteString("PROPERTY DETAILS:\n")
+	builder.WriteString(fmt.Sprintf("- Address: %v\n", propertyInfo["address"]))
+	if policyNumber, ok := policyInfo["policy_number"].(*string); ok && policyNumber != nil {
+		builder.WriteString(fmt.Sprintf("- Policy Number: %s\n", *policyNumber))
+	}
+	builder.WriteString(fmt.Sprintf("- Carrier: %v\n", policyInfo["carrier_name"]))
+	if claimNumber, ok := claimInfo["claim_number"].(*string); ok && claimNumber != nil {
+		builder.WriteString(fmt.Sprintf("- Claim Number: %s\n", *claimNumber))
+	}
+	builder.WriteString(fmt.Sprintf("- Incident Date: %v\n", claimInfo["incident_date"]))
+	builder.WriteString("\n")
+
+	// Comparison summary
+	builder.WriteString("COMPARISON SUMMARY:\n")
+	if summary, ok := comparisonData["summary"].(map[string]interface{}); ok {
+		if industryTotal, ok := summary["total_industry"].(float64); ok {
+			builder.WriteString(fmt.Sprintf("- Industry Standard Total: $%.2f\n", industryTotal))
+		}
+		if carrierTotal, ok := summary["total_carrier"].(float64); ok {
+			builder.WriteString(fmt.Sprintf("- Carrier Estimate Total: $%.2f\n", carrierTotal))
+		}
+		if delta, ok := summary["total_delta"].(float64); ok {
+			builder.WriteString(fmt.Sprintf("- Delta: $%.2f\n", delta))
+		}
+	} else if auditReport.TotalContractorEstimate != nil && auditReport.TotalCarrierEstimate != nil {
+		builder.WriteString(fmt.Sprintf("- Industry Standard Total: $%.2f\n", *auditReport.TotalContractorEstimate))
+		builder.WriteString(fmt.Sprintf("- Carrier Estimate Total: $%.2f\n", *auditReport.TotalCarrierEstimate))
+		if auditReport.TotalDelta != nil {
+			builder.WriteString(fmt.Sprintf("- Delta: $%.2f\n", *auditReport.TotalDelta))
+		}
+	}
+	builder.WriteString("\n")
+
+	// Discrepancies
+	builder.WriteString("DISCREPANCIES:\n")
+	if discrepancies, ok := comparisonData["discrepancies"].([]interface{}); ok {
+		for i, d := range discrepancies {
+			if disc, ok := d.(map[string]interface{}); ok {
+				builder.WriteString(fmt.Sprintf("\n%d. Item: %v\n", i+1, disc["item"]))
+				builder.WriteString(fmt.Sprintf("   Industry Price: $%.2f\n", disc["industry_price"]))
+				builder.WriteString(fmt.Sprintf("   Carrier Price: $%.2f\n", disc["carrier_price"]))
+				builder.WriteString(fmt.Sprintf("   Delta: $%.2f\n", disc["delta"]))
+				builder.WriteString(fmt.Sprintf("   Justification: %v\n", disc["justification"]))
+			}
+		}
+	}
+	builder.WriteString("\n")
+
+	// Instructions for the letter
+	builder.WriteString("Create a formal business letter addressed to the insurance adjuster that:\n")
+	builder.WriteString("1. References the claim professionally with property address and claim number\n")
+	builder.WriteString("2. States the purpose clearly (requesting reconsideration of the estimate)\n")
+	builder.WriteString("3. Presents each discrepancy with industry justification\n")
+	builder.WriteString("4. Maintains a professional and respectful tone throughout\n")
+	builder.WriteString("5. Includes specific line items and pricing differences\n")
+	builder.WriteString("6. Requests a meeting or further discussion\n")
+	builder.WriteString("7. Thanks them for their consideration\n\n")
+
+	builder.WriteString("Format as a complete business letter with:\n")
+	builder.WriteString("- Date (use today's date)\n")
+	builder.WriteString("- Salutation (To: Insurance Adjuster)\n")
+	builder.WriteString("- Subject line with claim reference\n")
+	builder.WriteString("- Body paragraphs\n")
+	builder.WriteString("- Professional closing\n\n")
+
+	builder.WriteString("Do not include placeholder addresses, signatures, or company names in the signature block.\n")
+	builder.WriteString("Write the letter ready to be reviewed and signed by the property manager.\n")
+
+	return builder.String()
+}
+
+// saveRebuttal saves the generated rebuttal to the database
+func (s *AuditService) saveRebuttal(ctx context.Context, auditReportID, content string) (string, error) {
+	rebuttalID := uuid.New().String()
+	now := time.Now()
+
+	query := `
+		INSERT INTO rebuttals (
+			id, audit_report_id, content, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`
+
+	var returnedID string
+	err := s.db.QueryRowContext(
+		ctx,
+		query,
+		rebuttalID,
+		auditReportID,
+		content,
+		now,
+		now,
+	).Scan(&returnedID)
+
+	if err != nil {
+		return "", fmt.Errorf("failed to insert rebuttal: %w", err)
+	}
+
+	return returnedID, nil
+}
+
+// updateAuditReportStatus updates the status of an audit report
+func (s *AuditService) updateAuditReportStatus(ctx context.Context, reportID, status string) error {
+	query := `
+		UPDATE audit_reports
+		SET status = $1, updated_at = $2
+		WHERE id = $3
+	`
+
+	_, err := s.db.ExecContext(ctx, query, status, time.Now(), reportID)
+	if err != nil {
+		return fmt.Errorf("failed to update audit report status: %w", err)
+	}
+
+	return nil
+}
+
+// GetRebuttal retrieves a rebuttal by ID with ownership verification
+func (s *AuditService) GetRebuttal(ctx context.Context, rebuttalID string, orgID string) (*models.Rebuttal, error) {
+	query := `
+		SELECT r.id, r.audit_report_id, r.content, r.created_at, r.updated_at
+		FROM rebuttals r
+		INNER JOIN audit_reports ar ON r.audit_report_id = ar.id
+		INNER JOIN claims c ON ar.claim_id = c.id
+		INNER JOIN properties p ON c.property_id = p.id
+		WHERE r.id = $1 AND p.organization_id = $2
+	`
+
+	var rebuttal models.Rebuttal
+	err := s.db.QueryRowContext(ctx, query, rebuttalID, orgID).Scan(
+		&rebuttal.ID,
+		&rebuttal.AuditReportID,
+		&rebuttal.Content,
+		&rebuttal.CreatedAt,
+		&rebuttal.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("rebuttal not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rebuttal: %w", err)
+	}
+
+	return &rebuttal, nil
+}
+
 // logAPIUsage records API usage metrics for billing and monitoring
 func (s *AuditService) logAPIUsage(ctx context.Context, orgID string, response *llm.ChatResponse) error {
 	// Calculate estimated cost

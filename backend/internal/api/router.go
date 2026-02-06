@@ -148,6 +148,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 		// Audit routes (protected - requires auth)
 		api.POST("/claims/:id/audit/:auditId/compare", auditHandler.CompareEstimates)
+		api.POST("/claims/:id/audit/:auditId/rebuttal", auditHandler.GenerateRebuttal)
+		api.GET("/rebuttals/:id", auditHandler.GetRebuttal)
 	}
 
 	return r, nil

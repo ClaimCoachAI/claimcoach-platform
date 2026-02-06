@@ -693,3 +693,290 @@ func createTestCarrierEstimate(t *testing.T, db *sql.DB, claimID, userID, parsed
 	assert.NoError(t, err)
 	return returnedID
 }
+
+func TestGenerateRebuttal_Success(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	policyID := createTestPolicy(t, db, propertyID, 10000.0)
+	claimID := createTestClaim(t, db, propertyID, policyID, orgID, userID)
+
+	// Create scope sheet
+	scopeService := NewScopeSheetService(db)
+	roofType := "asphalt_shingles"
+	input := CreateScopeSheetInput{
+		RoofType: &roofType,
+	}
+
+	ctx := context.Background()
+	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
+	assert.NoError(t, err)
+
+	// Create audit report with comparison data
+	industryEstimateJSON := `{"total": 8400.00}`
+	auditReportID := createTestAuditReport(t, db, claimID, scopeSheet.ID, userID, industryEstimateJSON)
+
+	// Add comparison data to the audit report
+	comparisonData := map[string]interface{}{
+		"discrepancies": []map[string]interface{}{
+			{
+				"item":            "Roof shingles",
+				"industry_price":  7000.00,
+				"carrier_price":   6000.00,
+				"delta":           1000.00,
+				"justification":   "Industry standard pricing for high-quality materials",
+			},
+		},
+		"summary": map[string]interface{}{
+			"total_industry": 8400.00,
+			"total_carrier":  7200.00,
+			"total_delta":    1200.00,
+		},
+	}
+	comparisonJSON, _ := json.Marshal(comparisonData)
+	updateQuery := `UPDATE audit_reports SET comparison_data = $1, total_contractor_estimate = $2,
+	                total_carrier_estimate = $3, total_delta = $4 WHERE id = $5`
+	_, err = db.Exec(updateQuery, string(comparisonJSON), 8400.00, 7200.00, 1200.00, auditReportID)
+	assert.NoError(t, err)
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+
+	// Prepare rebuttal response
+	rebuttalContent := `Date: January 15, 2026
+
+To: Insurance Adjuster
+Subject: Request for Reconsideration - Claim #12345
+
+Dear Adjuster,
+
+I am writing to request a reconsideration of the estimate provided for the property damage claim at 123 Main Street.
+
+After careful review and comparison with industry-standard pricing, we have identified the following discrepancies:
+
+1. Roof Shingles:
+   - Industry Standard Price: $7,000.00
+   - Carrier Estimate: $6,000.00
+   - Difference: $1,000.00
+   - Justification: Industry standard pricing for high-quality materials reflects current market rates for comparable materials and labor.
+
+The total difference between the industry-standard estimate ($8,400.00) and the carrier estimate ($7,200.00) is $1,200.00.
+
+We respectfully request a meeting to discuss these discrepancies and work toward a fair resolution.
+
+Thank you for your consideration.
+
+Sincerely,`
+
+	mockResponse := &llm.ChatResponse{
+		ID:    "test-rebuttal-id",
+		Model: "llama-3.1-sonar-large-128k-online",
+		Choices: []struct {
+			Index   int `json:"index"`
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+		}{
+			{
+				Index: 0,
+				Message: struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				}{
+					Role:    "assistant",
+					Content: rebuttalContent,
+				},
+			},
+		},
+		Usage: struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		}{
+			PromptTokens:     800,
+			CompletionTokens: 500,
+			TotalTokens:      1300,
+		},
+	}
+
+	// Set up mock expectation
+	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.3, 2000).Return(mockResponse, nil)
+
+	// Create audit service
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test
+	rebuttalID, err := auditService.GenerateRebuttal(ctx, auditReportID, userID, orgID)
+
+	// Assert
+	assert.NoError(t, err)
+	assert.NotEmpty(t, rebuttalID)
+
+	// Verify the rebuttal was created
+	var rebuttal models.Rebuttal
+	query := `SELECT id, audit_report_id, content FROM rebuttals WHERE id = $1`
+	err = db.QueryRowContext(ctx, query, rebuttalID).Scan(
+		&rebuttal.ID,
+		&rebuttal.AuditReportID,
+		&rebuttal.Content,
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, auditReportID, rebuttal.AuditReportID)
+	assert.Contains(t, rebuttal.Content, "Request for Reconsideration")
+	assert.Contains(t, rebuttal.Content, "$1,200.00")
+	assert.Contains(t, rebuttal.Content, "Roof Shingles")
+
+	// Verify API usage was logged
+	var apiLogCount int
+	logCountQuery := `SELECT COUNT(*) FROM api_usage_logs WHERE organization_id = $1`
+	err = db.QueryRowContext(ctx, logCountQuery, orgID).Scan(&apiLogCount)
+	assert.NoError(t, err)
+	assert.Greater(t, apiLogCount, 0)
+
+	// Verify mock was called
+	mockLLM.AssertExpectations(t)
+}
+
+func TestGenerateRebuttal_NoComparisonData(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	policyID := createTestPolicy(t, db, propertyID, 10000.0)
+	claimID := createTestClaim(t, db, propertyID, policyID, orgID, userID)
+
+	// Create scope sheet
+	scopeService := NewScopeSheetService(db)
+	roofType := "asphalt_shingles"
+	input := CreateScopeSheetInput{
+		RoofType: &roofType,
+	}
+
+	ctx := context.Background()
+	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
+	assert.NoError(t, err)
+
+	// Create audit report WITHOUT comparison data
+	industryEstimateJSON := `{"total": 8400.00}`
+	auditReportID := createTestAuditReport(t, db, claimID, scopeSheet.ID, userID, industryEstimateJSON)
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test
+	rebuttalID, err := auditService.GenerateRebuttal(ctx, auditReportID, userID, orgID)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Empty(t, rebuttalID)
+	assert.Contains(t, err.Error(), "comparison data not available")
+}
+
+func TestGenerateRebuttal_AuditReportNotFound(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+	scopeService := NewScopeSheetService(db)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test with non-existent audit report
+	ctx := context.Background()
+	rebuttalID, err := auditService.GenerateRebuttal(ctx, "non-existent-id", userID, orgID)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Empty(t, rebuttalID)
+	assert.Contains(t, err.Error(), "audit report not found")
+}
+
+func TestGetRebuttal_Success(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	policyID := createTestPolicy(t, db, propertyID, 10000.0)
+	claimID := createTestClaim(t, db, propertyID, policyID, orgID, userID)
+
+	// Create scope sheet
+	scopeService := NewScopeSheetService(db)
+	roofType := "asphalt_shingles"
+	input := CreateScopeSheetInput{
+		RoofType: &roofType,
+	}
+
+	ctx := context.Background()
+	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
+	assert.NoError(t, err)
+
+	// Create audit report
+	industryEstimateJSON := `{"total": 8400.00}`
+	auditReportID := createTestAuditReport(t, db, claimID, scopeSheet.ID, userID, industryEstimateJSON)
+
+	// Create rebuttal directly
+	rebuttalID := uuid.New().String()
+	rebuttalContent := "Test rebuttal letter content"
+	now := time.Now()
+	insertQuery := `INSERT INTO rebuttals (id, audit_report_id, content, created_at, updated_at)
+	                VALUES ($1, $2, $3, $4, $5)`
+	_, err = db.Exec(insertQuery, rebuttalID, auditReportID, rebuttalContent, now, now)
+	assert.NoError(t, err)
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test
+	rebuttal, err := auditService.GetRebuttal(ctx, rebuttalID, orgID)
+
+	// Assert
+	assert.NoError(t, err)
+	assert.NotNil(t, rebuttal)
+	assert.Equal(t, rebuttalID, rebuttal.ID)
+	assert.Equal(t, auditReportID, rebuttal.AuditReportID)
+	assert.Equal(t, rebuttalContent, rebuttal.Content)
+}
+
+func TestGetRebuttal_NotFound(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+	scopeService := NewScopeSheetService(db)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test with non-existent rebuttal
+	ctx := context.Background()
+	rebuttal, err := auditService.GetRebuttal(ctx, "non-existent-id", orgID)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Nil(t, rebuttal)
+	assert.Contains(t, err.Error(), "rebuttal not found")
+}
