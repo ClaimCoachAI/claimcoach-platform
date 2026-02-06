@@ -213,10 +213,14 @@ func TestPatchClaimEstimate_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	assert.Contains(t, response, "claim")
-	assert.Contains(t, response, "comparison")
+	assert.Equal(t, true, response["success"])
+	assert.Contains(t, response, "data")
 
-	comparison := response["comparison"].(map[string]interface{})
+	data := response["data"].(map[string]interface{})
+	assert.Contains(t, data, "claim")
+	assert.Contains(t, data, "comparison")
+
+	comparison := data["comparison"].(map[string]interface{})
 	assert.Equal(t, 10000.0, comparison["deductible"])
 	assert.Equal(t, 15000.0, comparison["estimate"])
 	assert.Equal(t, 5000.0, comparison["delta"])

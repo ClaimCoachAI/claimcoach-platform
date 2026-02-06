@@ -189,7 +189,7 @@ func (h *ClaimHandler) PatchClaimEstimate(c *gin.Context) {
 	// Get authenticated user
 	user, exists := c.Get("user")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Unauthorized"})
 		return
 	}
 	userModel := user.(models.User)
@@ -197,7 +197,7 @@ func (h *ClaimHandler) PatchClaimEstimate(c *gin.Context) {
 	// Parse request
 	var req UpdateEstimateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 		return
 	}
 
@@ -210,19 +210,22 @@ func (h *ClaimHandler) PatchClaimEstimate(c *gin.Context) {
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Claim not found"})
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Claim not found"})
 			return
 		}
 		if strings.Contains(err.Error(), "unauthorized") {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "Forbidden"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"claim":      claim,
-		"comparison": comparison,
+		"success": true,
+		"data": gin.H{
+			"claim":      claim,
+			"comparison": comparison,
+		},
 	})
 }
