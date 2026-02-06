@@ -79,12 +79,12 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/properties/:id", propertyHandler.Get)
 		api.PATCH("/properties/:id", propertyHandler.Update)
 
-		// Policy routes
+		// Policy routes (use same param name :id to avoid gin routing conflicts)
 		policyService := services.NewPolicyService(db, propertyService)
 		policyHandler := handlers.NewPolicyHandler(policyService)
 
-		api.POST("/properties/:propertyId/policy", policyHandler.Create)
-		api.GET("/properties/:propertyId/policy", policyHandler.Get)
+		api.POST("/properties/:id/policy", policyHandler.Create)
+		api.GET("/properties/:id/policy", policyHandler.Get)
 
 		// Claim routes
 		claimService := services.NewClaimService(db, propertyService)
@@ -104,6 +104,12 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.POST("/claims/:id/documents/:documentId/confirm", documentHandler.ConfirmUpload)
 		api.GET("/claims/:id/documents", documentHandler.ListDocuments)
 		api.GET("/documents/:id", documentHandler.GetDocument)
+
+		// Magic Link routes
+		magicLinkService := services.NewMagicLinkService(db, cfg, claimService)
+		magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
+
+		api.POST("/claims/:id/magic-link", magicLinkHandler.GenerateMagicLink)
 	}
 
 	return r, nil

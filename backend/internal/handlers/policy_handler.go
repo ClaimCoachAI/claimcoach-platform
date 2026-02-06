@@ -18,7 +18,7 @@ func NewPolicyHandler(service *services.PolicyService) *PolicyHandler {
 
 func (h *PolicyHandler) Create(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
-	propertyID := c.Param("propertyId")
+	propertyID := c.Param("id")
 
 	var input services.UpsertPolicyInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -53,7 +53,7 @@ func (h *PolicyHandler) Create(c *gin.Context) {
 
 func (h *PolicyHandler) Get(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
-	propertyID := c.Param("propertyId")
+	propertyID := c.Param("id")
 
 	policy, err := h.service.GetPolicy(propertyID, user.OrganizationID)
 	if err != nil {

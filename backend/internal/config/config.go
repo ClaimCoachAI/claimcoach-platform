@@ -13,6 +13,7 @@ type Config struct {
 	PerplexityAPIKey   string
 	AllowedOrigins     string
 	Port               string
+	FrontendURL        string
 }
 
 func Load() (*Config, error) {
@@ -24,6 +25,7 @@ func Load() (*Config, error) {
 		PerplexityAPIKey:   os.Getenv("PERPLEXITY_API_KEY"),
 		AllowedOrigins:     os.Getenv("ALLOWED_ORIGINS"),
 		Port:               os.Getenv("PORT"),
+		FrontendURL:        os.Getenv("FRONTEND_URL"),
 	}
 
 	if cfg.DatabaseURL == "" {
