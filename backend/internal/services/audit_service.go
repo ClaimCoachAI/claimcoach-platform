@@ -373,6 +373,49 @@ func (s *AuditService) extractTotals(data map[string]interface{}) (*comparisonTo
 	}, nil
 }
 
+// GetAuditReportByClaimID retrieves the audit report for a claim with ownership verification
+func (s *AuditService) GetAuditReportByClaimID(ctx context.Context, claimID, orgID string) (*models.AuditReport, error) {
+	query := `
+		SELECT ar.id, ar.claim_id, ar.scope_sheet_id, ar.carrier_estimate_id,
+		       ar.generated_estimate, ar.comparison_data, ar.total_contractor_estimate,
+		       ar.total_carrier_estimate, ar.total_delta, ar.status, ar.error_message,
+		       ar.created_by_user_id, ar.created_at, ar.updated_at
+		FROM audit_reports ar
+		INNER JOIN claims c ON ar.claim_id = c.id
+		INNER JOIN properties p ON c.property_id = p.id
+		WHERE ar.claim_id = $1 AND p.organization_id = $2
+		ORDER BY ar.created_at DESC
+		LIMIT 1
+	`
+
+	var report models.AuditReport
+	err := s.db.QueryRowContext(ctx, query, claimID, orgID).Scan(
+		&report.ID,
+		&report.ClaimID,
+		&report.ScopeSheetID,
+		&report.CarrierEstimateID,
+		&report.GeneratedEstimate,
+		&report.ComparisonData,
+		&report.TotalContractorEstimate,
+		&report.TotalCarrierEstimate,
+		&report.TotalDelta,
+		&report.Status,
+		&report.ErrorMessage,
+		&report.CreatedByUserID,
+		&report.CreatedAt,
+		&report.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("audit report not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get audit report: %w", err)
+	}
+
+	return &report, nil
+}
+
 // getAuditReportWithOwnershipCheck gets an audit report and verifies ownership
 func (s *AuditService) getAuditReportWithOwnershipCheck(ctx context.Context, auditReportID, orgID string) (*models.AuditReport, error) {
 	query := `

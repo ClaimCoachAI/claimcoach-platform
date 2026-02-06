@@ -78,4 +78,30 @@ export const getCarrierEstimates = async (claimId: string) => {
   return response.data.data
 }
 
+// Audit API methods
+export const generateIndustryEstimate = async (claimId: string) => {
+  const response = await api.post(`/api/claims/${claimId}/audit/generate`)
+  return response.data.data
+}
+
+export const getAuditReport = async (claimId: string) => {
+  const response = await api.get(`/api/claims/${claimId}/audit`)
+  return response.data.data
+}
+
+export const compareEstimates = async (claimId: string, auditId: string) => {
+  const response = await api.post(`/api/claims/${claimId}/audit/${auditId}/compare`)
+  return response.data
+}
+
+export const generateRebuttal = async (claimId: string, auditId: string) => {
+  const response = await api.post(`/api/claims/${claimId}/audit/${auditId}/rebuttal`)
+  return response.data.data
+}
+
+export const getRebuttal = async (rebuttalId: string) => {
+  const response = await api.get(`/api/rebuttals/${rebuttalId}`)
+  return response.data.data
+}
+
 export default api

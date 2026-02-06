@@ -11,6 +11,7 @@ import (
 // AuditServiceInterface defines the interface for audit operations
 type AuditServiceInterface interface {
 	GenerateIndustryEstimate(ctx context.Context, claimID, userID, orgID string) (string, error)
+	GetAuditReportByClaimID(ctx context.Context, claimID, orgID string) (*models.AuditReport, error)
 	CompareEstimates(ctx context.Context, auditReportID string, userID string, orgID string) error
 	GenerateRebuttal(ctx context.Context, auditReportID string, userID string, orgID string) (string, error)
 	GetRebuttal(ctx context.Context, rebuttalID string, orgID string) (*models.Rebuttal, error)
@@ -22,6 +23,78 @@ type AuditHandler struct {
 
 func NewAuditHandler(service AuditServiceInterface) *AuditHandler {
 	return &AuditHandler{service: service}
+}
+
+// GenerateIndustryEstimate generates an industry-standard estimate from scope sheet
+// POST /api/claims/:id/audit/generate
+func (h *AuditHandler) GenerateIndustryEstimate(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	claimID := c.Param("id")
+
+	auditReportID, err := h.service.GenerateIndustryEstimate(c.Request.Context(), claimID, user.ID, user.OrganizationID)
+	if err != nil {
+		// Handle specific errors
+		if err.Error() == "scope sheet not found for claim "+claimID {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error":   "Scope sheet not found. Please submit scope sheet first.",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to generate industry estimate: " + err.Error(),
+		})
+		return
+	}
+
+	// Get the audit report to return in response
+	auditReport, err := h.service.GetAuditReportByClaimID(c.Request.Context(), claimID, user.OrganizationID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to retrieve audit report: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"audit_report_id": auditReportID,
+			"audit_report":    auditReport,
+		},
+	})
+}
+
+// GetAuditReport retrieves the audit report for a claim
+// GET /api/claims/:id/audit
+func (h *AuditHandler) GetAuditReport(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	claimID := c.Param("id")
+
+	auditReport, err := h.service.GetAuditReportByClaimID(c.Request.Context(), claimID, user.OrganizationID)
+	if err != nil {
+		if err.Error() == "audit report not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   "Audit report not found",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to retrieve audit report: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    auditReport,
+	})
 }
 
 // CompareEstimates compares industry estimate with carrier estimate

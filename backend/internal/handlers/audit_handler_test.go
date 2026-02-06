@@ -24,6 +24,14 @@ func (m *MockAuditService) GenerateIndustryEstimate(ctx context.Context, claimID
 	return args.String(0), args.Error(1)
 }
 
+func (m *MockAuditService) GetAuditReportByClaimID(ctx context.Context, claimID, orgID string) (*models.AuditReport, error) {
+	args := m.Called(ctx, claimID, orgID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.AuditReport), args.Error(1)
+}
+
 func (m *MockAuditService) CompareEstimates(ctx context.Context, auditReportID string, userID string, orgID string) error {
 	args := m.Called(ctx, auditReportID, userID, orgID)
 	return args.Error(0)
@@ -68,6 +76,8 @@ func setupAuditTestRouter(mockService *MockAuditService) *gin.Engine {
 	})
 
 	// Register routes
+	r.POST("/api/claims/:id/audit/generate", handler.GenerateIndustryEstimate)
+	r.GET("/api/claims/:id/audit", handler.GetAuditReport)
 	r.POST("/api/claims/:id/audit/:auditId/compare", handler.CompareEstimates)
 	r.POST("/api/claims/:id/audit/:auditId/rebuttal", handler.GenerateRebuttal)
 	r.GET("/api/rebuttals/:id", handler.GetRebuttal)
