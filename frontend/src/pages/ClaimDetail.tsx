@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
@@ -76,6 +76,7 @@ export default function ClaimDetail() {
   const queryClient = useQueryClient()
   const [selectedStatus, setSelectedStatus] = useState<string>('')
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string>('')
 
   // Fetch claim details
   const {
@@ -118,6 +119,14 @@ export default function ClaimDetail() {
     enabled: !!id,
   })
 
+  // Auto-dismiss success message
+  useEffect(() => {
+    if (showSuccessMessage) {
+      const timer = setTimeout(() => setShowSuccessMessage(false), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [showSuccessMessage])
+
   // Status update mutation
   const statusMutation = useMutation({
     mutationFn: async (newStatus: string) => {
@@ -131,7 +140,6 @@ export default function ClaimDetail() {
       queryClient.invalidateQueries({ queryKey: ['claim-activities', id] })
       setShowSuccessMessage(true)
       setSelectedStatus('')
-      setTimeout(() => setShowSuccessMessage(false), 3000)
     },
   })
 
@@ -140,10 +148,23 @@ export default function ClaimDetail() {
     try {
       const response = await api.get(`/api/documents/${documentId}`)
       const downloadUrl = response.data.data.download_url
-      window.open(downloadUrl, '_blank')
+
+      // Validate URL is HTTPS or from our API domain
+      const isValid = downloadUrl.startsWith('https://') ||
+                      downloadUrl.startsWith(import.meta.env.VITE_API_URL || '')
+
+      if (!isValid) {
+        throw new Error('Invalid download URL received')
+      }
+
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer')
     } catch (error) {
-      console.error('Failed to download document:', error)
-      alert('Failed to download document. Please try again.')
+      setErrorMessage(
+        error instanceof Error && error.message.includes('Invalid')
+          ? 'Invalid download URL. Please contact support.'
+          : 'Failed to download document. Please try again.'
+      )
+      setTimeout(() => setErrorMessage(''), 5000)
     }
   }
 
@@ -451,6 +472,15 @@ export default function ClaimDetail() {
                   Claim status updated successfully
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {errorMessage && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-800">{errorMessage}</p>
             </div>
           </div>
         )}
