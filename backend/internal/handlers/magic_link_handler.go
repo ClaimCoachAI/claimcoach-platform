@@ -50,3 +50,22 @@ func (h *MagicLinkHandler) GenerateMagicLink(c *gin.Context) {
 		"data":    response,
 	})
 }
+
+// ValidateToken validates a magic link token (public endpoint, no auth required)
+func (h *MagicLinkHandler) ValidateToken(c *gin.Context) {
+	token := c.Param("token")
+
+	result, err := h.service.ValidateToken(token)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to validate token: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    result,
+	})
+}

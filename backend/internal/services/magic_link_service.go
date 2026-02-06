@@ -150,6 +150,128 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 	return response, nil
 }
 
+// ValidationResult contains the result of token validation
+type ValidationResult struct {
+	Valid          bool         `json:"valid"`
+	Reason         string       `json:"reason,omitempty"` // "expired", "not_found", "completed"
+	MagicLinkID    string       `json:"magic_link_id,omitempty"`
+	Claim          *ClaimInfo   `json:"claim,omitempty"`
+	ContractorName string       `json:"contractor_name,omitempty"`
+	ExpiresAt      time.Time    `json:"expires_at,omitempty"`
+	Status         string       `json:"status,omitempty"`
+}
+
+// ClaimInfo contains minimal claim information for validation response
+type ClaimInfo struct {
+	ID           string       `json:"id"`
+	ClaimNumber  *string      `json:"claim_number"`
+	LossType     string       `json:"loss_type"`
+	IncidentDate time.Time    `json:"incident_date"`
+	Property     PropertyInfo `json:"property"`
+}
+
+// PropertyInfo contains property information for validation response
+type PropertyInfo struct {
+	Nickname     string `json:"nickname"`
+	LegalAddress string `json:"legal_address"`
+}
+
+// ValidateToken validates a magic link token and returns claim information
+func (s *MagicLinkService) ValidateToken(token string) (*ValidationResult, error) {
+	// Query with joins to get all needed data in one query
+	query := `
+		SELECT
+			ml.id, ml.claim_id, ml.contractor_name, ml.expires_at, ml.status,
+			c.claim_number, c.loss_type, c.incident_date,
+			p.nickname, p.legal_address
+		FROM magic_links ml
+		JOIN claims c ON c.id = ml.claim_id
+		JOIN properties p ON p.id = c.property_id
+		WHERE ml.token = $1
+	`
+
+	var magicLinkID, claimID, contractorName, status string
+	var expiresAt, incidentDate time.Time
+	var claimNumber *string
+	var lossType, nickname, legalAddress string
+
+	err := s.db.QueryRow(query, token).Scan(
+		&magicLinkID,
+		&claimID,
+		&contractorName,
+		&expiresAt,
+		&status,
+		&claimNumber,
+		&lossType,
+		&incidentDate,
+		&nickname,
+		&legalAddress,
+	)
+
+	// Check if token exists
+	if err == sql.ErrNoRows {
+		return &ValidationResult{
+			Valid:  false,
+			Reason: "not_found",
+		}, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query magic link: %w", err)
+	}
+
+	// Check if expired (expires_at < now)
+	if time.Now().After(expiresAt) {
+		return &ValidationResult{
+			Valid:  false,
+			Reason: "expired",
+		}, nil
+	}
+
+	// Check if status is not active
+	if status != "active" {
+		return &ValidationResult{
+			Valid:  false,
+			Reason: status, // Return the actual status (e.g., "completed")
+		}, nil
+	}
+
+	// Token is valid - update access tracking
+	updateQuery := `
+		UPDATE magic_links
+		SET access_count = access_count + 1,
+			accessed_at = NOW()
+		WHERE token = $1
+	`
+
+	_, err = s.db.Exec(updateQuery, token)
+	if err != nil {
+		// Don't fail the validation if tracking update fails
+		fmt.Printf("Warning: failed to update access tracking: %v\n", err)
+	}
+
+	// Return valid result with claim data
+	result := &ValidationResult{
+		Valid:          true,
+		MagicLinkID:    magicLinkID,
+		ContractorName: contractorName,
+		ExpiresAt:      expiresAt,
+		Status:         status,
+		Claim: &ClaimInfo{
+			ID:           claimID,
+			ClaimNumber:  claimNumber,
+			LossType:     lossType,
+			IncidentDate: incidentDate,
+			Property: PropertyInfo{
+				Nickname:     nickname,
+				LegalAddress: legalAddress,
+			},
+		},
+	}
+
+	return result, nil
+}
+
 // invalidatePreviousLinks marks all active magic links for a claim as expired
 func (s *MagicLinkService) invalidatePreviousLinks(claimID string) error {
 	query := `

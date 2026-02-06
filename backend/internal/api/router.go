@@ -53,10 +53,19 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		return nil, err
 	}
 
+	// Initialize services needed for both public and protected routes
+	propertyService := services.NewPropertyService(db)
+	claimService := services.NewClaimService(db, propertyService)
+	magicLinkService := services.NewMagicLinkService(db, cfg, claimService)
+	magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
+
 	// Public routes
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Public magic link validation endpoint (no auth required)
+	r.GET("/api/magic-links/:token/validate", magicLinkHandler.ValidateToken)
 
 	// Protected routes
 	api := r.Group("/api")
@@ -71,7 +80,6 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		})
 
 		// Property routes
-		propertyService := services.NewPropertyService(db)
 		propertyHandler := handlers.NewPropertyHandler(propertyService)
 
 		api.POST("/properties", propertyHandler.Create)
@@ -87,7 +95,6 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/properties/:id/policy", policyHandler.Get)
 
 		// Claim routes
-		claimService := services.NewClaimService(db, propertyService)
 		claimHandler := handlers.NewClaimHandler(claimService)
 
 		api.POST("/claims", claimHandler.Create)
@@ -105,10 +112,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/claims/:id/documents", documentHandler.ListDocuments)
 		api.GET("/documents/:id", documentHandler.GetDocument)
 
-		// Magic Link routes
-		magicLinkService := services.NewMagicLinkService(db, cfg, claimService)
-		magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
-
+		// Magic Link routes (protected - requires auth)
 		api.POST("/claims/:id/magic-link", magicLinkHandler.GenerateMagicLink)
 	}
 
