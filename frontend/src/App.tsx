@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Claims from './pages/Claims'
 import Properties from './pages/Properties'
 import PropertyDetail from './pages/PropertyDetail'
 
@@ -50,6 +51,14 @@ function App() {
               }
             />
             <Route
+              path="/claims"
+              element={
+                <ProtectedRoute>
+                  <Claims />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/properties"
               element={
                 <ProtectedRoute>
@@ -65,7 +74,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="/" element={<Navigate to="/dashboard" />} />
+            <Route path="/" element={<Navigate to="/claims" />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

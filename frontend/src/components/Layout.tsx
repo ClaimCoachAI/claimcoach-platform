@@ -28,14 +28,14 @@ export default function Layout({ children }: LayoutProps) {
             <div className="flex items-center gap-6">
               <nav className="flex gap-4">
                 <Link
-                  to="/dashboard"
+                  to="/claims"
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    isActive('/dashboard')
+                    isActive('/claims')
                       ? 'bg-blue-100 text-blue-700'
                       : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  Dashboard
+                  Claims
                 </Link>
                 <Link
                   to="/properties"
