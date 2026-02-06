@@ -214,6 +214,284 @@ func (s *AuditService) saveAuditReport(ctx context.Context, claimID, scopeSheetI
 	return returnedID, nil
 }
 
+// CompareEstimates compares industry estimate with carrier estimate using AI
+func (s *AuditService) CompareEstimates(ctx context.Context, auditReportID string, userID string, orgID string) error {
+	// 1. Get audit report by ID and verify ownership via claim -> property -> org
+	auditReport, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
+	if err != nil {
+		return err
+	}
+
+	// 2. Verify industry estimate exists
+	if auditReport.GeneratedEstimate == nil || *auditReport.GeneratedEstimate == "" {
+		return fmt.Errorf("industry estimate not generated yet")
+	}
+
+	// 3. Get carrier estimate from carrier_estimate (via claim_id)
+	carrierEstimate, err := s.getCarrierEstimate(ctx, auditReport.ClaimID)
+	if err != nil {
+		return err
+	}
+
+	// 4. Verify carrier estimate is parsed
+	if carrierEstimate.ParsedData == nil || *carrierEstimate.ParsedData == "" {
+		return fmt.Errorf("carrier estimate not parsed yet")
+	}
+
+	// 5. Build comparison prompt with both estimates
+	prompt := s.buildComparisonPrompt(*auditReport.GeneratedEstimate, *carrierEstimate.ParsedData)
+
+	// 6. Call LLM to generate comparison analysis
+	messages := []llm.Message{
+		{
+			Role: "system",
+			Content: `You are an expert insurance claim auditor.
+Your task is to compare industry-standard estimates with carrier estimates and identify discrepancies.
+Always respond with valid JSON only, no additional text or explanations.`,
+		},
+		{
+			Role:    "user",
+			Content: prompt,
+		},
+	}
+
+	response, err := s.llmClient.Chat(ctx, messages, 0.2, 3000)
+	if err != nil {
+		return fmt.Errorf("LLM API call failed: %w", err)
+	}
+
+	if len(response.Choices) == 0 {
+		return fmt.Errorf("LLM returned no choices")
+	}
+
+	comparisonJSON := response.Choices[0].Message.Content
+
+	// 7. Parse LLM response (JSON with discrepancies, justifications)
+	var comparisonData map[string]interface{}
+	if err := json.Unmarshal([]byte(comparisonJSON), &comparisonData); err != nil {
+		return fmt.Errorf("invalid JSON response from LLM: %w", err)
+	}
+
+	// 8. Calculate totals from the comparison response
+	totals, err := s.extractTotals(comparisonData)
+	if err != nil {
+		return fmt.Errorf("failed to extract totals: %w", err)
+	}
+
+	// 9. Update audit_report with comparison_data and totals
+	err = s.updateAuditReportWithComparison(
+		ctx,
+		auditReportID,
+		comparisonJSON,
+		totals.industryTotal,
+		totals.carrierTotal,
+		totals.delta,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update audit report: %w", err)
+	}
+
+	// 10. Log API usage
+	err = s.logAPIUsage(ctx, orgID, response)
+	if err != nil {
+		// Log the error but don't fail the request
+		log.Printf("Warning: failed to log API usage: %v", err)
+	}
+
+	return nil
+}
+
+// buildComparisonPrompt creates a prompt for comparing industry and carrier estimates
+func (s *AuditService) buildComparisonPrompt(industryEstimate, carrierEstimate string) string {
+	var builder strings.Builder
+
+	builder.WriteString("Compare these two estimates and identify discrepancies:\n\n")
+	builder.WriteString("INDUSTRY ESTIMATE (from contractor scope):\n")
+	builder.WriteString(industryEstimate)
+	builder.WriteString("\n\n")
+	builder.WriteString("CARRIER ESTIMATE (from insurance company):\n")
+	builder.WriteString(carrierEstimate)
+	builder.WriteString("\n\n")
+	builder.WriteString("For each discrepancy, provide:\n")
+	builder.WriteString("- Item description\n")
+	builder.WriteString("- Industry price vs Carrier price\n")
+	builder.WriteString("- Delta amount\n")
+	builder.WriteString("- Justification (why industry price is correct)\n\n")
+	builder.WriteString("Return JSON:\n")
+	builder.WriteString("{\n")
+	builder.WriteString("  \"discrepancies\": [\n")
+	builder.WriteString("    {\n")
+	builder.WriteString("      \"item\": \"description\",\n")
+	builder.WriteString("      \"industry_price\": X.XX,\n")
+	builder.WriteString("      \"carrier_price\": X.XX,\n")
+	builder.WriteString("      \"delta\": X.XX,\n")
+	builder.WriteString("      \"justification\": \"detailed explanation\"\n")
+	builder.WriteString("    }\n")
+	builder.WriteString("  ],\n")
+	builder.WriteString("  \"summary\": {\n")
+	builder.WriteString("    \"total_industry\": X.XX,\n")
+	builder.WriteString("    \"total_carrier\": X.XX,\n")
+	builder.WriteString("    \"total_delta\": X.XX\n")
+	builder.WriteString("  }\n")
+	builder.WriteString("}\n")
+
+	return builder.String()
+}
+
+type comparisonTotals struct {
+	industryTotal float64
+	carrierTotal  float64
+	delta         float64
+}
+
+// extractTotals extracts the total amounts from the comparison data
+func (s *AuditService) extractTotals(data map[string]interface{}) (*comparisonTotals, error) {
+	summary, ok := data["summary"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid summary field")
+	}
+
+	industryTotal, ok := summary["total_industry"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid total_industry field")
+	}
+
+	carrierTotal, ok := summary["total_carrier"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid total_carrier field")
+	}
+
+	delta, ok := summary["total_delta"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid total_delta field")
+	}
+
+	return &comparisonTotals{
+		industryTotal: industryTotal,
+		carrierTotal:  carrierTotal,
+		delta:         delta,
+	}, nil
+}
+
+// getAuditReportWithOwnershipCheck gets an audit report and verifies ownership
+func (s *AuditService) getAuditReportWithOwnershipCheck(ctx context.Context, auditReportID, orgID string) (*models.AuditReport, error) {
+	query := `
+		SELECT ar.id, ar.claim_id, ar.scope_sheet_id, ar.carrier_estimate_id,
+		       ar.generated_estimate, ar.comparison_data, ar.total_contractor_estimate,
+		       ar.total_carrier_estimate, ar.total_delta, ar.status, ar.error_message,
+		       ar.created_by_user_id, ar.created_at, ar.updated_at
+		FROM audit_reports ar
+		INNER JOIN claims c ON ar.claim_id = c.id
+		INNER JOIN properties p ON c.property_id = p.id
+		WHERE ar.id = $1 AND p.organization_id = $2
+	`
+
+	var report models.AuditReport
+	err := s.db.QueryRowContext(ctx, query, auditReportID, orgID).Scan(
+		&report.ID,
+		&report.ClaimID,
+		&report.ScopeSheetID,
+		&report.CarrierEstimateID,
+		&report.GeneratedEstimate,
+		&report.ComparisonData,
+		&report.TotalContractorEstimate,
+		&report.TotalCarrierEstimate,
+		&report.TotalDelta,
+		&report.Status,
+		&report.ErrorMessage,
+		&report.CreatedByUserID,
+		&report.CreatedAt,
+		&report.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("audit report not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get audit report: %w", err)
+	}
+
+	return &report, nil
+}
+
+// getCarrierEstimate retrieves the carrier estimate for a claim
+func (s *AuditService) getCarrierEstimate(ctx context.Context, claimID string) (*models.CarrierEstimate, error) {
+	query := `
+		SELECT id, claim_id, uploaded_by_user_id, file_path, file_name,
+		       file_size_bytes, parsed_data, parse_status, parse_error,
+		       uploaded_at, parsed_at
+		FROM carrier_estimates
+		WHERE claim_id = $1
+		ORDER BY uploaded_at DESC
+		LIMIT 1
+	`
+
+	var estimate models.CarrierEstimate
+	err := s.db.QueryRowContext(ctx, query, claimID).Scan(
+		&estimate.ID,
+		&estimate.ClaimID,
+		&estimate.UploadedByUserID,
+		&estimate.FilePath,
+		&estimate.FileName,
+		&estimate.FileSizeBytes,
+		&estimate.ParsedData,
+		&estimate.ParseStatus,
+		&estimate.ParseError,
+		&estimate.UploadedAt,
+		&estimate.ParsedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("carrier estimate not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get carrier estimate: %w", err)
+	}
+
+	return &estimate, nil
+}
+
+// updateAuditReportWithComparison updates the audit report with comparison results
+func (s *AuditService) updateAuditReportWithComparison(
+	ctx context.Context,
+	reportID string,
+	comparisonJSON string,
+	industryTotal float64,
+	carrierTotal float64,
+	delta float64,
+) error {
+	query := `
+		UPDATE audit_reports
+		SET comparison_data = $1,
+		    total_contractor_estimate = $2,
+		    total_carrier_estimate = $3,
+		    total_delta = $4,
+		    status = $5,
+		    updated_at = $6
+		WHERE id = $7
+	`
+
+	now := time.Now()
+
+	_, err := s.db.ExecContext(
+		ctx,
+		query,
+		comparisonJSON,
+		industryTotal,
+		carrierTotal,
+		delta,
+		models.AuditStatusCompleted,
+		now,
+		reportID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update audit report: %w", err)
+	}
+
+	return nil
+}
+
 // logAPIUsage records API usage metrics for billing and monitoring
 func (s *AuditService) logAPIUsage(ctx context.Context, orgID string, response *llm.ChatResponse) error {
 	// Calculate estimated cost

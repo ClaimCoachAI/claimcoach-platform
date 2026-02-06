@@ -70,6 +70,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
 	scopeSheetService := services.NewScopeSheetService(db)
 	scopeSheetHandler := handlers.NewScopeSheetHandler(scopeSheetService, magicLinkService, claimService)
+	auditService := services.NewAuditService(db, llmClient, scopeSheetService)
+	auditHandler := handlers.NewAuditHandler(auditService)
 
 	// Public routes
 	r.GET("/health", func(c *gin.Context) {
@@ -143,6 +145,9 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 		// Scope Sheet routes (protected - requires auth)
 		api.GET("/claims/:id/scope-sheet", scopeSheetHandler.GetByClaimID)
+
+		// Audit routes (protected - requires auth)
+		api.POST("/claims/:id/audit/:auditId/compare", auditHandler.CompareEstimates)
 	}
 
 	return r, nil

@@ -2,11 +2,14 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/claimcoach/backend/internal/llm"
 	"github.com/claimcoach/backend/internal/models"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -319,4 +322,374 @@ func TestBuildEstimatePrompt(t *testing.T) {
 	assert.Contains(t, prompt, "line_items")
 	assert.Contains(t, prompt, "category")
 	assert.Contains(t, prompt, "overhead_profit")
+}
+
+func TestCompareEstimates_Success(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	policyID := createTestPolicy(t, db, propertyID, 10000.0)
+	claimID := createTestClaim(t, db, propertyID, policyID, orgID, userID)
+
+	// Create scope sheet
+	scopeService := NewScopeSheetService(db)
+	roofType := "asphalt_shingles"
+	roofSquareFootage := 2000
+	input := CreateScopeSheetInput{
+		RoofType:          &roofType,
+		RoofSquareFootage: &roofSquareFootage,
+	}
+
+	ctx := context.Background()
+	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
+	assert.NoError(t, err)
+
+	// Create industry estimate
+	industryEstimateJSON := `{
+		"line_items": [
+			{"description": "Roof shingles", "quantity": 20, "unit": "square", "unit_cost": 350.00, "total": 7000.00, "category": "Roofing"}
+		],
+		"subtotal": 7000.00,
+		"overhead_profit": 1400.00,
+		"total": 8400.00
+	}`
+
+	auditReportID := createTestAuditReport(t, db, claimID, scopeSheet.ID, userID, industryEstimateJSON)
+
+	// Create carrier estimate
+	carrierEstimateJSON := `{
+		"line_items": [
+			{"description": "Roof shingles", "quantity": 20, "unit": "square", "unit_cost": 300.00, "total": 6000.00, "category": "Roofing"}
+		],
+		"subtotal": 6000.00,
+		"overhead_profit": 1200.00,
+		"total": 7200.00
+	}`
+
+	carrierEstimateID := createTestCarrierEstimate(t, db, claimID, userID, carrierEstimateJSON)
+	assert.NotEmpty(t, carrierEstimateID)
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+
+	// Prepare comparison response
+	comparisonResponse := map[string]interface{}{
+		"discrepancies": []map[string]interface{}{
+			{
+				"item":            "Roof shingles",
+				"industry_price":  7000.00,
+				"carrier_price":   6000.00,
+				"delta":           1000.00,
+				"justification":   "Industry standard pricing for high-quality shingles",
+			},
+		},
+		"summary": map[string]interface{}{
+			"total_industry": 8400.00,
+			"total_carrier":  7200.00,
+			"total_delta":    1200.00,
+		},
+	}
+
+	comparisonJSONBytes, _ := json.Marshal(comparisonResponse)
+	mockResponse := &llm.ChatResponse{
+		ID:    "test-comparison-id",
+		Model: "llama-3.1-sonar-large-128k-online",
+		Choices: []struct {
+			Index   int `json:"index"`
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+		}{
+			{
+				Index: 0,
+				Message: struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				}{
+					Role:    "assistant",
+					Content: string(comparisonJSONBytes),
+				},
+			},
+		},
+		Usage: struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		}{
+			PromptTokens:     600,
+			CompletionTokens: 400,
+			TotalTokens:      1000,
+		},
+	}
+
+	// Set up mock expectation
+	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.2, 3000).Return(mockResponse, nil)
+
+	// Create audit service
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test
+	err = auditService.CompareEstimates(ctx, auditReportID, userID, orgID)
+
+	// Assert
+	assert.NoError(t, err)
+
+	// Verify the audit report was updated
+	var updatedReport struct {
+		ComparisonData          *string
+		TotalContractorEstimate *float64
+		TotalCarrierEstimate    *float64
+		TotalDelta              *float64
+		Status                  string
+	}
+	query := `SELECT comparison_data, total_contractor_estimate, total_carrier_estimate, total_delta, status
+	          FROM audit_reports WHERE id = $1`
+	err = db.QueryRowContext(ctx, query, auditReportID).Scan(
+		&updatedReport.ComparisonData,
+		&updatedReport.TotalContractorEstimate,
+		&updatedReport.TotalCarrierEstimate,
+		&updatedReport.TotalDelta,
+		&updatedReport.Status,
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, updatedReport.ComparisonData)
+	assert.Equal(t, 8400.00, *updatedReport.TotalContractorEstimate)
+	assert.Equal(t, 7200.00, *updatedReport.TotalCarrierEstimate)
+	assert.Equal(t, 1200.00, *updatedReport.TotalDelta)
+	assert.Equal(t, models.AuditStatusCompleted, updatedReport.Status)
+
+	// Verify comparison JSON content
+	var parsedComparison map[string]interface{}
+	err = json.Unmarshal([]byte(*updatedReport.ComparisonData), &parsedComparison)
+	assert.NoError(t, err)
+	assert.NotNil(t, parsedComparison["discrepancies"])
+	assert.NotNil(t, parsedComparison["summary"])
+
+	// Verify mock was called
+	mockLLM.AssertExpectations(t)
+}
+
+func TestCompareEstimates_NoIndustryEstimate(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	policyID := createTestPolicy(t, db, propertyID, 10000.0)
+	claimID := createTestClaim(t, db, propertyID, policyID, orgID, userID)
+
+	// Create scope sheet
+	scopeService := NewScopeSheetService(db)
+	roofType := "metal"
+	input := CreateScopeSheetInput{
+		RoofType: &roofType,
+	}
+
+	ctx := context.Background()
+	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
+	assert.NoError(t, err)
+
+	// Create audit report WITHOUT industry estimate
+	auditReportID := createTestAuditReport(t, db, claimID, scopeSheet.ID, userID, "")
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test
+	err = auditService.CompareEstimates(ctx, auditReportID, userID, orgID)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "industry estimate not generated yet")
+}
+
+func TestCompareEstimates_NoCarrierEstimate(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	policyID := createTestPolicy(t, db, propertyID, 10000.0)
+	claimID := createTestClaim(t, db, propertyID, policyID, orgID, userID)
+
+	// Create scope sheet
+	scopeService := NewScopeSheetService(db)
+	roofType := "asphalt_shingles"
+	input := CreateScopeSheetInput{
+		RoofType: &roofType,
+	}
+
+	ctx := context.Background()
+	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
+	assert.NoError(t, err)
+
+	// Create audit report with industry estimate
+	industryEstimateJSON := `{"total": 10000.00}`
+	auditReportID := createTestAuditReport(t, db, claimID, scopeSheet.ID, userID, industryEstimateJSON)
+
+	// DO NOT create carrier estimate
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test
+	err = auditService.CompareEstimates(ctx, auditReportID, userID, orgID)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "carrier estimate not found")
+}
+
+func TestCompareEstimates_CarrierEstimateNotParsed(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	policyID := createTestPolicy(t, db, propertyID, 10000.0)
+	claimID := createTestClaim(t, db, propertyID, policyID, orgID, userID)
+
+	// Create scope sheet
+	scopeService := NewScopeSheetService(db)
+	roofType := "asphalt_shingles"
+	input := CreateScopeSheetInput{
+		RoofType: &roofType,
+	}
+
+	ctx := context.Background()
+	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
+	assert.NoError(t, err)
+
+	// Create audit report with industry estimate
+	industryEstimateJSON := `{"total": 10000.00}`
+	auditReportID := createTestAuditReport(t, db, claimID, scopeSheet.ID, userID, industryEstimateJSON)
+
+	// Create carrier estimate WITHOUT parsed data
+	carrierEstimateID := createTestCarrierEstimate(t, db, claimID, userID, "")
+	assert.NotEmpty(t, carrierEstimateID)
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test
+	err = auditService.CompareEstimates(ctx, auditReportID, userID, orgID)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "carrier estimate not parsed yet")
+}
+
+func TestCompareEstimates_AuditReportNotFound(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+
+	// Create mock LLM client
+	mockLLM := new(MockLLMClient)
+	scopeService := NewScopeSheetService(db)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	// Test with non-existent audit report ID
+	ctx := context.Background()
+	err := auditService.CompareEstimates(ctx, "non-existent-id", userID, orgID)
+
+	// Assert
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "audit report not found")
+}
+
+// Helper function to create test audit report
+func createTestAuditReport(t *testing.T, db *sql.DB, claimID, scopeSheetID, userID, estimateJSON string) string {
+	reportID := uuid.New().String()
+	now := time.Now()
+
+	var generatedEstimate *string
+	if estimateJSON != "" {
+		generatedEstimate = &estimateJSON
+	}
+
+	query := `
+		INSERT INTO audit_reports (
+			id, claim_id, scope_sheet_id, generated_estimate,
+			status, created_by_user_id, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id
+	`
+
+	var returnedID string
+	err := db.QueryRow(
+		query,
+		reportID,
+		claimID,
+		scopeSheetID,
+		generatedEstimate,
+		models.AuditStatusCompleted,
+		userID,
+		now,
+		now,
+	).Scan(&returnedID)
+
+	assert.NoError(t, err)
+	return returnedID
+}
+
+// Helper function to create test carrier estimate
+func createTestCarrierEstimate(t *testing.T, db *sql.DB, claimID, userID, parsedJSON string) string {
+	estimateID := uuid.New().String()
+	now := time.Now()
+
+	var parsedData *string
+	parseStatus := models.ParseStatusPending
+	if parsedJSON != "" {
+		parsedData = &parsedJSON
+		parseStatus = models.ParseStatusCompleted
+	}
+
+	query := `
+		INSERT INTO carrier_estimates (
+			id, claim_id, uploaded_by_user_id, file_path, file_name,
+			parsed_data, parse_status, uploaded_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id
+	`
+
+	var returnedID string
+	err := db.QueryRow(
+		query,
+		estimateID,
+		claimID,
+		userID,
+		"test/path.pdf",
+		"test.pdf",
+		parsedData,
+		parseStatus,
+		now,
+	).Scan(&returnedID)
+
+	assert.NoError(t, err)
+	return returnedID
 }
