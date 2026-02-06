@@ -104,6 +104,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/claims", claimHandler.List)
 		api.GET("/claims/:id", claimHandler.Get)
 		api.PATCH("/claims/:id/status", claimHandler.UpdateStatus)
+		api.PATCH("/claims/:id/estimate", claimHandler.PatchClaimEstimate)
 		api.GET("/claims/:id/activities", claimHandler.GetActivities)
 
 		// Document routes

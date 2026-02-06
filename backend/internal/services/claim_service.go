@@ -531,3 +531,8 @@ func (s *ClaimService) logActivity(claimID string, userID *string, activityType 
 
 	return s.createActivity(claimID, userID, activityType, description, metadataStr)
 }
+
+// GetDB returns the database connection (for testing purposes)
+func (s *ClaimService) GetDB() *sql.DB {
+	return s.db
+}
