@@ -35,4 +35,9 @@ export const updateClaimEstimate = async (claimId: string, estimateTotal: number
   })
 }
 
+// Scope sheet submission (via magic link - no auth required)
+export const submitScopeSheet = async (token: string, scopeData: any) => {
+  return axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/magic-links/${token}/scope-sheet`, scopeData)
+}
+
 export default api

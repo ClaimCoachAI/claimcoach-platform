@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import axios from 'axios'
+import { ScopeSheetForm, ScopeSheetData } from '../components/ScopeSheetForm'
+import { submitScopeSheet } from '../lib/api'
 
 interface ValidationResult {
   valid: boolean
@@ -43,6 +45,10 @@ export default function ContractorUpload() {
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+
+  // Step navigation
+  const [currentStep, setCurrentStep] = useState<'photos' | 'scope'>('photos')
+  const [scopeSheetSubmitted, setScopeSheetSubmitted] = useState(false)
 
   // Validate token on mount
   useEffect(() => {
@@ -141,7 +147,7 @@ export default function ContractorUpload() {
     return document_id
   }
 
-  const handleSubmit = async () => {
+  const handlePhotoSubmit = async () => {
     if (photos.length === 0 && !estimate) {
       alert('Please upload at least one photo or an estimate.')
       return
@@ -199,11 +205,28 @@ export default function ContractorUpload() {
         }
       }
 
-      // Success!
-      setSubmitted(true)
+      // Move to scope sheet step
+      setCurrentStep('scope')
     } catch (err) {
       console.error('Upload error:', err)
       alert('Some files failed to upload. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleScopeSheetSubmit = async (scopeData: ScopeSheetData) => {
+    if (!token) return
+
+    setSubmitting(true)
+
+    try {
+      await submitScopeSheet(token, scopeData)
+      setScopeSheetSubmitted(true)
+      setSubmitted(true)
+    } catch (err) {
+      console.error('Scope sheet submission error:', err)
+      alert('Failed to submit scope sheet. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -239,7 +262,7 @@ export default function ContractorUpload() {
   }
 
   // Success state
-  if (submitted) {
+  if (submitted && scopeSheetSubmitted) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-lg shadow-md p-6 text-center">
@@ -248,9 +271,9 @@ export default function ContractorUpload() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Upload Complete!</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Submission Complete!</h2>
           <p className="text-gray-600 mb-4">
-            Thank you! Your photos and estimate have been uploaded successfully.
+            Thank you! Your photos, estimate, and scope sheet have been submitted successfully.
           </p>
           <p className="text-gray-600">
             The property manager will review them shortly.
@@ -300,51 +323,157 @@ export default function ContractorUpload() {
           </div>
         </div>
 
-        {/* Photo Upload Section */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Photos</h3>
-
-          <div className="mb-4">
-            <label className="block w-full">
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                capture="environment"
-                onChange={handlePhotoSelect}
-                className="hidden"
-                disabled={submitting}
-              />
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
-                <svg className="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Step Navigation */}
+        <div className="bg-white rounded-lg shadow-md mb-6">
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setCurrentStep('photos')}
+              className={`flex-1 px-4 py-3 text-sm font-medium ${
+                currentStep === 'photos'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+              disabled={submitting}
+            >
+              <div className="flex items-center justify-center">
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <p className="text-gray-600 font-medium">Tap to take photos or upload</p>
-                <p className="text-gray-500 text-sm mt-1">You can select multiple photos</p>
+                Step 1: Photos
               </div>
-            </label>
+            </button>
+            <button
+              onClick={() => setCurrentStep('scope')}
+              className={`flex-1 px-4 py-3 text-sm font-medium ${
+                currentStep === 'scope'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+              disabled={submitting || photos.length === 0}
+            >
+              <div className="flex items-center justify-center">
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Step 2: Scope Sheet
+              </div>
+            </button>
           </div>
+        </div>
 
-          {/* Photo List */}
-          {photos.length > 0 && (
-            <div className="space-y-2">
-              {photos.map((photo, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+        {/* Photos Step */}
+        {currentStep === 'photos' && (
+          <>
+            {/* Photo Upload Section */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Photos</h3>
+
+              <div className="mb-4">
+                <label className="block w-full">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handlePhotoSelect}
+                    className="hidden"
+                    disabled={submitting}
+                  />
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
+                    <svg className="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <p className="text-gray-600 font-medium">Tap to take photos or upload</p>
+                    <p className="text-gray-500 text-sm mt-1">You can select multiple photos</p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Photo List */}
+              {photos.length > 0 && (
+                <div className="space-y-2">
+                  {photos.map((photo, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center flex-1 min-w-0">
+                        <svg className="w-5 h-5 text-gray-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-sm text-gray-700 truncate">{photo.file.name}</span>
+                      </div>
+
+                      {photo.uploading && (
+                        <div className="ml-2 flex-shrink-0">
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                        </div>
+                      )}
+
+                      {photo.uploaded && (
+                        <div className="ml-2 flex-shrink-0">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      )}
+
+                      {photo.error && (
+                        <span className="ml-2 text-xs text-red-600">{photo.error}</span>
+                      )}
+
+                      {!photo.uploading && !photo.uploaded && (
+                        <button
+                          onClick={() => removePhoto(index)}
+                          className="ml-2 text-red-600 hover:text-red-700 flex-shrink-0"
+                          disabled={submitting}
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Estimate Upload Section */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Estimate (Optional)</h3>
+
+              {!estimate ? (
+                <label className="block w-full">
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={handleEstimateSelect}
+                    className="hidden"
+                    disabled={submitting}
+                  />
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
+                    <svg className="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-gray-600 font-medium">Tap to upload estimate (PDF)</p>
+                  </div>
+                </label>
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div className="flex items-center flex-1 min-w-0">
                     <svg className="w-5 h-5 text-gray-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    <span className="text-sm text-gray-700 truncate">{photo.file.name}</span>
+                    <span className="text-sm text-gray-700 truncate">{estimate.file.name}</span>
                   </div>
 
-                  {photo.uploading && (
+                  {estimate.uploading && (
                     <div className="ml-2 flex-shrink-0">
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
                     </div>
                   )}
 
-                  {photo.uploaded && (
+                  {estimate.uploaded && (
                     <div className="ml-2 flex-shrink-0">
                       <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -352,13 +481,13 @@ export default function ContractorUpload() {
                     </div>
                   )}
 
-                  {photo.error && (
-                    <span className="ml-2 text-xs text-red-600">{photo.error}</span>
+                  {estimate.error && (
+                    <span className="ml-2 text-xs text-red-600">{estimate.error}</span>
                   )}
 
-                  {!photo.uploading && !photo.uploaded && (
+                  {!estimate.uploading && !estimate.uploaded && (
                     <button
-                      onClick={() => removePhoto(index)}
+                      onClick={removeEstimate}
                       className="ml-2 text-red-600 hover:text-red-700 flex-shrink-0"
                       disabled={submitting}
                     >
@@ -368,103 +497,52 @@ export default function ContractorUpload() {
                     </button>
                   )}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Estimate Upload Section */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Estimate (Optional)</h3>
-
-          {!estimate ? (
-            <label className="block w-full">
-              <input
-                type="file"
-                accept="application/pdf,.pdf"
-                onChange={handleEstimateSelect}
-                className="hidden"
+            {/* Notes Section */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Notes (Optional)</h3>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add any additional notes or comments..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                rows={4}
                 disabled={submitting}
               />
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
-                <svg className="w-12 h-12 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <p className="text-gray-600 font-medium">Tap to upload estimate (PDF)</p>
-              </div>
-            </label>
-          ) : (
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center flex-1 min-w-0">
-                <svg className="w-5 h-5 text-gray-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span className="text-sm text-gray-700 truncate">{estimate.file.name}</span>
-              </div>
-
-              {estimate.uploading && (
-                <div className="ml-2 flex-shrink-0">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                </div>
-              )}
-
-              {estimate.uploaded && (
-                <div className="ml-2 flex-shrink-0">
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              )}
-
-              {estimate.error && (
-                <span className="ml-2 text-xs text-red-600">{estimate.error}</span>
-              )}
-
-              {!estimate.uploading && !estimate.uploaded && (
-                <button
-                  onClick={removeEstimate}
-                  className="ml-2 text-red-600 hover:text-red-700 flex-shrink-0"
-                  disabled={submitting}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
             </div>
-          )}
-        </div>
 
-        {/* Notes Section */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Notes (Optional)</h3>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Add any additional notes or comments..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            rows={4}
-            disabled={submitting}
-          />
-        </div>
+            {/* Submit Button - Fixed at bottom on mobile */}
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 md:relative md:border-0 md:bg-transparent md:p-0">
+              <button
+                onClick={handlePhotoSubmit}
+                disabled={submitting || (photos.length === 0 && !estimate)}
+                className="w-full py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-lg shadow-lg md:shadow-md"
+              >
+                {submitting ? (
+                  <span className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Uploading...
+                  </span>
+                ) : (
+                  'Next: Scope Sheet'
+                )}
+              </button>
+            </div>
+          </>
+        )}
 
-        {/* Submit Button - Fixed at bottom on mobile */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 md:relative md:border-0 md:bg-transparent md:p-0">
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || (photos.length === 0 && !estimate)}
-            className="w-full py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-lg shadow-lg md:shadow-md"
-          >
-            {submitting ? (
-              <span className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                Uploading...
-              </span>
-            ) : (
-              'Submit Photos & Estimate'
-            )}
-          </button>
-        </div>
+        {/* Scope Sheet Step */}
+        {currentStep === 'scope' && (
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <ScopeSheetForm
+              onSubmit={handleScopeSheetSubmit}
+              onBack={() => setCurrentStep('photos')}
+              submitting={submitting}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
