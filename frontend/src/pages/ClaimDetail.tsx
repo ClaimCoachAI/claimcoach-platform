@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api, { updateClaimEstimate } from '../lib/api'
+import api, { updateClaimEstimate, uploadCarrierEstimate, getCarrierEstimates } from '../lib/api'
 import Layout from '../components/Layout'
 import ClaimStatusBadge from '../components/ClaimStatusBadge'
 
@@ -60,11 +60,238 @@ interface Activity {
   created_at: string
 }
 
+interface CarrierEstimate {
+  id: string
+  claim_id: string
+  uploaded_by_user_id: string
+  file_path: string
+  file_name: string
+  file_size_bytes: number | null
+  parsed_data: string | null
+  parse_status: 'pending' | 'processing' | 'completed' | 'failed'
+  parse_error: string | null
+  uploaded_at: string
+  parsed_at: string | null
+}
+
 interface ComparisonResult {
   deductible: number
   estimate: number
   delta: number
   recommendation: 'worth_filing' | 'not_worth_filing'
+}
+
+interface CarrierEstimateUploadProps {
+  claimId: string
+}
+
+function CarrierEstimateUpload({ claimId }: CarrierEstimateUploadProps) {
+  const queryClient = useQueryClient()
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
+
+  // Fetch carrier estimates
+  const { data: estimates, isLoading } = useQuery({
+    queryKey: ['carrier-estimates', claimId],
+    queryFn: () => getCarrierEstimates(claimId),
+  })
+
+  // Upload mutation
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadCarrierEstimate(claimId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['carrier-estimates', claimId] })
+      setSelectedFile(null)
+      setUploadProgress(0)
+    },
+  })
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      // Validate file type
+      if (file.type !== 'application/pdf') {
+        alert('Only PDF files are allowed')
+        return
+      }
+      // Validate file size (10MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File size must be less than 10MB')
+        return
+      }
+      setSelectedFile(file)
+    }
+  }
+
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      alert('Please select a file first')
+      return
+    }
+
+    setUploadProgress(25)
+    uploadMutation.mutate(selectedFile)
+    setUploadProgress(100)
+  }
+
+  const formatFileSize = (bytes: number | null) => {
+    if (!bytes) return 'N/A'
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { color: string; label: string }> = {
+      pending: { color: 'bg-yellow-100 text-yellow-800', label: 'Pending' },
+      processing: { color: 'bg-blue-100 text-blue-800', label: 'Processing' },
+      completed: { color: 'bg-green-100 text-green-800', label: 'Completed' },
+      failed: { color: 'bg-red-100 text-red-800', label: 'Failed' },
+    }
+    const config = statusConfig[status] || statusConfig.pending
+    return (
+      <span className={`px-2 py-1 text-xs font-medium rounded-full ${config.color}`}>
+        {config.label}
+      </span>
+    )
+  }
+
+  return (
+    <div className="bg-white shadow rounded-lg">
+      <div className="px-6 py-5 border-b border-gray-200">
+        <h3 className="text-lg font-medium text-gray-900">Carrier Estimate</h3>
+        <p className="mt-1 text-sm text-gray-500">
+          Upload carrier estimate PDFs for comparison and analysis
+        </p>
+      </div>
+
+      <div className="px-6 py-5">
+        {/* Upload Section */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Upload Carrier Estimate PDF
+          </label>
+          <div className="flex items-center space-x-3">
+            <input
+              type="file"
+              accept=".pdf,application/pdf"
+              onChange={handleFileChange}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              disabled={uploadMutation.isPending}
+            />
+            <button
+              onClick={handleUpload}
+              disabled={!selectedFile || uploadMutation.isPending}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {uploadMutation.isPending ? 'Uploading...' : 'Upload'}
+            </button>
+          </div>
+          {selectedFile && (
+            <p className="mt-2 text-sm text-gray-600">
+              Selected: {selectedFile.name} ({formatFileSize(selectedFile.size)})
+            </p>
+          )}
+          {uploadMutation.isPending && uploadProgress > 0 && (
+            <div className="mt-2">
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {uploadMutation.isError && (
+            <p className="mt-2 text-sm text-red-600">
+              Upload failed. Please try again.
+            </p>
+          )}
+          {uploadMutation.isSuccess && (
+            <p className="mt-2 text-sm text-green-600">
+              Upload successful!
+            </p>
+          )}
+        </div>
+
+        {/* Estimates List */}
+        <div>
+          <h4 className="text-sm font-medium text-gray-900 mb-3">Uploaded Estimates</h4>
+          {isLoading ? (
+            <div className="text-center py-4 text-gray-600">
+              Loading estimates...
+            </div>
+          ) : estimates && estimates.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      File Name
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Size
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Uploaded
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {estimates.map((estimate: CarrierEstimate) => (
+                    <tr key={estimate.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-4 text-sm text-gray-900">
+                        {estimate.file_name}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600">
+                        {formatFileSize(estimate.file_size_bytes)}
+                      </td>
+                      <td className="px-4 py-4">
+                        {getStatusBadge(estimate.parse_status)}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600">
+                        {formatDate(estimate.uploaded_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <svg
+                className="mx-auto h-12 w-12 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              <p className="mt-2 text-sm">No carrier estimates uploaded yet</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 interface DeductibleAnalysisProps {
@@ -944,6 +1171,11 @@ export default function ClaimDetail() {
                 )}
               </div>
             </div>
+
+            {/* Carrier Estimate Upload - show for audit_pending and negotiating status */}
+            {claim && ['audit_pending', 'negotiating'].includes(claim.status) && (
+              <CarrierEstimateUpload claimId={claim.id} />
+            )}
 
             {/* Deductible Analysis - only show in draft/assessing status */}
             {claim && claim.policy && ['draft', 'assessing'].includes(claim.status) && (

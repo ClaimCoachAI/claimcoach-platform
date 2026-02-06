@@ -40,4 +40,42 @@ export const submitScopeSheet = async (token: string, scopeData: any) => {
   return axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/magic-links/${token}/scope-sheet`, scopeData)
 }
 
+// Carrier Estimate Upload (3-step process)
+export const uploadCarrierEstimate = async (claimId: string, file: File) => {
+  // Step 1: Request presigned upload URL
+  const uploadUrlResponse = await api.post(`/api/claims/${claimId}/carrier-estimate/upload-url`, {
+    file_name: file.name,
+    file_size: file.size,
+    mime_type: file.type,
+  })
+
+  const { upload_url, estimate_id } = uploadUrlResponse.data.data
+
+  // Step 2: Upload file directly to Supabase Storage
+  const uploadResponse = await fetch(upload_url, {
+    method: 'PUT',
+    body: file,
+    headers: {
+      'Content-Type': file.type,
+    },
+  })
+
+  if (!uploadResponse.ok) {
+    throw new Error('Failed to upload file to storage')
+  }
+
+  // Step 3: Confirm upload with backend
+  const confirmResponse = await api.post(
+    `/api/claims/${claimId}/carrier-estimate/${estimate_id}/confirm`
+  )
+
+  return confirmResponse.data.data
+}
+
+// List carrier estimates for a claim
+export const getCarrierEstimates = async (claimId: string) => {
+  const response = await api.get(`/api/claims/${claimId}/carrier-estimate`)
+  return response.data.data
+}
+
 export default api

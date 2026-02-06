@@ -119,6 +119,14 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/claims/:id/documents", documentHandler.ListDocuments)
 		api.GET("/documents/:id", documentHandler.GetDocument)
 
+		// Carrier Estimate routes
+		carrierEstimateService := services.NewCarrierEstimateService(db, storageClient, claimService)
+		carrierEstimateHandler := handlers.NewCarrierEstimateHandler(carrierEstimateService)
+
+		api.POST("/claims/:id/carrier-estimate/upload-url", carrierEstimateHandler.RequestUploadURL)
+		api.POST("/claims/:id/carrier-estimate/:estimateId/confirm", carrierEstimateHandler.ConfirmUpload)
+		api.GET("/claims/:id/carrier-estimate", carrierEstimateHandler.ListCarrierEstimates)
+
 		// Magic Link routes (protected - requires auth)
 		api.POST("/claims/:id/magic-link", magicLinkHandler.GenerateMagicLink)
 
