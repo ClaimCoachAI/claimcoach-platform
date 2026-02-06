@@ -28,4 +28,11 @@ api.interceptors.response.use(
   }
 )
 
+// Deductible comparison
+export const updateClaimEstimate = async (claimId: string, estimateTotal: number) => {
+  return api.patch(`/api/claims/${claimId}/estimate`, {
+    contractor_estimate_total: estimateTotal
+  })
+}
+
 export default api

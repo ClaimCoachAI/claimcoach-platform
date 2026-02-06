@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api from '../lib/api'
+import api, { updateClaimEstimate } from '../lib/api'
 import Layout from '../components/Layout'
 import ClaimStatusBadge from '../components/ClaimStatusBadge'
 
@@ -21,6 +21,7 @@ interface Policy {
   coverage_d_limit?: number
   deductible_type?: 'percentage' | 'fixed'
   deductible_value?: number
+  deductible_calculated?: number
   effective_date?: string
   expiration_date?: string
 }
@@ -36,6 +37,7 @@ interface Claim {
   incident_date: string
   filed_at?: string
   description?: string
+  contractor_estimate_total?: number
   created_at: string
   updated_at: string
 }
@@ -56,6 +58,178 @@ interface Activity {
   description: string
   user_name?: string
   created_at: string
+}
+
+interface ComparisonResult {
+  deductible: number
+  estimate: number
+  delta: number
+  recommendation: 'worth_filing' | 'not_worth_filing'
+}
+
+interface DeductibleAnalysisProps {
+  claim: Claim
+  policy: Policy
+  onEstimateUpdated: () => void
+}
+
+function DeductibleAnalysis({ claim, policy, onEstimateUpdated }: DeductibleAnalysisProps) {
+  const [estimateInput, setEstimateInput] = useState('')
+  const [comparison, setComparison] = useState<ComparisonResult | null>(null)
+
+  const updateEstimateMutation = useMutation({
+    mutationFn: (estimateTotal: number) =>
+      updateClaimEstimate(claim.id, estimateTotal),
+    onSuccess: (response) => {
+      setComparison(response.data.data.comparison)
+      onEstimateUpdated()
+      // Clear input on success
+      setEstimateInput('')
+    }
+  })
+
+  const handleCalculate = () => {
+    const amount = parseFloat(estimateInput)
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount')
+      return
+    }
+    updateEstimateMutation.mutate(amount)
+  }
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount)
+  }
+
+  // Load existing estimate if it exists
+  useEffect(() => {
+    if (claim.contractor_estimate_total && policy.deductible_calculated) {
+      const delta = claim.contractor_estimate_total - policy.deductible_calculated
+      setComparison({
+        deductible: policy.deductible_calculated,
+        estimate: claim.contractor_estimate_total,
+        delta,
+        recommendation: delta > 0 ? 'worth_filing' : 'not_worth_filing'
+      })
+    }
+  }, [claim.contractor_estimate_total, policy.deductible_calculated])
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6 mb-6">
+      <h2 className="text-xl font-semibold mb-4">Deductible Analysis</h2>
+
+      <div className="space-y-4">
+        {/* Deductible display */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Policy Deductible
+          </label>
+          <div className="text-2xl font-bold text-gray-900">
+            {formatCurrency(policy.deductible_calculated || 0)}
+          </div>
+        </div>
+
+        {/* Estimate input */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Contractor Estimate Total
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              value={estimateInput}
+              onChange={(e) => setEstimateInput(e.target.value)}
+              placeholder="0.00"
+              className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              disabled={updateEstimateMutation.isPending}
+            />
+            <button
+              onClick={handleCalculate}
+              disabled={updateEstimateMutation.isPending || !estimateInput}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {updateEstimateMutation.isPending ? 'Calculating...' : 'Calculate'}
+            </button>
+          </div>
+        </div>
+
+        {/* Comparison result */}
+        {comparison && (
+          <div className={`mt-4 p-4 rounded-lg border-2 ${
+            comparison.recommendation === 'worth_filing'
+              ? 'bg-green-50 border-green-200'
+              : 'bg-red-50 border-red-200'
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className="text-2xl">
+                {comparison.recommendation === 'worth_filing' ? '\u2705' : '\u26A0\uFE0F'}
+              </div>
+              <div className="flex-1">
+                <h3 className={`text-lg font-semibold mb-2 ${
+                  comparison.recommendation === 'worth_filing'
+                    ? 'text-green-800'
+                    : 'text-red-800'
+                }`}>
+                  {comparison.recommendation === 'worth_filing'
+                    ? 'WORTH FILING'
+                    : 'NOT WORTH FILING'}
+                </h3>
+
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Contractor Estimate:</span>
+                    <span className="font-medium">{formatCurrency(comparison.estimate)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Policy Deductible:</span>
+                    <span className="font-medium">{formatCurrency(comparison.deductible)}</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-1 mt-1">
+                    <span className="text-gray-600">
+                      {comparison.recommendation === 'worth_filing'
+                        ? 'Expected Payout:'
+                        : 'Amount Below Deductible:'}
+                    </span>
+                    <span className={`font-bold ${
+                      comparison.recommendation === 'worth_filing'
+                        ? 'text-green-700'
+                        : 'text-red-700'
+                    }`}>
+                      {formatCurrency(Math.abs(comparison.delta))}
+                    </span>
+                  </div>
+                </div>
+
+                <p className={`mt-3 text-sm ${
+                  comparison.recommendation === 'worth_filing'
+                    ? 'text-green-700'
+                    : 'text-red-700'
+                }`}>
+                  {comparison.recommendation === 'worth_filing'
+                    ? 'The estimate exceeds your deductible. Proceeding with this claim should result in a payout.'
+                    : 'The estimate is below your deductible. Filing this claim would result in $0 payout.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error display */}
+        {updateEstimateMutation.isError && (
+          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md">
+            <p className="text-sm text-red-800">
+              Failed to update estimate. Please try again.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // Status flow validation
@@ -770,6 +944,18 @@ export default function ClaimDetail() {
                 )}
               </div>
             </div>
+
+            {/* Deductible Analysis - only show in draft/assessing status */}
+            {claim && claim.policy && ['draft', 'assessing'].includes(claim.status) && (
+              <DeductibleAnalysis
+                claim={claim}
+                policy={claim.policy}
+                onEstimateUpdated={() => {
+                  queryClient.invalidateQueries({ queryKey: ['claim', id] })
+                  queryClient.invalidateQueries({ queryKey: ['claim-activities', id] })
+                }}
+              />
+            )}
 
             {/* Activity Timeline */}
             <div className="bg-white shadow rounded-lg">
