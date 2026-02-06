@@ -2,12 +2,21 @@ package services
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/claimcoach/backend/internal/models"
 	"github.com/google/uuid"
 )
+
+type ComparisonResult struct {
+	Deductible     float64 `json:"deductible"`
+	Estimate       float64 `json:"estimate"`
+	Delta          float64 `json:"delta"`
+	Recommendation string  `json:"recommendation"`
+}
 
 type ClaimService struct {
 	db              *sql.DB
@@ -391,4 +400,134 @@ func (s *ClaimService) createActivity(claimID string, userID *string, activityTy
 	}
 
 	return nil
+}
+
+func (s *ClaimService) UpdateEstimate(
+	claimID string,
+	estimateTotal float64,
+	userID string,
+	orgID string,
+) (*models.Claim, *ComparisonResult, error) {
+	// Validate estimate
+	if estimateTotal <= 0 {
+		return nil, nil, fmt.Errorf("estimate must be greater than 0")
+	}
+
+	// Fetch claim with policy
+	query := `
+		SELECT c.id, c.property_id, c.policy_id, c.claim_number, c.loss_type, c.incident_date,
+			c.status, c.filed_at, c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
+			c.meeting_datetime, c.created_by_user_id, c.created_at, c.updated_at,
+			c.contractor_estimate_total, p.deductible_calculated
+		FROM claims c
+		JOIN insurance_policies p ON p.id = c.policy_id
+		WHERE c.id = $1
+	`
+
+	var claim models.Claim
+	var deductible float64
+	err := s.db.QueryRow(query, claimID).Scan(
+		&claim.ID,
+		&claim.PropertyID,
+		&claim.PolicyID,
+		&claim.ClaimNumber,
+		&claim.LossType,
+		&claim.IncidentDate,
+		&claim.Status,
+		&claim.FiledAt,
+		&claim.AssignedUserID,
+		&claim.AdjusterName,
+		&claim.AdjusterPhone,
+		&claim.MeetingDatetime,
+		&claim.CreatedByUserID,
+		&claim.CreatedAt,
+		&claim.UpdatedAt,
+		&claim.ContractorEstimateTotal,
+		&deductible,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil, fmt.Errorf("claim not found")
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Check ownership
+	propertyOrgID, err := s.getPropertyOrganizationID(claim.PropertyID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if propertyOrgID != orgID {
+		return nil, nil, fmt.Errorf("unauthorized")
+	}
+
+	// Update estimate
+	updateQuery := `
+		UPDATE claims
+		SET contractor_estimate_total = $1, updated_at = NOW()
+		WHERE id = $2
+		RETURNING contractor_estimate_total, updated_at
+	`
+	err = s.db.QueryRow(updateQuery, estimateTotal, claimID).Scan(
+		&claim.ContractorEstimateTotal,
+		&claim.UpdatedAt,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Calculate comparison
+	delta := estimateTotal - deductible
+	recommendation := "not_worth_filing"
+	if delta > 0 {
+		recommendation = "worth_filing"
+	}
+
+	comparison := &ComparisonResult{
+		Deductible:     deductible,
+		Estimate:       estimateTotal,
+		Delta:          delta,
+		Recommendation: recommendation,
+	}
+
+	// Log activity
+	err = s.logActivity(claimID, &userID, "estimate_entered",
+		fmt.Sprintf("Contractor estimate entered: $%.2f", estimateTotal),
+		map[string]interface{}{
+			"estimate_total": estimateTotal,
+			"deductible":     deductible,
+			"delta":          delta,
+			"recommendation": recommendation,
+		},
+	)
+	if err != nil {
+		log.Printf("Warning: Failed to log activity: %v", err)
+	}
+
+	return &claim, comparison, nil
+}
+
+// Helper method to get property organization ID
+func (s *ClaimService) getPropertyOrganizationID(propertyID string) (string, error) {
+	var orgID string
+	err := s.db.QueryRow(
+		"SELECT organization_id FROM properties WHERE id = $1",
+		propertyID,
+	).Scan(&orgID)
+	return orgID, err
+}
+
+// logActivity is a helper function to log activities with metadata as a map
+func (s *ClaimService) logActivity(claimID string, userID *string, activityType string, description string, metadata map[string]interface{}) error {
+	var metadataStr *string
+	if metadata != nil {
+		jsonBytes, err := json.Marshal(metadata)
+		if err != nil {
+			return fmt.Errorf("failed to marshal metadata: %w", err)
+		}
+		str := string(jsonBytes)
+		metadataStr = &str
+	}
+
+	return s.createActivity(claimID, userID, activityType, description, metadataStr)
 }
