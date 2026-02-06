@@ -49,8 +49,13 @@ func cleanupTestData(t *testing.T, db *sql.DB) {
 
 	// Delete in reverse order of foreign key dependencies
 	tables := []string{
+		"api_usage_logs",
+		"rebuttals",
+		"audit_reports",
+		"carrier_estimates",
 		"claim_activities",
 		"documents",
+		"scope_sheets",
 		"claims",
 		"insurance_policies",
 		"properties",
