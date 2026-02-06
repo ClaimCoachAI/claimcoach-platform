@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Claims from './pages/Claims'
+import ClaimDetail from './pages/ClaimDetail'
 import Properties from './pages/Properties'
 import PropertyDetail from './pages/PropertyDetail'
 
@@ -57,6 +58,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <Claims />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/claims/:id"
+                element={
+                  <ProtectedRoute>
+                    <ClaimDetail />
                   </ProtectedRoute>
                 }
               />
