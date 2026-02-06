@@ -17,14 +17,16 @@ type MagicLinkService struct {
 	cfg          *config.Config
 	storage      *storage.SupabaseStorage
 	claimService *ClaimService
+	emailService EmailService
 }
 
-func NewMagicLinkService(db *sql.DB, cfg *config.Config, storageClient *storage.SupabaseStorage, claimService *ClaimService) *MagicLinkService {
+func NewMagicLinkService(db *sql.DB, cfg *config.Config, storageClient *storage.SupabaseStorage, claimService *ClaimService, emailService EmailService) *MagicLinkService {
 	return &MagicLinkService{
 		db:           db,
 		cfg:          cfg,
 		storage:      storageClient,
 		claimService: claimService,
+		emailService: emailService,
 	}
 }
 
@@ -137,6 +139,39 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 
 	// Step 7: Build frontend URL
 	linkURL := fmt.Sprintf("%s/upload/%s", s.cfg.FrontendURL, token)
+
+	// Step 8: Get claim and property data for email
+	claim, err := s.claimService.GetClaim(claimID, "")
+	if err != nil {
+		// Log error but don't fail magic link creation
+		fmt.Printf("Warning: failed to get claim for email: %v\n", err)
+	} else {
+		// Get property information
+		var propertyName, propertyAddress string
+		propertyQuery := `SELECT nickname, legal_address FROM properties WHERE id = $1`
+		err = s.db.QueryRow(propertyQuery, claim.PropertyID).Scan(&propertyName, &propertyAddress)
+		
+		if err != nil {
+			fmt.Printf("Warning: failed to get property for email: %v\n", err)
+		} else {
+			// Send email notification
+			emailInput := SendMagicLinkEmailInput{
+				To:              input.ContractorEmail,
+				ContractorName:  input.ContractorName,
+				PropertyName:    propertyName,
+				PropertyAddress: propertyAddress,
+				LossType:        claim.LossType,
+				MagicLinkURL:    linkURL,
+				ExpiresAt:       expiresAt,
+			}
+
+			err = s.emailService.SendMagicLinkEmail(emailInput)
+			if err != nil {
+				// Log error but don't fail magic link creation
+				fmt.Printf("Warning: Failed to send email notification: %v\n", err)
+			}
+		}
+	}
 
 	// Return response
 	response := &MagicLinkResponse{

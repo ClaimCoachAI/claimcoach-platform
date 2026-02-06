@@ -56,7 +56,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	// Initialize services needed for both public and protected routes
 	propertyService := services.NewPropertyService(db)
 	claimService := services.NewClaimService(db, propertyService)
-	magicLinkService := services.NewMagicLinkService(db, cfg, storageClient, claimService)
+	emailService := services.NewMockEmailService()
+	magicLinkService := services.NewMagicLinkService(db, cfg, storageClient, claimService, emailService)
 	magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
 
 	// Public routes
