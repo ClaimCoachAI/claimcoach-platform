@@ -8,6 +8,7 @@ import (
 	"github.com/claimcoach/backend/internal/auth"
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/claimcoach/backend/internal/handlers"
+	"github.com/claimcoach/backend/internal/llm"
 	"github.com/claimcoach/backend/internal/services"
 	"github.com/claimcoach/backend/internal/storage"
 	"github.com/gin-contrib/cors"
@@ -52,6 +53,14 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Initialize LLM client
+	llmClient := llm.NewPerplexityClient(
+		cfg.PerplexityAPIKey,
+		cfg.PerplexityModel,
+		cfg.PerplexityTimeout,
+		cfg.PerplexityMaxRetries,
+	)
 
 	// Initialize services needed for both public and protected routes
 	propertyService := services.NewPropertyService(db)
@@ -121,11 +130,13 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 		// Carrier Estimate routes
 		carrierEstimateService := services.NewCarrierEstimateService(db, storageClient, claimService)
-		carrierEstimateHandler := handlers.NewCarrierEstimateHandler(carrierEstimateService)
+		pdfParserService := services.NewPDFParserService(db, storageClient, llmClient, claimService)
+		carrierEstimateHandler := handlers.NewCarrierEstimateHandler(carrierEstimateService, pdfParserService)
 
 		api.POST("/claims/:id/carrier-estimate/upload-url", carrierEstimateHandler.RequestUploadURL)
 		api.POST("/claims/:id/carrier-estimate/:estimateId/confirm", carrierEstimateHandler.ConfirmUpload)
 		api.GET("/claims/:id/carrier-estimate", carrierEstimateHandler.ListCarrierEstimates)
+		api.POST("/claims/:id/carrier-estimate/:estimateId/parse", carrierEstimateHandler.ParseCarrierEstimate)
 
 		// Magic Link routes (protected - requires auth)
 		api.POST("/claims/:id/magic-link", magicLinkHandler.GenerateMagicLink)
