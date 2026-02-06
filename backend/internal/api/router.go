@@ -59,6 +59,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	emailService := services.NewMockEmailService()
 	magicLinkService := services.NewMagicLinkService(db, cfg, storageClient, claimService, emailService)
 	magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
+	scopeSheetService := services.NewScopeSheetService(db)
+	scopeSheetHandler := handlers.NewScopeSheetHandler(scopeSheetService, magicLinkService, claimService)
 
 	// Public routes
 	r.GET("/health", func(c *gin.Context) {
@@ -69,6 +71,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	r.GET("/api/magic-links/:token/validate", magicLinkHandler.ValidateToken)
 	r.POST("/api/magic-links/:token/documents/upload-url", magicLinkHandler.RequestUploadURL)
 	r.POST("/api/magic-links/:token/documents/:documentId/confirm", magicLinkHandler.ConfirmUpload)
+	r.POST("/api/magic-links/:token/scope-sheet", scopeSheetHandler.CreateViaMagicLink)
 
 	// Protected routes
 	api := r.Group("/api")
@@ -118,6 +121,9 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 		// Magic Link routes (protected - requires auth)
 		api.POST("/claims/:id/magic-link", magicLinkHandler.GenerateMagicLink)
+
+		// Scope Sheet routes (protected - requires auth)
+		api.GET("/claims/:id/scope-sheet", scopeSheetHandler.GetByClaimID)
 	}
 
 	return r, nil
