@@ -13,19 +13,24 @@ export default {
       },
       colors: {
         navy: {
-          DEFAULT: '#1E3A5F',
-          light: '#2A4A70',
-          dark: '#15304D',
+          DEFAULT: '#0F172A',
+          light: '#1E293B',
+          dark: '#020617',
         },
         teal: {
-          DEFAULT: '#3BA090',
-          light: '#52B5A5',
-          dark: '#2A8B7C',
+          DEFAULT: '#14B8A6',
+          light: '#2DD4BF',
+          dark: '#0D9488',
         },
         slate: {
-          DEFAULT: '#7C8FA5',
-          light: '#A5B8CC',
-          dark: '#5F728A',
+          DEFAULT: '#64748B',
+          light: '#94A3B8',
+          dark: '#475569',
+        },
+        mint: {
+          DEFAULT: '#99F6E4',
+          light: '#CCFBF1',
+          dark: '#5EEAD4',
         },
       },
     },
