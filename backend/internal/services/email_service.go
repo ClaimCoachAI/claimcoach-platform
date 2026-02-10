@@ -9,6 +9,7 @@ import (
 // EmailService defines the interface for sending emails
 type EmailService interface {
 	SendMagicLinkEmail(input SendMagicLinkEmailInput) error
+	SendMeetingNotification(input SendMeetingNotificationInput) error
 }
 
 // SendMagicLinkEmailInput contains all data needed to send a magic link email
@@ -20,6 +21,19 @@ type SendMagicLinkEmailInput struct {
 	LossType        string
 	MagicLinkURL    string
 	ExpiresAt       time.Time
+}
+
+// SendMeetingNotificationInput contains all data needed to send a meeting notification email
+type SendMeetingNotificationInput struct {
+	To              string
+	RecipientName   string
+	MeetingType     string
+	MeetingDate     string
+	MeetingTime     string
+	Location        string
+	PropertyAddress string
+	ClaimNumber     string
+	AdjusterName    string
 }
 
 // MockEmailService is a development implementation that logs email details
@@ -79,6 +93,39 @@ func (s *MockEmailService) SendMagicLinkEmail(input SendMagicLinkEmailInput) err
 	// Example for Supabase:
 	//   Requires configuring SMTP settings in Supabase dashboard
 	//   Use Supabase Admin API to send custom emails
+
+	return nil
+}
+
+// SendMeetingNotification logs meeting notification to console for development
+func (s *MockEmailService) SendMeetingNotification(input SendMeetingNotificationInput) error {
+	log.Println("=======================================================")
+	log.Println("📧 MEETING NOTIFICATION (MOCK - Development Only)")
+	log.Println("=======================================================")
+	log.Printf("To: %s", input.To)
+	log.Printf("Subject: Meeting Scheduled - %s", input.MeetingType)
+	log.Println("")
+	log.Println("--- Email Body ---")
+	log.Printf("Hi %s,", input.RecipientName)
+	log.Println("")
+	log.Println("A meeting has been scheduled for a property claim:")
+	log.Println("")
+	log.Printf("  Claim: %s", input.ClaimNumber)
+	log.Printf("  Property: %s", input.PropertyAddress)
+	log.Printf("  Meeting Type: %s", input.MeetingType)
+	log.Printf("  Date: %s", input.MeetingDate)
+	log.Printf("  Time: %s", input.MeetingTime)
+	log.Printf("  Location: %s", input.Location)
+	if input.AdjusterName != "" {
+		log.Printf("  Adjuster: %s", input.AdjusterName)
+	}
+	log.Println("")
+	log.Println("Please confirm your attendance or contact us if you need to reschedule.")
+	log.Println("")
+	log.Println("Thank you!")
+	log.Println("ClaimCoach AI Team")
+	log.Println("=======================================================")
+	log.Println("")
 
 	return nil
 }

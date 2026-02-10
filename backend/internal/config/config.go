@@ -20,6 +20,11 @@ type Config struct {
 	PerplexityModel      string
 	PerplexityTimeout    int // seconds
 	PerplexityMaxRetries int
+
+	// SendGrid Email Service (optional - falls back to mock if not provided)
+	SendGridAPIKey    string
+	SendGridFromEmail string
+	SendGridFromName  string
 }
 
 func Load() (*Config, error) {
@@ -35,6 +40,9 @@ func Load() (*Config, error) {
 		PerplexityModel:      getEnvOrDefault("PERPLEXITY_MODEL", "sonar-pro"),
 		PerplexityTimeout:    getEnvIntOrDefault("PERPLEXITY_TIMEOUT", 60),
 		PerplexityMaxRetries: getEnvIntOrDefault("PERPLEXITY_MAX_RETRIES", 3),
+		SendGridAPIKey:       os.Getenv("SENDGRID_API_KEY"),
+		SendGridFromEmail:    getEnvOrDefault("SENDGRID_FROM_EMAIL", "noreply@claimcoach.ai"),
+		SendGridFromName:     getEnvOrDefault("SENDGRID_FROM_NAME", "ClaimCoach AI"),
 	}
 
 	if cfg.DatabaseURL == "" {

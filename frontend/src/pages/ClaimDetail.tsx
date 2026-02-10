@@ -4,6 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api, { updateClaimEstimate, uploadCarrierEstimate, getCarrierEstimates, generateIndustryEstimate, getAuditReport, compareEstimates, generateRebuttal } from '../lib/api'
 import Layout from '../components/Layout'
 import ClaimStatusBadge from '../components/ClaimStatusBadge'
+import MeetingsSection from '../components/MeetingsSection'
+import PaymentsSection from '../components/PaymentsSection'
+import RCVDemandSection from '../components/RCVDemandSection'
 
 interface Property {
   id: string
@@ -1744,6 +1747,21 @@ export default function ClaimDetail() {
             {/* Audit Section - show for audit_pending and negotiating status */}
             {claim && ['audit_pending', 'negotiating'].includes(claim.status) && (
               <AuditSectionWrapper claimId={claim.id} />
+            )}
+
+            {/* Phase 7: Meetings Section - show in field_scheduled status */}
+            {claim && ['field_scheduled'].includes(claim.status) && (
+              <MeetingsSection claimId={claim.id} />
+            )}
+
+            {/* Phase 7: Payments Section - show after filed status */}
+            {claim && !['draft', 'assessing'].includes(claim.status) && (
+              <PaymentsSection claimId={claim.id} />
+            )}
+
+            {/* Phase 7: RCV Demand Section - show after filed status */}
+            {claim && !['draft', 'assessing'].includes(claim.status) && (
+              <RCVDemandSection claimId={claim.id} />
             )}
 
             {/* Deductible Analysis - only show in draft/assessing status */}

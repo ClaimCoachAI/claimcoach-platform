@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"strings"
 
@@ -65,13 +66,35 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	// Initialize services needed for both public and protected routes
 	propertyService := services.NewPropertyService(db)
 	claimService := services.NewClaimService(db, propertyService)
-	emailService := services.NewMockEmailService()
+
+	// Conditionally use SendGrid or Mock email service based on API key
+	var emailService services.EmailService
+	if cfg.SendGridAPIKey != "" {
+		emailService = services.NewSendGridEmailService(
+			cfg.SendGridAPIKey,
+			cfg.SendGridFromEmail,
+			cfg.SendGridFromName,
+		)
+		log.Println("✓ Using SendGrid email service")
+	} else {
+		emailService = services.NewMockEmailService()
+		log.Println("⚠ Using Mock email service (emails logged to console)")
+	}
+
 	magicLinkService := services.NewMagicLinkService(db, cfg, storageClient, claimService, emailService)
 	magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
 	scopeSheetService := services.NewScopeSheetService(db)
 	scopeSheetHandler := handlers.NewScopeSheetHandler(scopeSheetService, magicLinkService, claimService)
 	auditService := services.NewAuditService(db, llmClient, scopeSheetService)
 	auditHandler := handlers.NewAuditHandler(auditService)
+
+	// Phase 7 services and handlers
+	meetingService := services.NewMeetingService(db, emailService, claimService)
+	meetingHandler := handlers.NewMeetingHandler(meetingService)
+	paymentService := services.NewPaymentService(db, claimService)
+	paymentHandler := handlers.NewPaymentHandler(paymentService)
+	rcvDemandService := services.NewRCVDemandService(db, llmClient, claimService, paymentService)
+	rcvDemandHandler := handlers.NewRCVDemandHandler(rcvDemandService)
 
 	// Public routes
 	r.GET("/health", func(c *gin.Context) {
@@ -152,6 +175,30 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.POST("/claims/:id/audit/:auditId/compare", auditHandler.CompareEstimates)
 		api.POST("/claims/:id/audit/:auditId/rebuttal", auditHandler.GenerateRebuttal)
 		api.GET("/rebuttals/:id", auditHandler.GetRebuttal)
+
+		// Meeting routes (Phase 7 - protected)
+		api.POST("/claims/:id/meetings", meetingHandler.CreateMeeting)
+		api.GET("/claims/:id/meetings", meetingHandler.ListMeetingsByClaimID)
+		api.GET("/meetings/:id", meetingHandler.GetMeeting)
+		api.PATCH("/meetings/:id/status", meetingHandler.UpdateMeetingStatus)
+		api.PATCH("/meetings/:id/complete", meetingHandler.CompleteMeeting)
+		api.PATCH("/meetings/:id/cancel", meetingHandler.CancelMeeting)
+		api.PATCH("/meetings/:id/assign", meetingHandler.AssignRepresentative)
+
+		// Payment routes (Phase 7 - protected)
+		api.POST("/claims/:id/payments", paymentHandler.CreateExpectedPayment)
+		api.GET("/claims/:id/payments", paymentHandler.ListPaymentsByClaimID)
+		api.PATCH("/payments/:id/received", paymentHandler.RecordPaymentReceived)
+		api.PATCH("/payments/:id/reconcile", paymentHandler.ReconcilePayment)
+		api.PATCH("/payments/:id/dispute", paymentHandler.DisputePayment)
+		api.GET("/claims/:id/payment-summary", paymentHandler.GetPaymentSummary)
+		api.GET("/claims/:id/closure-status", paymentHandler.CheckClaimReadyForClosure)
+
+		// RCV Demand routes (Phase 7 - protected)
+		api.POST("/claims/:id/rcv-demand/generate", rcvDemandHandler.GenerateRCVDemandLetter)
+		api.GET("/claims/:id/rcv-demand", rcvDemandHandler.ListRCVDemandLettersByClaimID)
+		api.GET("/rcv-demand/:id", rcvDemandHandler.GetRCVDemandLetter)
+		api.PATCH("/rcv-demand/:id/mark-sent", rcvDemandHandler.MarkAsSent)
 	}
 
 	return r, nil
