@@ -51,49 +51,35 @@ export default function Login() {
           <h1 className="text-5xl font-display font-bold text-white leading-tight">
             Manage insurance claims with confidence
           </h1>
+          <p className="text-xl text-white/80 leading-relaxed">
+            The modern platform for property managers to streamline their insurance claims process
+          </p>
 
-          {/* Feature Cards */}
-          <div className="space-y-4">
-            <div className="glass-card p-6 rounded-2xl border-white/20 animate-slide-up delay-100">
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-teal rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Track Every Claim</h3>
-                  <p className="text-white/70 text-sm mt-1">Monitor all your property claims in one centralized dashboard</p>
-                </div>
+          {/* Value Propositions */}
+          <div className="space-y-6 pt-4">
+            <div className="flex items-center space-x-4 animate-slide-up delay-100">
+              <div className="flex-shrink-0 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
               </div>
+              <p className="text-white/90 text-lg">Centralized claim tracking across all properties</p>
             </div>
-
-            <div className="glass-card p-6 rounded-2xl border-white/20 animate-slide-up delay-200">
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-teal rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Manage Properties</h3>
-                  <p className="text-white/70 text-sm mt-1">Organize hundreds of properties with powerful search and filters</p>
-                </div>
+            <div className="flex items-center space-x-4 animate-slide-up delay-200">
+              <div className="flex-shrink-0 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
               </div>
+              <p className="text-white/90 text-lg">Powerful search and filtering for hundreds of properties</p>
             </div>
-
-            <div className="glass-card p-6 rounded-2xl border-white/20 animate-slide-up delay-300">
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-teal rounded-xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">AI-Powered Insights</h3>
-                  <p className="text-white/70 text-sm mt-1">Get intelligent recommendations and streamline your workflow</p>
-                </div>
+            <div className="flex items-center space-x-4 animate-slide-up delay-300">
+              <div className="flex-shrink-0 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
               </div>
+              <p className="text-white/90 text-lg">AI-powered insights to streamline your workflow</p>
             </div>
           </div>
         </div>

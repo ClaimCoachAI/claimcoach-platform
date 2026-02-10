@@ -69,7 +69,7 @@ export default function SignUp() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-white/90 text-lg">Free account - no credit card required</p>
+              <p className="text-white/90 text-lg">Get started free - no credit card required</p>
             </div>
             <div className="flex items-center space-x-4 animate-slide-up delay-200">
               <div className="flex-shrink-0 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
@@ -77,7 +77,7 @@ export default function SignUp() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-white/90 text-lg">Manage unlimited properties</p>
+              <p className="text-white/90 text-lg">Manage unlimited properties and claims</p>
             </div>
             <div className="flex items-center space-x-4 animate-slide-up delay-300">
               <div className="flex-shrink-0 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
@@ -85,7 +85,7 @@ export default function SignUp() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-white/90 text-lg">AI-powered claim insights</p>
+              <p className="text-white/90 text-lg">AI-powered insights to streamline your workflow</p>
             </div>
           </div>
         </div>
