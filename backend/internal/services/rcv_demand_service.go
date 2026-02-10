@@ -33,7 +33,7 @@ func NewRCVDemandService(db *sql.DB, llmClient LLMClient, claimService *ClaimSer
 // GenerateRCVDemandLetter generates a demand letter for outstanding RCV payments
 func (s *RCVDemandService) GenerateRCVDemandLetter(ctx context.Context, claimID, userID, orgID string) (string, error) {
 	// Get claim details
-	claim, err := s.claimService.GetClaimByID(ctx, claimID, orgID)
+	claim, err := s.claimService.GetClaim(claimID, orgID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get claim: %w", err)
 	}

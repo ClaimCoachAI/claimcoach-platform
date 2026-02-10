@@ -35,7 +35,7 @@ type CreateExpectedPaymentInput struct {
 // CreateExpectedPayment creates an expected payment record
 func (s *PaymentService) CreateExpectedPayment(ctx context.Context, claimID, userID, orgID string, input CreateExpectedPaymentInput) (string, error) {
 	// Verify claim ownership
-	claim, err := s.claimService.GetClaimByID(ctx, claimID, orgID)
+	claim, err := s.claimService.GetClaim(claimID, orgID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get claim: %w", err)
 	}

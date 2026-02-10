@@ -45,7 +45,7 @@ type CreateMeetingInput struct {
 // CreateMeeting creates a new meeting for a claim
 func (s *MeetingService) CreateMeeting(ctx context.Context, claimID, userID, orgID string, input CreateMeetingInput) (string, error) {
 	// Verify claim ownership
-	claim, err := s.claimService.GetClaimByID(ctx, claimID, orgID)
+	claim, err := s.claimService.GetClaim(claimID, orgID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get claim: %w", err)
 	}
@@ -89,7 +89,8 @@ func (s *MeetingService) CreateMeeting(ctx context.Context, claimID, userID, org
 
 	// Update claim status to field_scheduled if currently filed
 	if claim.Status == "filed" {
-		err = s.claimService.UpdateClaimStatus(ctx, claimID, userID, orgID, "field_scheduled", nil)
+		statusInput := UpdateClaimStatusInput{Status: "field_scheduled"}
+		_, err = s.claimService.UpdateClaimStatus(claimID, orgID, userID, statusInput)
 		if err != nil {
 			log.Printf("Warning: failed to update claim status: %v", err)
 		}
@@ -301,9 +302,10 @@ func (s *MeetingService) CompleteMeeting(ctx context.Context, meetingID, userID,
 	}
 
 	// Potentially update claim status to audit_pending if appropriate
-	claim, err := s.claimService.GetClaimByID(ctx, meeting.ClaimID, orgID)
+	claim, err := s.claimService.GetClaim(meeting.ClaimID, orgID)
 	if err == nil && claim != nil && claim.Status == "field_scheduled" {
-		err = s.claimService.UpdateClaimStatus(ctx, meeting.ClaimID, userID, orgID, "audit_pending", nil)
+		statusInput := UpdateClaimStatusInput{Status: "audit_pending"}
+		_, err = s.claimService.UpdateClaimStatus(meeting.ClaimID, orgID, userID, statusInput)
 		if err != nil {
 			log.Printf("Warning: failed to update claim status: %v", err)
 		}
