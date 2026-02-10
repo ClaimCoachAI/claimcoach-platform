@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useState, useEffect } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 
 interface AddPropertyModalProps {
@@ -15,6 +15,12 @@ interface PropertyFormData {
   mortgage_bank_id: string
 }
 
+interface MortgageBank {
+  id: string
+  name: string
+  endorsement_required: boolean
+}
+
 export default function AddPropertyModal({
   isOpen,
   onClose,
@@ -25,6 +31,15 @@ export default function AddPropertyModal({
     legal_address: '',
     owner_entity_name: '',
     mortgage_bank_id: '',
+  })
+
+  // Fetch mortgage banks
+  const { data: mortgageBanks } = useQuery({
+    queryKey: ['mortgage-banks'],
+    queryFn: async () => {
+      const response = await api.get('/api/mortgage-banks')
+      return response.data.data as MortgageBank[]
+    },
   })
 
   const createPropertyMutation = useMutation({
@@ -53,7 +68,7 @@ export default function AddPropertyModal({
     createPropertyMutation.mutate(formData)
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
@@ -153,17 +168,22 @@ export default function AddPropertyModal({
                   htmlFor="mortgage_bank_id"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  Mortgage Bank ID <span className="text-gray-400">(Optional)</span>
+                  Mortgage Bank <span className="text-gray-400">(Optional)</span>
                 </label>
-                <input
-                  type="text"
+                <select
                   id="mortgage_bank_id"
                   name="mortgage_bank_id"
                   value={formData.mortgage_bank_id}
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., BANK123"
-                />
+                >
+                  <option value="">Select a bank (optional)</option>
+                  {mortgageBanks?.map((bank) => (
+                    <option key={bank.id} value={bank.id}>
+                      {bank.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
