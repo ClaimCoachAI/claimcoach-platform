@@ -6,6 +6,7 @@ interface ReportIncidentModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  preselectedPropertyId?: string
 }
 
 interface Property {
@@ -29,6 +30,7 @@ export default function ReportIncidentModal({
   isOpen,
   onClose,
   onSuccess,
+  preselectedPropertyId,
 }: ReportIncidentModalProps) {
   const [formData, setFormData] = useState<ClaimFormData>({
     property_id: '',
@@ -39,14 +41,13 @@ export default function ReportIncidentModal({
 
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null)
 
-  // Fetch properties for dropdown
   const { data: properties, isLoading: loadingProperties } = useQuery({
     queryKey: ['properties'],
     queryFn: async () => {
       const response = await api.get('/api/properties')
       return response.data.data as Property[]
     },
-    enabled: isOpen, // Only fetch when modal is open
+    enabled: isOpen,
   })
 
   const createClaimMutation = useMutation({
@@ -85,14 +86,21 @@ export default function ReportIncidentModal({
       [name]: value,
     })
 
-    // Update selected property when property_id changes
     if (name === 'property_id' && properties) {
       const property = properties.find((p) => p.id === value)
       setSelectedProperty(property || null)
     }
   }
 
-  // Reset form when modal closes
+  // Set preselected property if provided
+  useEffect(() => {
+    if (isOpen && preselectedPropertyId && properties) {
+      setFormData(prev => ({ ...prev, property_id: preselectedPropertyId }))
+      const property = properties.find((p) => p.id === preselectedPropertyId)
+      setSelectedProperty(property || null)
+    }
+  }, [isOpen, preselectedPropertyId, properties])
+
   useEffect(() => {
     if (!isOpen) {
       setFormData({
@@ -105,7 +113,6 @@ export default function ReportIncidentModal({
     }
   }, [isOpen])
 
-  // Handle Escape key to close modal
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
@@ -122,29 +129,27 @@ export default function ReportIncidentModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className="fixed inset-0 z-50 overflow-y-auto animate-fade-in">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        {/* Background overlay */}
         <div
-          className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75"
+          className="fixed inset-0 transition-opacity bg-navy/20 backdrop-blur-sm"
           onClick={onClose}
         />
 
-        {/* Modal panel */}
-        <div className="inline-block w-full max-w-lg my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
+        <div className="inline-block w-full max-w-lg my-8 overflow-hidden text-left align-middle transition-all transform glass-card-strong shadow-2xl rounded-3xl animate-scale-in">
           <form onSubmit={handleSubmit}>
-            <div className="px-6 py-4 bg-white border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">
+            <div className="px-8 py-6 border-b border-white/20">
+              <h3 className="text-2xl font-display font-bold text-navy">
                 Report Incident
               </h3>
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-slate">
                 Start a new claim by providing incident details
               </p>
             </div>
 
-            <div className="px-6 py-4 space-y-4">
+            <div className="px-8 py-6 space-y-5">
               {createClaimMutation.isError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl animate-slide-down">
                   <p className="text-sm text-red-700">
                     {(createClaimMutation.error as any)?.response?.data?.error ||
                       (createClaimMutation.error instanceof Error
@@ -154,11 +159,10 @@ export default function ReportIncidentModal({
                 </div>
               )}
 
-              {/* Property Selection */}
               <div>
                 <label
                   htmlFor="property_id"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className="block text-sm font-medium text-navy mb-2"
                 >
                   Property <span className="text-red-500">*</span>
                 </label>
@@ -168,8 +172,8 @@ export default function ReportIncidentModal({
                   required
                   value={formData.property_id}
                   onChange={handleChange}
-                  disabled={loadingProperties}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                  disabled={loadingProperties || !!preselectedPropertyId}
+                  className="glass-input w-full px-4 py-3 rounded-xl text-navy cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">
                     {loadingProperties ? 'Loading properties...' : 'Select a property'}
@@ -182,26 +186,24 @@ export default function ReportIncidentModal({
                 </select>
               </div>
 
-              {/* Show property info if selected */}
               {selectedProperty && selectedProperty.policy && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <p className="text-xs font-medium text-blue-900 mb-1">
+                <div className="p-4 bg-teal/10 border border-teal/20 rounded-xl">
+                  <p className="text-xs font-medium text-teal-dark mb-2">
                     Policy Information
                   </p>
-                  <p className="text-xs text-blue-700">
+                  <p className="text-xs text-navy">
                     <strong>Carrier:</strong> {selectedProperty.policy.carrier}
                   </p>
-                  <p className="text-xs text-blue-700">
+                  <p className="text-xs text-navy">
                     <strong>Policy #:</strong> {selectedProperty.policy.policy_number}
                   </p>
                 </div>
               )}
 
-              {/* Loss Type */}
               <div>
                 <label
                   htmlFor="loss_type"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className="block text-sm font-medium text-navy mb-2"
                 >
                   Loss Type <span className="text-red-500">*</span>
                 </label>
@@ -211,7 +213,7 @@ export default function ReportIncidentModal({
                   required
                   value={formData.loss_type}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="glass-input w-full px-4 py-3 rounded-xl text-navy cursor-pointer"
                 >
                   <option value="">Select loss type</option>
                   <option value="fire">Fire</option>
@@ -222,11 +224,10 @@ export default function ReportIncidentModal({
                 </select>
               </div>
 
-              {/* Incident Date */}
               <div>
                 <label
                   htmlFor="incident_date"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className="block text-sm font-medium text-navy mb-2"
                 >
                   Incident Date <span className="text-red-500">*</span>
                 </label>
@@ -238,17 +239,16 @@ export default function ReportIncidentModal({
                   value={formData.incident_date}
                   onChange={handleChange}
                   max={new Date().toISOString().split('T')[0]}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="glass-input w-full px-4 py-3 rounded-xl text-navy"
                 />
               </div>
 
-              {/* Description */}
               <div>
                 <label
                   htmlFor="description"
-                  className="block text-sm font-medium text-gray-700 mb-1"
+                  className="block text-sm font-medium text-navy mb-2"
                 >
-                  Description <span className="text-gray-400">(Optional)</span>
+                  Description <span className="text-slate">(Optional)</span>
                 </label>
                 <textarea
                   id="description"
@@ -256,25 +256,25 @@ export default function ReportIncidentModal({
                   rows={4}
                   value={formData.description}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="glass-input w-full px-4 py-3 rounded-xl text-navy placeholder-slate/50 resize-none"
                   placeholder="Describe what happened..."
                 />
               </div>
             </div>
 
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+            <div className="px-8 py-6 border-t border-white/20 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={createClaimMutation.isPending}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-secondary px-6 py-3 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={createClaimMutation.isPending || loadingProperties}
-                className="px-4 py-2 bg-blue-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-primary px-6 py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {createClaimMutation.isPending ? 'Creating...' : 'Create Claim'}
               </button>

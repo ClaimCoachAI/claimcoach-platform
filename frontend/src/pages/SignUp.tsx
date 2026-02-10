@@ -18,7 +18,6 @@ export default function SignUp() {
     setLoading(true)
 
     try {
-      // Sign up with Supabase
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -31,7 +30,6 @@ export default function SignUp() {
         return
       }
 
-      // Complete signup by creating user in database
       await api.post('/api/auth/complete-signup', {
         token: data.session.access_token,
         name: name || email.split('@')[0],
@@ -46,76 +44,141 @@ export default function SignUp() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="text-center text-3xl font-bold text-gray-900">
-            ClaimCoach AI
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Create your account
-          </p>
+    <div className="min-h-screen flex">
+      {/* Left side - Hero Section */}
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-[#3BA090] via-[#52B5A5] to-[#2A4A70] overflow-hidden">
+        <div className="absolute inset-0 bg-dots opacity-20"></div>
+        <div className="absolute inset-0 bg-mesh"></div>
+
+        <div className="absolute top-8 left-8 z-10">
+          <img src="/logo.png" alt="ClaimCoach" className="h-16 brightness-0 invert" />
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
+
+        <div className="relative z-10 flex flex-col justify-center px-16 space-y-8 animate-fade-in">
+          <h1 className="text-5xl font-display font-bold text-white leading-tight">
+            Start managing claims smarter today
+          </h1>
+          <p className="text-xl text-white/80 leading-relaxed">
+            Join property managers who trust ClaimCoach to streamline their insurance claims process
+          </p>
+
+          <div className="space-y-6 pt-4">
+            <div className="flex items-center space-x-4 animate-slide-up delay-100">
+              <div className="flex-shrink-0 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="text-white/90 text-lg">Free account - no credit card required</p>
             </div>
-          )}
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Name
-              </label>
-              <input
-                id="name"
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
+            <div className="flex items-center space-x-4 animate-slide-up delay-200">
+              <div className="flex-shrink-0 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="text-white/90 text-lg">Manage unlimited properties</p>
             </div>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
+            <div className="flex items-center space-x-4 animate-slide-up delay-300">
+              <div className="flex-shrink-0 w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="text-white/90 text-lg">AI-powered claim insights</p>
             </div>
           </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {loading ? 'Creating account...' : 'Sign up'}
-          </button>
-          <div className="text-center">
-            <Link to="/login" className="text-sm text-blue-600 hover:text-blue-500">
-              Already have an account? Sign in
-            </Link>
+        </div>
+      </div>
+
+      {/* Right side - Form */}
+      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md space-y-8 animate-fade-in">
+          <div className="lg:hidden flex justify-center mb-8">
+            <img src="/logo.png" alt="ClaimCoach" className="h-12" />
           </div>
-        </form>
+
+          <div className="glass-card-strong rounded-3xl p-8 sm:p-10 animate-scale-in">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-display font-bold text-navy">Create your account</h2>
+              <p className="mt-2 text-slate">Get started in less than 2 minutes</p>
+            </div>
+
+            {error && (
+              <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 animate-slide-down">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-navy mb-2">
+                  Full name
+                </label>
+                <input
+                  id="name"
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="glass-input w-full px-4 py-3 rounded-xl text-navy placeholder-slate/50 focus:placeholder-slate/30 transition-all"
+                  placeholder="John Smith"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-navy mb-2">
+                  Email address
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="glass-input w-full px-4 py-3 rounded-xl text-navy placeholder-slate/50 focus:placeholder-slate/30 transition-all"
+                  placeholder="you@company.com"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-navy mb-2">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="glass-input w-full px-4 py-3 rounded-xl text-navy placeholder-slate/50 focus:placeholder-slate/30 transition-all"
+                  placeholder="••••••••"
+                />
+                <p className="mt-2 text-xs text-slate">Must be at least 8 characters</p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-primary w-full py-3 px-4 rounded-xl text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+              >
+                {loading ? 'Creating account...' : 'Create account'}
+              </button>
+            </form>
+
+            <div className="mt-8 text-center">
+              <p className="text-sm text-slate">
+                Already have an account?{' '}
+                <Link
+                  to="/login"
+                  className="font-medium text-teal hover:text-teal-dark transition-colors"
+                >
+                  Sign in
+                </Link>
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

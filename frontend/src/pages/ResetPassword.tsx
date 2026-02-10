@@ -11,7 +11,6 @@ export default function ResetPassword() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Check if we have a valid session from the reset link
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setValidSession(true)
@@ -25,13 +24,11 @@ export default function ResetPassword() {
     e.preventDefault()
     setError('')
 
-    // Validate passwords match
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return
     }
 
-    // Validate password length
     if (password.length < 6) {
       setError('Password must be at least 6 characters')
       return
@@ -46,10 +43,7 @@ export default function ResetPassword() {
 
       if (updateError) throw updateError
 
-      // Sign out after password reset to force fresh login
       await supabase.auth.signOut()
-
-      // Redirect to login with success message
       navigate('/login?reset=success')
     } catch (err: any) {
       setError(err.message || 'Failed to reset password')
@@ -60,26 +54,35 @@ export default function ResetPassword() {
 
   if (!validSession && error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
-        <div className="max-w-md w-full space-y-8">
-          <div>
-            <h2 className="text-center text-3xl font-bold text-gray-900">
-              Reset link expired
-            </h2>
-          </div>
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {error}
-          </div>
-          <div className="text-center space-y-2">
-            <Link
-              to="/forgot-password"
-              className="block text-sm text-blue-600 hover:text-blue-500"
-            >
-              Request a new reset link
-            </Link>
-            <Link to="/login" className="block text-sm text-gray-600 hover:text-gray-500">
-              Back to Sign in
-            </Link>
+      <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8">
+        <div className="w-full max-w-md animate-fade-in">
+          <div className="glass-card-strong rounded-3xl p-8 sm:p-10 text-center animate-scale-in">
+            <div className="mx-auto flex items-center justify-center w-16 h-16 rounded-full bg-red-50 mb-6">
+              <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+
+            <h2 className="text-3xl font-display font-bold text-navy mb-4">Reset link expired</h2>
+
+            <div className="p-4 rounded-xl bg-red-50 border border-red-200 mb-8">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+
+            <div className="space-y-3">
+              <Link
+                to="/forgot-password"
+                className="btn-primary w-full py-3 px-4 rounded-xl text-base font-semibold block"
+              >
+                Request new reset link
+              </Link>
+              <Link
+                to="/login"
+                className="block text-sm font-medium text-slate hover:text-navy transition-colors"
+              >
+                Back to Sign in
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -87,25 +90,29 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="text-center text-3xl font-bold text-gray-900">
-            Set new password
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Enter your new password below
-          </p>
+    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md animate-fade-in">
+        <div className="text-center mb-8">
+          <Link to="/login" className="inline-block mb-8">
+            <img src="/logo.png" alt="ClaimCoach" className="h-12 mx-auto" />
+          </Link>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+
+        <div className="glass-card-strong rounded-3xl p-8 sm:p-10 animate-scale-in">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-display font-bold text-navy mb-2">Set new password</h2>
+            <p className="text-slate">Enter your new password below</p>
+          </div>
+
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
+            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 animate-slide-down">
+              <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
-          <div className="space-y-4">
+
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-medium text-navy mb-2">
                 New password
               </label>
               <input
@@ -114,16 +121,14 @@ export default function ResetPassword() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Minimum 6 characters"
+                className="glass-input w-full px-4 py-3 rounded-xl text-navy placeholder-slate/50 focus:placeholder-slate/30 transition-all"
+                placeholder="Minimum 8 characters"
                 minLength={6}
               />
             </div>
+
             <div>
-              <label
-                htmlFor="confirmPassword"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-navy mb-2">
                 Confirm new password
               </label>
               <input
@@ -132,20 +137,21 @@ export default function ResetPassword() {
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="glass-input w-full px-4 py-3 rounded-xl text-navy placeholder-slate/50 focus:placeholder-slate/30 transition-all"
                 placeholder="Re-enter your password"
                 minLength={6}
               />
             </div>
-          </div>
-          <button
-            type="submit"
-            disabled={loading || !validSession}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {loading ? 'Resetting password...' : 'Reset password'}
-          </button>
-        </form>
+
+            <button
+              type="submit"
+              disabled={loading || !validSession}
+              className="btn-primary w-full py-3 px-4 rounded-xl text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+            >
+              {loading ? 'Resetting password...' : 'Reset password'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   )
