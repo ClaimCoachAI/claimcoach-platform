@@ -101,6 +101,10 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
+	// Public auth endpoints (no auth required)
+	authHandler := handlers.NewAuthHandler(db, supabase)
+	r.POST("/api/auth/complete-signup", authHandler.CompleteSignup)
+
 	// Public magic link endpoints (no auth required)
 	r.GET("/api/magic-links/:token/validate", magicLinkHandler.ValidateToken)
 	r.POST("/api/magic-links/:token/documents/upload-url", magicLinkHandler.RequestUploadURL)

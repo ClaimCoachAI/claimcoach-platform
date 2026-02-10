@@ -34,3 +34,22 @@ func (s *SupabaseClient) VerifyToken(token string) (string, error) {
 
 	return user.ID.String(), nil
 }
+
+type SupabaseUser struct {
+	ID    string
+	Email string
+}
+
+func (s *SupabaseClient) GetUser(token string) (*SupabaseUser, error) {
+	authClient := s.client.Auth.WithToken(token)
+
+	user, err := authClient.GetUser()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	return &SupabaseUser{
+		ID:    user.ID.String(),
+		Email: user.Email,
+	}, nil
+}
