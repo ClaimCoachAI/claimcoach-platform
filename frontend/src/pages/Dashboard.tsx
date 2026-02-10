@@ -1,97 +1,167 @@
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
 import api from '../lib/api'
 import Layout from '../components/Layout'
+import PropertyCard from '../components/PropertyCard'
+import AddPropertyModal from '../components/AddPropertyModal'
+
+interface Property {
+  id: string
+  nickname: string
+  legal_address: string
+  status: string
+  owner_entity_name: string
+}
 
 export default function Dashboard() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['me'],
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const {
+    data: properties,
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ['properties'],
     queryFn: async () => {
-      const response = await api.get('/api/me')
-      return response.data.data
-    }
+      const response = await api.get('/api/properties')
+      return response.data.data as Property[]
+    },
   })
+
+  const handleSuccess = () => {
+    refetch()
+  }
+
+  // Filter properties based on search query
+  const filteredProperties = useMemo(() => {
+    if (!properties) return []
+    if (!searchQuery.trim()) return properties
+
+    const query = searchQuery.toLowerCase()
+    return properties.filter(
+      (property) =>
+        property.legal_address?.toLowerCase().includes(query) ||
+        property.nickname?.toLowerCase().includes(query) ||
+        property.owner_entity_name?.toLowerCase().includes(query)
+    )
+  }, [properties, searchQuery])
 
   return (
     <Layout>
       <div className="space-y-8 animate-fade-in">
-        {/* Hero Section */}
-        <div className="text-center space-y-4 py-8">
-          <h1 className="text-4xl md:text-5xl font-display font-bold text-navy animate-slide-up">
-            Welcome back{data?.name ? `, ${data.name}` : ''}
-          </h1>
-          <p className="text-xl text-slate animate-slide-up delay-100">
-            What would you like to do today?
-          </p>
-        </div>
-
-        {/* Primary Action - Properties */}
-        <div className="max-w-2xl mx-auto">
-          <Link
-            to="/properties"
-            className="group glass-card rounded-3xl p-12 hover:scale-105 transition-all duration-300 animate-scale-in delay-200 block"
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-3xl font-display font-bold text-navy">Your Properties</h2>
+            <p className="mt-2 text-slate">
+              {properties ? `Managing ${properties.length} ${properties.length === 1 ? 'property' : 'properties'}` : 'Loading...'}
+            </p>
+          </div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="btn-primary inline-flex items-center px-6 py-3 rounded-xl text-sm font-semibold"
           >
-            <div className="space-y-6">
-              {/* Icon */}
-              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-teal to-teal-dark flex items-center justify-center group-hover:scale-110 transition-transform">
-                <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-              </div>
-
-              {/* Content */}
-              <div className="space-y-3">
-                <h2 className="text-4xl font-display font-bold text-navy">View Properties</h2>
-                <p className="text-slate text-xl">
-                  Manage your properties and create claims
-                </p>
-              </div>
-
-              {/* Arrow */}
-              <div className="flex items-center text-teal font-semibold text-lg group-hover:translate-x-2 transition-transform">
-                <span>Go to Properties</span>
-                <svg className="w-6 h-6 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
-              </div>
-            </div>
-          </Link>
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Property
+          </button>
         </div>
 
-        {/* Helper Text */}
-        <div className="max-w-2xl mx-auto text-center animate-fade-in delay-300">
-          <p className="text-slate">
-            Select a property to view details and create insurance claims
-          </p>
+        {/* Search Bar */}
+        <div className="glass-card-strong rounded-2xl p-2 animate-slide-up delay-100">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+              <svg className="h-6 w-6 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              placeholder="Search by address, name, or owner..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-14 pr-4 py-4 bg-transparent text-navy placeholder-slate/50 focus:outline-none text-lg"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-4 flex items-center text-slate hover:text-navy transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Quick Stats */}
-        {!isLoading && data && (
-          <div className="max-w-4xl mx-auto mt-12 animate-slide-up delay-400">
-            <div className="glass-card rounded-2xl p-6">
-              <h3 className="text-sm font-medium text-slate mb-4">Account Information</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-xs text-slate">Email</p>
-                  <p className="text-sm font-medium text-navy mt-1 truncate">{data.email}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate">Name</p>
-                  <p className="text-sm font-medium text-navy mt-1">{data.name || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate">Role</p>
-                  <p className="text-sm font-medium text-navy mt-1">{data.role || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate">Organization</p>
-                  <p className="text-sm font-medium text-navy mt-1">{data.organization_id || '-'}</p>
-                </div>
-              </div>
+        {/* Properties Grid */}
+        {isLoading ? (
+          <div className="flex justify-center items-center py-20">
+            <div className="text-center">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-teal border-t-transparent"></div>
+              <p className="mt-4 text-slate">Loading properties...</p>
             </div>
+          </div>
+        ) : filteredProperties && filteredProperties.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-up delay-200">
+            {filteredProperties.map((property, index) => (
+              <div
+                key={property.id}
+                style={{ animationDelay: `${index * 50}ms` }}
+                className="animate-scale-in"
+              >
+                <PropertyCard property={property} />
+              </div>
+            ))}
+          </div>
+        ) : searchQuery ? (
+          // No search results
+          <div className="glass-card rounded-2xl p-12 text-center animate-scale-in">
+            <svg className="mx-auto h-16 w-16 text-slate/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <h3 className="mt-4 text-xl font-display font-semibold text-navy">No properties found</h3>
+            <p className="mt-2 text-slate">
+              No properties match your search for "{searchQuery}"
+            </p>
+            <button
+              onClick={() => setSearchQuery('')}
+              className="mt-6 btn-secondary px-6 py-2 rounded-xl text-sm font-medium"
+            >
+              Clear search
+            </button>
+          </div>
+        ) : (
+          // No properties at all
+          <div className="glass-card rounded-2xl p-12 text-center animate-scale-in">
+            <svg className="mx-auto h-16 w-16 text-slate/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            <h3 className="mt-4 text-xl font-display font-semibold text-navy">No properties yet</h3>
+            <p className="mt-2 text-slate">
+              Get started by adding your first property
+            </p>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="mt-6 btn-primary inline-flex items-center px-6 py-3 rounded-xl text-sm font-semibold"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Property
+            </button>
           </div>
         )}
       </div>
+
+      <AddPropertyModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={handleSuccess}
+      />
     </Layout>
   )
 }
