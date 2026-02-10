@@ -1,0 +1,44 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production
+.env.production.local
+.env.development
+.env.development.local
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go coverage
+*.coverprofile
+coverage.txt
+coverage.html
+
+# Binaries
+/bin/
+/dist/
+/build/
+server
+main
+
+# Vendor
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/

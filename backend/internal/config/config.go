@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 )
@@ -54,11 +55,11 @@ func Load() (*Config, error) {
 	if cfg.SupabaseServiceKey == "" {
 		return nil, fmt.Errorf("SUPABASE_SERVICE_KEY is required")
 	}
-	if cfg.SupabaseJWTSecret == "" {
-		return nil, fmt.Errorf("SUPABASE_JWT_SECRET is required")
-	}
+	// SUPABASE_JWT_SECRET is optional - token verification is done via Supabase API
+	// which automatically supports both symmetric (HS256) and asymmetric (ES256) keys
+	// PERPLEXITY_API_KEY is optional for development - features requiring it will fail gracefully
 	if cfg.PerplexityAPIKey == "" {
-		return nil, fmt.Errorf("PERPLEXITY_API_KEY is required")
+		log.Println("⚠️  PERPLEXITY_API_KEY not set - AI analysis features will be unavailable")
 	}
 	if cfg.PerplexityTimeout <= 0 {
 		return nil, fmt.Errorf("PERPLEXITY_TIMEOUT must be positive, got %d", cfg.PerplexityTimeout)
