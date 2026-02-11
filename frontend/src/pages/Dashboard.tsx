@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 import Layout from '../components/Layout'
 import ClaimCard from '../components/ClaimCard'
+import ReportDamageModal from '../components/ReportDamageModal'
 import type { Claim } from '../types/claim'
 
 export default function Dashboard() {
@@ -214,15 +215,11 @@ export default function Dashboard() {
           +
         </button>
 
-        {/* TODO: Create Claim Modal */}
-        {showCreateModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-end md:items-center justify-center z-50">
-            <div className="bg-white rounded-t-3xl md:rounded-3xl p-6 w-full md:max-w-md">
-              <p>Create Claim Modal - Coming in Phase 3</p>
-              <button onClick={() => setShowCreateModal(false)}>Close</button>
-            </div>
-          </div>
-        )}
+        {/* Report Damage Modal */}
+        <ReportDamageModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+        />
       </div>
     </Layout>
   )
