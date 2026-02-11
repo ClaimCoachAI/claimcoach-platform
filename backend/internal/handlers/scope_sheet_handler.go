@@ -156,3 +156,82 @@ func (h *ScopeSheetHandler) GetByClaimID(c *gin.Context) {
 		"data":    scopeSheet,
 	})
 }
+
+// SaveDraft saves or updates a draft scope sheet via magic link (public endpoint, no auth required)
+// POST /api/magic-links/:token/scope-sheet/draft
+func (h *ScopeSheetHandler) SaveDraft(c *gin.Context) {
+	token := c.Param("token")
+
+	// Bind JSON to CreateScopeSheetInput
+	var input services.CreateScopeSheetInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	// Save the draft
+	scopeSheet, err := h.scopeSheetService.SaveScopeDraft(c.Request.Context(), token, &input)
+	if err != nil {
+		// Check for token errors
+		if err.Error() == "token not found or expired" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   "Invalid or expired magic link",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to save draft: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"data":    scopeSheet,
+	})
+}
+
+// GetDraft retrieves the draft scope sheet via magic link (public endpoint, no auth required)
+// GET /api/magic-links/:token/scope-sheet/draft
+func (h *ScopeSheetHandler) GetDraft(c *gin.Context) {
+	token := c.Param("token")
+
+	// Get the draft
+	scopeSheet, err := h.scopeSheetService.GetScopeDraft(c.Request.Context(), token)
+	if err != nil {
+		// Check for token errors
+		if err.Error() == "token not found or expired" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   "Invalid or expired magic link",
+			})
+			return
+		}
+
+		// Check for draft not found
+		if err.Error() == "draft not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   "No draft exists for this claim",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to get draft: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    scopeSheet,
+	})
+}

@@ -115,6 +115,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	r.POST("/api/magic-links/:token/documents/upload-url", magicLinkHandler.RequestUploadURL)
 	r.POST("/api/magic-links/:token/documents/:documentId/confirm", magicLinkHandler.ConfirmUpload)
 	r.POST("/api/magic-links/:token/scope-sheet", scopeSheetHandler.CreateViaMagicLink)
+	r.POST("/api/magic-links/:token/scope-sheet/draft", scopeSheetHandler.SaveDraft)
+	r.GET("/api/magic-links/:token/scope-sheet/draft", scopeSheetHandler.GetDraft)
 
 	// Protected routes
 	api := r.Group("/api")
