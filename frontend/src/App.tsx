@@ -8,6 +8,7 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Claims from './pages/Claims'
+import ClaimHome from './pages/ClaimHome'
 import ClaimDetail from './pages/ClaimDetail'
 import Properties from './pages/Properties'
 import PropertyDetail from './pages/PropertyDetail'
@@ -76,7 +77,7 @@ function App() {
                 path="/claims/:id"
                 element={
                   <ProtectedRoute>
-                    <ClaimDetail />
+                    <ClaimHome />
                   </ProtectedRoute>
                 }
               />

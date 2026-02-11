@@ -34,6 +34,19 @@ type CreateClaimInput struct {
 	PropertyID   string      `json:"property_id" binding:"required"`
 	LossType     string      `json:"loss_type" binding:"required,oneof=fire water wind hail other"`
 	IncidentDate models.Date `json:"incident_date" binding:"required"`
+	Description  *string     `json:"description"`
+
+	// Step tracking
+	CurrentStep    *int            `json:"current_step"`
+	StepsCompleted *models.IntArray `json:"steps_completed"`
+
+	// Step-specific fields (optional on creation)
+	ContractorEmail            *string    `json:"contractor_email"`
+	ContractorName             *string    `json:"contractor_name"`
+	ContractorPhotosUploadedAt *time.Time `json:"contractor_photos_uploaded_at"`
+	DeductibleComparisonResult *string    `json:"deductible_comparison_result"`
+	InsuranceClaimNumber       *string    `json:"insurance_claim_number"`
+	InspectionDatetime         *time.Time `json:"inspection_datetime"`
 }
 
 type UpdateClaimStatusInput struct {
@@ -61,6 +74,17 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 		return nil, fmt.Errorf("failed to fetch policy: %w", err)
 	}
 
+	// Set default values for step tracking
+	currentStep := 1
+	if input.CurrentStep != nil {
+		currentStep = *input.CurrentStep
+	}
+
+	stepsCompleted := models.IntArray{1}
+	if input.StepsCompleted != nil {
+		stepsCompleted = *input.StepsCompleted
+	}
+
 	// Create the claim
 	claim := &models.Claim{
 		ID:              uuid.New().String(),
@@ -69,21 +93,38 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 		LossType:        input.LossType,
 		IncidentDate:    input.IncidentDate.ToTime(),
 		Status:          "draft",
+		Description:     input.Description,
+		CurrentStep:     currentStep,
+		StepsCompleted:  stepsCompleted,
 		CreatedByUserID: userID,
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
+
+		// Step-specific fields
+		ContractorEmail:            input.ContractorEmail,
+		ContractorName:             input.ContractorName,
+		ContractorPhotosUploadedAt: input.ContractorPhotosUploadedAt,
+		DeductibleComparisonResult: input.DeductibleComparisonResult,
+		InsuranceClaimNumber:       input.InsuranceClaimNumber,
+		InspectionDatetime:         input.InspectionDatetime,
 	}
 
 	query := `
 		INSERT INTO claims (
 			id, property_id, policy_id, claim_number, loss_type, incident_date,
-			status, filed_at, assigned_user_id, adjuster_name, adjuster_phone,
-			meeting_datetime, created_by_user_id, created_at, updated_at
+			status, filed_at, description, current_step, steps_completed,
+			contractor_email, contractor_name, contractor_photos_uploaded_at,
+			deductible_comparison_result, insurance_claim_number, inspection_datetime,
+			assigned_user_id, adjuster_name, adjuster_phone, meeting_datetime,
+			created_by_user_id, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 		RETURNING id, property_id, policy_id, claim_number, loss_type, incident_date,
-			status, filed_at, assigned_user_id, adjuster_name, adjuster_phone,
-			meeting_datetime, created_by_user_id, created_at, updated_at
+			status, filed_at, description, current_step, steps_completed,
+			contractor_email, contractor_name, contractor_photos_uploaded_at,
+			deductible_comparison_result, insurance_claim_number, inspection_datetime,
+			assigned_user_id, adjuster_name, adjuster_phone, meeting_datetime,
+			created_by_user_id, created_at, updated_at
 	`
 
 	err = s.db.QueryRow(
@@ -96,6 +137,15 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 		claim.IncidentDate,
 		claim.Status,
 		nil, // filed_at
+		claim.Description,
+		claim.CurrentStep,
+		claim.StepsCompleted,
+		claim.ContractorEmail,
+		claim.ContractorName,
+		claim.ContractorPhotosUploadedAt,
+		claim.DeductibleComparisonResult,
+		claim.InsuranceClaimNumber,
+		claim.InspectionDatetime,
 		nil, // assigned_user_id
 		nil, // adjuster_name
 		nil, // adjuster_phone
@@ -112,6 +162,15 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 		&claim.IncidentDate,
 		&claim.Status,
 		&claim.FiledAt,
+		&claim.Description,
+		&claim.CurrentStep,
+		&claim.StepsCompleted,
+		&claim.ContractorEmail,
+		&claim.ContractorName,
+		&claim.ContractorPhotosUploadedAt,
+		&claim.DeductibleComparisonResult,
+		&claim.InsuranceClaimNumber,
+		&claim.InspectionDatetime,
 		&claim.AssignedUserID,
 		&claim.AdjusterName,
 		&claim.AdjusterPhone,
@@ -138,7 +197,10 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 func (s *ClaimService) GetClaims(organizationID string, statusFilter *string, propertyIDFilter *string) ([]models.Claim, error) {
 	query := `
 		SELECT c.id, c.property_id, c.policy_id, c.claim_number, c.loss_type, c.incident_date,
-			c.status, c.filed_at, c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
+			c.status, c.filed_at, c.description, c.current_step, c.steps_completed,
+			c.contractor_email, c.contractor_name, c.contractor_photos_uploaded_at,
+			c.deductible_comparison_result, c.insurance_claim_number, c.inspection_datetime,
+			c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
 			c.meeting_datetime, c.created_by_user_id, c.created_at, c.updated_at
 		FROM claims c
 		INNER JOIN properties p ON c.property_id = p.id
@@ -180,6 +242,15 @@ func (s *ClaimService) GetClaims(organizationID string, statusFilter *string, pr
 			&claim.IncidentDate,
 			&claim.Status,
 			&claim.FiledAt,
+			&claim.Description,
+			&claim.CurrentStep,
+			&claim.StepsCompleted,
+			&claim.ContractorEmail,
+			&claim.ContractorName,
+			&claim.ContractorPhotosUploadedAt,
+			&claim.DeductibleComparisonResult,
+			&claim.InsuranceClaimNumber,
+			&claim.InspectionDatetime,
 			&claim.AssignedUserID,
 			&claim.AdjusterName,
 			&claim.AdjusterPhone,
@@ -204,7 +275,10 @@ func (s *ClaimService) GetClaims(organizationID string, statusFilter *string, pr
 func (s *ClaimService) GetClaim(claimID string, organizationID string) (*models.Claim, error) {
 	query := `
 		SELECT c.id, c.property_id, c.policy_id, c.claim_number, c.loss_type, c.incident_date,
-			c.status, c.filed_at, c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
+			c.status, c.filed_at, c.description, c.current_step, c.steps_completed,
+			c.contractor_email, c.contractor_name, c.contractor_photos_uploaded_at,
+			c.deductible_comparison_result, c.insurance_claim_number, c.inspection_datetime,
+			c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
 			c.meeting_datetime, c.created_by_user_id, c.created_at, c.updated_at
 		FROM claims c
 		INNER JOIN properties p ON c.property_id = p.id
@@ -221,6 +295,15 @@ func (s *ClaimService) GetClaim(claimID string, organizationID string) (*models.
 		&claim.IncidentDate,
 		&claim.Status,
 		&claim.FiledAt,
+		&claim.Description,
+		&claim.CurrentStep,
+		&claim.StepsCompleted,
+		&claim.ContractorEmail,
+		&claim.ContractorName,
+		&claim.ContractorPhotosUploadedAt,
+		&claim.DeductibleComparisonResult,
+		&claim.InsuranceClaimNumber,
+		&claim.InspectionDatetime,
 		&claim.AssignedUserID,
 		&claim.AdjusterName,
 		&claim.AdjusterPhone,
@@ -283,7 +366,10 @@ func (s *ClaimService) UpdateClaimStatus(claimID string, organizationID string, 
 			updated_at = $6
 		WHERE id = $7
 		RETURNING id, property_id, policy_id, claim_number, loss_type, incident_date,
-			status, filed_at, assigned_user_id, adjuster_name, adjuster_phone,
+			status, filed_at, description, current_step, steps_completed,
+			contractor_email, contractor_name, contractor_photos_uploaded_at,
+			deductible_comparison_result, insurance_claim_number, inspection_datetime,
+			assigned_user_id, adjuster_name, adjuster_phone,
 			meeting_datetime, created_by_user_id, created_at, updated_at
 	`
 
@@ -306,6 +392,15 @@ func (s *ClaimService) UpdateClaimStatus(claimID string, organizationID string, 
 		&claim.IncidentDate,
 		&claim.Status,
 		&claim.FiledAt,
+		&claim.Description,
+		&claim.CurrentStep,
+		&claim.StepsCompleted,
+		&claim.ContractorEmail,
+		&claim.ContractorName,
+		&claim.ContractorPhotosUploadedAt,
+		&claim.DeductibleComparisonResult,
+		&claim.InsuranceClaimNumber,
+		&claim.InspectionDatetime,
 		&claim.AssignedUserID,
 		&claim.AdjusterName,
 		&claim.AdjusterPhone,
@@ -416,7 +511,10 @@ func (s *ClaimService) UpdateEstimate(
 	// Fetch claim with policy
 	query := `
 		SELECT c.id, c.property_id, c.policy_id, c.claim_number, c.loss_type, c.incident_date,
-			c.status, c.filed_at, c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
+			c.status, c.filed_at, c.description, c.current_step, c.steps_completed,
+			c.contractor_email, c.contractor_name, c.contractor_photos_uploaded_at,
+			c.deductible_comparison_result, c.insurance_claim_number, c.inspection_datetime,
+			c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
 			c.meeting_datetime, c.created_by_user_id, c.created_at, c.updated_at,
 			c.contractor_estimate_total, p.deductible_calculated
 		FROM claims c
@@ -435,6 +533,15 @@ func (s *ClaimService) UpdateEstimate(
 		&claim.IncidentDate,
 		&claim.Status,
 		&claim.FiledAt,
+		&claim.Description,
+		&claim.CurrentStep,
+		&claim.StepsCompleted,
+		&claim.ContractorEmail,
+		&claim.ContractorName,
+		&claim.ContractorPhotosUploadedAt,
+		&claim.DeductibleComparisonResult,
+		&claim.InsuranceClaimNumber,
+		&claim.InspectionDatetime,
 		&claim.AssignedUserID,
 		&claim.AdjusterName,
 		&claim.AdjusterPhone,
