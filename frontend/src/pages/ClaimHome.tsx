@@ -77,7 +77,7 @@ export default function ClaimHome() {
               {getDamageTypeLabel(claim.loss_type)}
             </h1>
             <p className="mt-1 text-slate">
-              {claim.property?.property_address || 'Property'}
+              {claim.property?.legal_address || 'Property'}
             </p>
           </div>
           <button

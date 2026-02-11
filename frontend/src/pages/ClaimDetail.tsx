@@ -7,7 +7,7 @@ import ClaimStatusBadge from '../components/ClaimStatusBadge'
 import MeetingsSection from '../components/MeetingsSection'
 import PaymentsSection from '../components/PaymentsSection'
 import RCVDemandSection from '../components/RCVDemandSection'
-import { Claim, Property, Policy } from '../types/claim'
+import { Claim, Policy } from '../types/claim'
 
 interface Document {
   id: string

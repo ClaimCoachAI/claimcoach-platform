@@ -1031,7 +1031,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
               <div className="step-main">
                 <div
                   className="step-header"
-                  onClick={() => setActiveStep(isExpanded ? 0 : stepNum)}
+                  onClick={() => setActiveStep((isExpanded ? 0 : stepNum) as 1 | 2 | 3 | 4 | 5 | 6)}
                   role="button"
                   tabIndex={0}
                 >

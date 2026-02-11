@@ -123,6 +123,11 @@ type ScopeSheet struct {
 	AdditionalItemsOther *string `json:"additional_items_other" db:"additional_items_other"`
 	Notes                *string `json:"notes" db:"notes"`
 
+	// Draft fields
+	IsDraft      bool       `json:"is_draft" db:"is_draft"`
+	DraftStep    *int       `json:"draft_step,omitempty" db:"draft_step"`
+	DraftSavedAt *time.Time `json:"draft_saved_at,omitempty" db:"draft_saved_at"`
+
 	SubmittedAt *time.Time `json:"submitted_at" db:"submitted_at"`
 	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at" db:"updated_at"`

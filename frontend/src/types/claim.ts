@@ -33,6 +33,7 @@ export interface Policy {
   deductible_calculated?: number
   effective_date?: string
   expiration_date?: string
+  policy_pdf_url?: string
 }
 
 export interface Claim {
