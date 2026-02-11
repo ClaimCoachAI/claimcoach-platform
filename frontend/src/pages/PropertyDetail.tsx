@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import api from '../lib/api'
 import Layout from '../components/Layout'
@@ -49,7 +49,9 @@ interface Claim {
 export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [isClaimModalOpen, setIsClaimModalOpen] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const {
     data: property,
@@ -95,6 +97,27 @@ export default function PropertyDetail() {
     },
     enabled: !!id,
   })
+
+  const deletePolicyMutation = useMutation({
+    mutationFn: async () => {
+      await api.delete(`/api/properties/${id}/policy`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['policy', id] })
+      queryClient.invalidateQueries({ queryKey: ['property', id] })
+      queryClient.invalidateQueries({ queryKey: ['properties'] })
+      refetchPolicy()
+    },
+  })
+
+  const handleDeletePolicy = () => {
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDelete = () => {
+    deletePolicyMutation.mutate()
+    setShowDeleteConfirm(false)
+  }
 
   const getStatusStyle = (status: string) => {
     switch (status) {
@@ -303,7 +326,44 @@ export default function PropertyDetail() {
                   </div>
 
                   <div className="pt-4 border-t border-white/60">
-                    <h4 className="text-sm font-medium text-navy mb-4">Update Policy</h4>
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-sm font-medium text-navy">Update Policy</h4>
+                      <button
+                        onClick={handleDeletePolicy}
+                        disabled={deletePolicyMutation.isPending}
+                        title="Delete Policy"
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {deletePolicyMutation.isPending ? (
+                          <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        ) : (
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                    {deletePolicyMutation.isError && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-700">
+                          {(deletePolicyMutation.error as any)?.response?.data?.error ||
+                            'Failed to delete policy'}
+                        </p>
+                      </div>
+                    )}
                     <AddPolicyForm
                       propertyId={property.id}
                       existingPolicy={policy}
@@ -369,6 +429,90 @@ export default function PropertyDetail() {
         onSuccess={handleClaimSuccess}
         preselectedPropertyId={property.id}
       />
+
+      {/* Delete Policy Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 overflow-y-auto animate-fade-in">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div
+              className="fixed inset-0 transition-opacity bg-navy/20 backdrop-blur-sm"
+              onClick={() => setShowDeleteConfirm(false)}
+            />
+
+            <div className="inline-block w-full max-w-md my-8 overflow-hidden text-left align-middle transition-all transform glass-card-strong shadow-2xl rounded-3xl animate-scale-in">
+              <div className="px-8 py-6">
+                <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 rounded-2xl bg-red-50">
+                  <svg
+                    className="w-8 h-8 text-red-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </div>
+
+                <h3 className="text-2xl font-display font-bold text-navy text-center mb-2">
+                  Delete Policy?
+                </h3>
+                <p className="text-sm text-slate text-center mb-6">
+                  Are you sure you want to delete this insurance policy? This action cannot be undone and will remove all policy information.
+                </p>
+
+                {policy && (
+                  <div className="mb-6 p-4 rounded-xl bg-red-50/50 border border-red-100">
+                    <div className="flex items-start gap-3">
+                      <svg
+                        className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                      <div>
+                        <p className="text-sm font-medium text-red-900 mb-1">
+                          {policy.carrier_name}
+                        </p>
+                        <p className="text-xs text-red-700">
+                          Policy #{policy.policy_number || 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 btn-secondary px-6 py-3 rounded-xl text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDelete}
+                    className="flex-1 px-6 py-3 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors"
+                  >
+                    Delete Policy
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }

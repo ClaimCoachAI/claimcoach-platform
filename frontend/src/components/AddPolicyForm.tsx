@@ -92,10 +92,19 @@ export default function AddPolicyForm({
       return response.data
     },
     onSuccess: () => {
+      // Invalidate all relevant queries to refresh cached data
       queryClient.invalidateQueries({ queryKey: ['policy', propertyId] })
       queryClient.invalidateQueries({ queryKey: ['property', propertyId] })
       queryClient.invalidateQueries({ queryKey: ['properties'] })
-      onSuccess()
+
+      // Wait a bit to ensure backend has committed the transaction
+      setTimeout(() => {
+        onSuccess()
+      }, 100)
+    },
+    onError: (error: any) => {
+      console.error('Policy creation error:', error)
+      console.error('Error response:', error?.response?.data)
     },
   })
 
@@ -359,9 +368,10 @@ export default function AddPolicyForm({
               </h3>
               <div className="mt-2 text-sm text-red-700">
                 <p>
-                  {mutation.error instanceof Error
-                    ? mutation.error.message
-                    : 'An error occurred while saving the policy'}
+                  {(mutation.error as any)?.response?.data?.error ||
+                    (mutation.error instanceof Error
+                      ? mutation.error.message
+                      : 'An error occurred while saving the policy')}
                 </p>
               </div>
             </div>

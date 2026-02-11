@@ -142,6 +142,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 		api.POST("/properties/:id/policy", policyHandler.Create)
 		api.GET("/properties/:id/policy", policyHandler.Get)
+		api.DELETE("/properties/:id/policy", policyHandler.Delete)
 
 		// Claim routes
 		claimHandler := handlers.NewClaimHandler(claimService)

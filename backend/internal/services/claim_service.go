@@ -31,9 +31,9 @@ func NewClaimService(db *sql.DB, propertyService *PropertyService) *ClaimService
 }
 
 type CreateClaimInput struct {
-	PropertyID   string    `json:"property_id" binding:"required"`
-	LossType     string    `json:"loss_type" binding:"required,oneof=fire water wind hail other"`
-	IncidentDate time.Time `json:"incident_date" binding:"required"`
+	PropertyID   string      `json:"property_id" binding:"required"`
+	LossType     string      `json:"loss_type" binding:"required,oneof=fire water wind hail other"`
+	IncidentDate models.Date `json:"incident_date" binding:"required"`
 }
 
 type UpdateClaimStatusInput struct {
@@ -67,7 +67,7 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 		PropertyID:      input.PropertyID,
 		PolicyID:        policyID,
 		LossType:        input.LossType,
-		IncidentDate:    input.IncidentDate,
+		IncidentDate:    input.IncidentDate.ToTime(),
 		Status:          "draft",
 		CreatedByUserID: userID,
 		CreatedAt:       time.Now(),

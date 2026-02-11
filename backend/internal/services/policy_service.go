@@ -22,15 +22,15 @@ func NewPolicyService(db *sql.DB, propertyService *PropertyService) *PolicyServi
 }
 
 type UpsertPolicyInput struct {
-	CarrierName     string     `json:"carrier_name" binding:"required"`
-	PolicyNumber    *string    `json:"policy_number"`
-	CoverageALimit  *float64   `json:"coverage_a_limit"`
-	CoverageBLimit  *float64   `json:"coverage_b_limit"`
-	CoverageDLimit  *float64   `json:"coverage_d_limit"`
-	DeductibleType  string     `json:"deductible_type" binding:"required,oneof=percentage fixed"`
-	DeductibleValue float64    `json:"deductible_value" binding:"required,min=0"`
-	EffectiveDate   *time.Time `json:"effective_date"`
-	ExpirationDate  *time.Time `json:"expiration_date"`
+	CarrierName     string       `json:"carrier_name" binding:"required"`
+	PolicyNumber    *string      `json:"policy_number"`
+	CoverageALimit  *float64     `json:"coverage_a_limit"`
+	CoverageBLimit  *float64     `json:"coverage_b_limit"`
+	CoverageDLimit  *float64     `json:"coverage_d_limit"`
+	DeductibleType  string       `json:"deductible_type" binding:"required,oneof=percentage fixed"`
+	DeductibleValue float64      `json:"deductible_value" binding:"required,min=0"`
+	EffectiveDate   *models.Date `json:"effective_date"`
+	ExpirationDate  *models.Date `json:"expiration_date"`
 }
 
 func (s *PolicyService) calculateDeductible(deductibleType string, deductibleValue float64, coverageALimit *float64) float64 {
@@ -71,6 +71,17 @@ func (s *PolicyService) UpsertPolicy(input UpsertPolicyInput, propertyID string,
 	}
 
 	now := time.Now()
+
+	// Convert date pointers for database
+	var effectiveDate, expirationDate *time.Time
+	if input.EffectiveDate != nil {
+		t := input.EffectiveDate.ToTime()
+		effectiveDate = &t
+	}
+	if input.ExpirationDate != nil {
+		t := input.ExpirationDate.ToTime()
+		expirationDate = &t
+	}
 
 	// Upsert policy using ON CONFLICT
 	query := `
@@ -116,8 +127,8 @@ func (s *PolicyService) UpsertPolicy(input UpsertPolicyInput, propertyID string,
 		input.DeductibleValue,
 		deductibleCalculated,
 		nil, // policy_pdf_url
-		input.EffectiveDate,
-		input.ExpirationDate,
+		effectiveDate,
+		expirationDate,
 		now,
 		now,
 	).Scan(
@@ -202,4 +213,47 @@ func (s *PolicyService) GetPolicy(propertyID string, organizationID string) (*mo
 	}
 
 	return &policy, nil
+}
+
+func (s *PolicyService) DeletePolicy(propertyID string, organizationID string) error {
+	// First, verify the property belongs to the organization
+	_, err := s.propertyService.GetProperty(propertyID, organizationID)
+	if err != nil {
+		return err
+	}
+
+	// Check if there are any claims associated with this policy
+	var claimCount int
+	countQuery := `
+		SELECT COUNT(*)
+		FROM claims c
+		JOIN insurance_policies p ON p.id = c.policy_id
+		WHERE p.property_id = $1
+	`
+	err = s.db.QueryRow(countQuery, propertyID).Scan(&claimCount)
+	if err != nil {
+		return fmt.Errorf("failed to check for associated claims: %w", err)
+	}
+
+	if claimCount > 0 {
+		return fmt.Errorf("cannot delete policy with existing claims")
+	}
+
+	// Delete the policy
+	deleteQuery := `DELETE FROM insurance_policies WHERE property_id = $1`
+	result, err := s.db.Exec(deleteQuery, propertyID)
+	if err != nil {
+		return fmt.Errorf("failed to delete policy: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("policy not found")
+	}
+
+	return nil
 }
