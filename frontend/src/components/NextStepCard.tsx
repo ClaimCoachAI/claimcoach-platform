@@ -11,7 +11,7 @@ interface NextStepCardProps {
 
 export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
   const [showLearnMore, setShowLearnMore] = useState(false)
-  const [showForm, setShowForm] = useState(true) // Auto-show form on load
+  const showForm = true // Auto-show form on load
   const step = getStepDefinition(stepNumber)
   const queryClient = useQueryClient()
 

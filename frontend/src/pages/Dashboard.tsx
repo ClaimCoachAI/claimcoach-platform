@@ -28,7 +28,7 @@ export default function Dashboard() {
     if (searchQuery.trim()) {
       return properties.filter(
         (property) =>
-          property.property_address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          property.legal_address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           property.owner_entity_name?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     }

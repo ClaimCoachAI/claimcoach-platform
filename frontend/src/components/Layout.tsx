@@ -17,13 +17,8 @@ export default function Layout({ children }: LayoutProps) {
     navigate('/login')
   }
 
-  const isActive = (path: string) => {
-    return location.pathname === path
-  }
-
   const getBreadcrumb = () => {
     const path = location.pathname
-    const parts = path.split('/').filter(Boolean)
 
     if (path === '/dashboard') return null
     if (path === '/properties') return 'Properties'
