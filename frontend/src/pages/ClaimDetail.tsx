@@ -7,43 +7,7 @@ import ClaimStatusBadge from '../components/ClaimStatusBadge'
 import MeetingsSection from '../components/MeetingsSection'
 import PaymentsSection from '../components/PaymentsSection'
 import RCVDemandSection from '../components/RCVDemandSection'
-
-interface Property {
-  id: string
-  nickname: string
-  legal_address: string
-  owner_entity_name: string
-}
-
-interface Policy {
-  id: string
-  carrier_name: string
-  policy_number?: string
-  coverage_a_limit?: number
-  coverage_b_limit?: number
-  coverage_d_limit?: number
-  deductible_type?: 'percentage' | 'fixed'
-  deductible_value?: number
-  deductible_calculated?: number
-  effective_date?: string
-  expiration_date?: string
-}
-
-interface Claim {
-  id: string
-  claim_number: string | null
-  property_id: string
-  property?: Property
-  policy?: Policy
-  loss_type: string
-  status: string
-  incident_date: string
-  filed_at?: string
-  description?: string
-  contractor_estimate_total?: number
-  created_at: string
-  updated_at: string
-}
+import { Claim, Property, Policy } from '../types/claim'
 
 interface Document {
   id: string

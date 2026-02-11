@@ -1,20 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
-
-interface Policy {
-  id: string
-  property_id: string
-  carrier_name: string
-  policy_number?: string
-  coverage_a_limit?: number
-  coverage_b_limit?: number
-  coverage_d_limit?: number
-  deductible_type?: 'percentage' | 'fixed'
-  deductible_value?: number
-  effective_date?: string
-  expiration_date?: string
-}
+import { Policy } from '../types/claim'
 
 interface AddPolicyFormProps {
   propertyId: string
@@ -111,6 +98,36 @@ export default function AddPolicyForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     mutation.mutate(formData)
+  }
+
+  // Helper function to parse backend validation errors into user-friendly messages
+  const getErrorMessage = (error: any): string => {
+    const backendError = error?.response?.data?.error
+
+    if (!backendError) {
+      return error instanceof Error ? error.message : 'An error occurred while saving the policy'
+    }
+
+    // Parse validation errors
+    if (backendError.includes('DeductibleValue')) {
+      if (backendError.includes('required')) {
+        return 'Deductible Value is required. Please enter a value.'
+      }
+      if (backendError.includes('min')) {
+        return 'Deductible Value must be 0 or greater.'
+      }
+    }
+
+    if (backendError.includes('DeductibleType')) {
+      return 'Deductible Type is required. Please select either Percentage or Fixed Amount.'
+    }
+
+    if (backendError.includes('CarrierName')) {
+      return 'Insurance Carrier is required. Please enter the carrier name.'
+    }
+
+    // Return the backend error if we can't parse it
+    return backendError
   }
 
   const handleChange = (
@@ -236,11 +253,12 @@ export default function AddPolicyForm({
             htmlFor="deductible_type"
             className="block text-sm font-medium text-gray-700"
           >
-            Deductible Type
+            Deductible Type <span className="text-red-500">*</span>
           </label>
           <select
             id="deductible_type"
             name="deductible_type"
+            required
             value={formData.deductible_type}
             onChange={handleChange}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
@@ -255,7 +273,7 @@ export default function AddPolicyForm({
             htmlFor="deductible_value"
             className="block text-sm font-medium text-gray-700"
           >
-            Deductible Value
+            Deductible Value <span className="text-red-500">*</span>
           </label>
           <div className="mt-1 relative rounded-md shadow-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -267,11 +285,13 @@ export default function AddPolicyForm({
               type="number"
               id="deductible_value"
               name="deductible_value"
+              required
               value={formData.deductible_value}
               onChange={handleChange}
               className="block w-full pl-7 pr-3 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
               placeholder="0"
               step={formData.deductible_type === 'percentage' ? '0.1' : '1'}
+              min="0"
             />
           </div>
         </div>
@@ -367,12 +387,7 @@ export default function AddPolicyForm({
                 Error saving policy
               </h3>
               <div className="mt-2 text-sm text-red-700">
-                <p>
-                  {(mutation.error as any)?.response?.data?.error ||
-                    (mutation.error instanceof Error
-                      ? mutation.error.message
-                      : 'An error occurred while saving the policy')}
-                </p>
+                <p>{getErrorMessage(mutation.error)}</p>
               </div>
             </div>
           </div>

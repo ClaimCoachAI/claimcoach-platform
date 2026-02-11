@@ -6,45 +6,7 @@ import Layout from '../components/Layout'
 import AddPolicyForm from '../components/AddPolicyForm'
 import ReportIncidentModal from '../components/ReportIncidentModal'
 import ClaimCard from '../components/ClaimCard'
-
-interface Property {
-  id: string
-  nickname: string
-  legal_address: string
-  status: string
-  owner_entity_name: string
-  created_at: string
-  updated_at: string
-}
-
-interface Policy {
-  id: string
-  property_id: string
-  carrier_name: string
-  policy_number?: string
-  coverage_a_limit?: number
-  coverage_b_limit?: number
-  coverage_d_limit?: number
-  deductible_type?: 'percentage' | 'fixed'
-  deductible_value?: number
-  effective_date?: string
-  expiration_date?: string
-  created_at: string
-  updated_at: string
-}
-
-interface Claim {
-  id: string
-  claim_number: string | null
-  property_id: string
-  property?: {
-    nickname: string
-    legal_address: string
-  }
-  loss_type: string
-  status: string
-  incident_date: string
-}
+import { Property, Policy, Claim } from '../types/claim'
 
 export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>()
