@@ -643,3 +643,159 @@ func (s *ClaimService) logActivity(claimID string, userID *string, activityType 
 func (s *ClaimService) GetDB() *sql.DB {
 	return s.db
 }
+
+type UpdateClaimStepInput struct {
+	CurrentStep                *int      `json:"current_step"`
+	StepsCompleted             *[]int    `json:"steps_completed"`
+	ContractorEmail            *string   `json:"contractor_email"`
+	ContractorName             *string   `json:"contractor_name"`
+	ContractorEstimateTotal    *float64  `json:"contractor_estimate_total"`
+	DeductibleComparisonResult *string   `json:"deductible_comparison_result" binding:"omitempty,oneof=worth_filing not_worth_filing"`
+	InsuranceClaimNumber       *string   `json:"insurance_claim_number"`
+	AdjusterName               *string   `json:"adjuster_name"`
+	AdjusterPhone              *string   `json:"adjuster_phone"`
+	InspectionDatetime         *string   `json:"inspection_datetime"`
+	Status                     *string   `json:"status"`
+}
+
+func (s *ClaimService) UpdateClaimStep(claimID string, organizationID string, input UpdateClaimStepInput) (*models.Claim, error) {
+	// Verify claim belongs to organization
+	_, err := s.GetClaim(claimID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build dynamic update query
+	query := `UPDATE claims SET updated_at = $1`
+	args := []interface{}{time.Now()}
+	paramIndex := 2
+
+	if input.CurrentStep != nil {
+		query += fmt.Sprintf(", current_step = $%d", paramIndex)
+		args = append(args, *input.CurrentStep)
+		paramIndex++
+	}
+	if input.StepsCompleted != nil {
+		stepsJSON, _ := json.Marshal(*input.StepsCompleted)
+		query += fmt.Sprintf(", steps_completed = $%d", paramIndex)
+		args = append(args, stepsJSON)
+		paramIndex++
+	}
+	if input.ContractorEmail != nil {
+		query += fmt.Sprintf(", contractor_email = $%d", paramIndex)
+		args = append(args, *input.ContractorEmail)
+		paramIndex++
+	}
+	if input.ContractorName != nil {
+		query += fmt.Sprintf(", contractor_name = $%d", paramIndex)
+		args = append(args, *input.ContractorName)
+		paramIndex++
+	}
+	if input.ContractorEstimateTotal != nil {
+		query += fmt.Sprintf(", contractor_estimate_total = $%d", paramIndex)
+		args = append(args, *input.ContractorEstimateTotal)
+		paramIndex++
+	}
+	if input.DeductibleComparisonResult != nil {
+		query += fmt.Sprintf(", deductible_comparison_result = $%d", paramIndex)
+		args = append(args, *input.DeductibleComparisonResult)
+		paramIndex++
+	}
+	if input.InsuranceClaimNumber != nil {
+		query += fmt.Sprintf(", insurance_claim_number = $%d", paramIndex)
+		args = append(args, *input.InsuranceClaimNumber)
+		paramIndex++
+	}
+	if input.AdjusterName != nil {
+		query += fmt.Sprintf(", adjuster_name = $%d", paramIndex)
+		args = append(args, *input.AdjusterName)
+		paramIndex++
+	}
+	if input.AdjusterPhone != nil {
+		query += fmt.Sprintf(", adjuster_phone = $%d", paramIndex)
+		args = append(args, *input.AdjusterPhone)
+		paramIndex++
+	}
+	if input.InspectionDatetime != nil {
+		query += fmt.Sprintf(", inspection_datetime = $%d", paramIndex)
+		args = append(args, *input.InspectionDatetime)
+		paramIndex++
+	}
+	if input.Status != nil {
+		query += fmt.Sprintf(", status = $%d", paramIndex)
+		args = append(args, *input.Status)
+		paramIndex++
+	}
+
+	query += fmt.Sprintf(" WHERE id = $%d", paramIndex)
+	args = append(args, claimID)
+	paramIndex++
+
+	query += ` RETURNING id, property_id, policy_id, claim_number, loss_type, incident_date,
+		status, filed_at, description, contractor_estimate_total, current_step, steps_completed,
+		contractor_email, contractor_name, contractor_photos_uploaded_at,
+		deductible_comparison_result, insurance_claim_number, inspection_datetime,
+		assigned_user_id, adjuster_name, adjuster_phone,
+		meeting_datetime, created_by_user_id, created_at, updated_at`
+
+	var claim models.Claim
+	err = s.db.QueryRow(query, args...).Scan(
+		&claim.ID,
+		&claim.PropertyID,
+		&claim.PolicyID,
+		&claim.ClaimNumber,
+		&claim.LossType,
+		&claim.IncidentDate,
+		&claim.Status,
+		&claim.FiledAt,
+		&claim.Description,
+		&claim.ContractorEstimateTotal,
+		&claim.CurrentStep,
+		&claim.StepsCompleted,
+		&claim.ContractorEmail,
+		&claim.ContractorName,
+		&claim.ContractorPhotosUploadedAt,
+		&claim.DeductibleComparisonResult,
+		&claim.InsuranceClaimNumber,
+		&claim.InspectionDatetime,
+		&claim.AssignedUserID,
+		&claim.AdjusterName,
+		&claim.AdjusterPhone,
+		&claim.MeetingDatetime,
+		&claim.CreatedByUserID,
+		&claim.CreatedAt,
+		&claim.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to update claim step: %w", err)
+	}
+
+	return &claim, nil
+}
+
+func (s *ClaimService) DeleteClaim(claimID string, organizationID string) error {
+	// Verify claim belongs to organization
+	_, err := s.GetClaim(claimID, organizationID)
+	if err != nil {
+		return err
+	}
+
+	// Delete the claim (this will cascade delete related records if foreign keys are set up)
+	query := `DELETE FROM claims WHERE id = $1`
+	result, err := s.db.Exec(query, claimID)
+	if err != nil {
+		return fmt.Errorf("failed to delete claim: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("claim not found")
+	}
+
+	return nil
+}

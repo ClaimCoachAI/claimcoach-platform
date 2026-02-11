@@ -6,6 +6,7 @@ import Layout from '../components/Layout'
 import AddPolicyForm from '../components/AddPolicyForm'
 import ReportIncidentModal from '../components/ReportIncidentModal'
 import ClaimCard from '../components/ClaimCard'
+import { usePolicyPDFUpload } from '../hooks/usePolicyPDFUpload'
 import { Property, Policy, Claim } from '../types/claim'
 
 export default function PropertyDetail() {
@@ -14,6 +15,7 @@ export default function PropertyDetail() {
   const queryClient = useQueryClient()
   const [isClaimModalOpen, setIsClaimModalOpen] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const { uploadPDF, isUploading, uploadError } = usePolicyPDFUpload(id || '')
 
   const {
     data: property,
@@ -231,6 +233,63 @@ export default function PropertyDetail() {
                       </svg>
                       Policy on file
                     </p>
+                  </div>
+
+                  {/* Policy PDF Upload/View */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate mb-2">Policy Document</label>
+                    {policy.policy_pdf_url ? (
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-slate/5 border border-slate/10">
+                        <div className="flex items-center space-x-2">
+                          <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                          </svg>
+                          <span className="text-sm text-navy font-medium">Policy.pdf</span>
+                        </div>
+                        <a
+                          href={policy.policy_pdf_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-teal hover:text-teal-dark font-medium"
+                        >
+                          View →
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-slate/5 border border-slate/10">
+                        <p className="text-sm text-slate mb-3">Upload your insurance policy PDF</p>
+                        {uploadError && (
+                          <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg">
+                            <p className="text-xs text-red-700">
+                              {(uploadError as any)?.response?.data?.error || 'Failed to upload PDF'}
+                            </p>
+                          </div>
+                        )}
+                        <label className={`btn-secondary px-4 py-2 rounded-xl text-sm font-medium cursor-pointer inline-block ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                          <input
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            className="hidden"
+                            disabled={isUploading}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                if (file.type !== 'application/pdf') {
+                                  alert('Please select a PDF file')
+                                  return
+                                }
+                                if (file.size > 10 * 1024 * 1024) {
+                                  alert('File size must be less than 10MB')
+                                  return
+                                }
+                                uploadPDF(file)
+                              }
+                            }}
+                          />
+                          {isUploading ? 'Uploading...' : 'Choose PDF File'}
+                        </label>
+                      </div>
+                    )}
                   </div>
 
                   <div>

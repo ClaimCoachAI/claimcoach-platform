@@ -78,6 +78,35 @@ func (s *SupabaseStorage) DeleteFile(filePath string) error {
 	return nil
 }
 
+// GeneratePolicyPDFUploadURL creates a presigned URL for uploading a policy PDF
+func (s *SupabaseStorage) GeneratePolicyPDFUploadURL(organizationID, propertyID, fileName string) (string, string, error) {
+	// Generate unique file path to prevent collisions
+	fileExt := filepath.Ext(fileName)
+	baseName := fileName
+	if len(fileExt) > 0 {
+		baseName = fileName[:len(fileName)-len(fileExt)]
+	}
+	if baseName == "" {
+		baseName = "policy"
+	}
+	uniqueFileName := fmt.Sprintf("%s_%s%s", baseName, uuid.New().String()[:8], fileExt)
+
+	// Build storage path: organizations/{org-id}/properties/{property-id}/policy/{filename}
+	filePath := fmt.Sprintf("organizations/%s/properties/%s/policy/%s",
+		organizationID,
+		propertyID,
+		uniqueFileName,
+	)
+
+	// Generate presigned upload URL
+	response, err := s.client.CreateSignedUploadUrl(BucketName, filePath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate upload URL: %w", err)
+	}
+
+	return response.Url, filePath, nil
+}
+
 // GetPublicURL returns the public URL for a file (if bucket is public)
 func (s *SupabaseStorage) GetPublicURL(filePath string) string {
 	response := s.client.GetPublicUrl(BucketName, filePath)

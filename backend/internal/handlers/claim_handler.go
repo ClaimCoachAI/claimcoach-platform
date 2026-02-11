@@ -229,3 +229,68 @@ func (h *ClaimHandler) PatchClaimEstimate(c *gin.Context) {
 		},
 	})
 }
+
+// UpdateClaimStep updates claim step progress
+// PATCH /api/claims/:id/step
+func (h *ClaimHandler) UpdateClaimStep(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	claimID := c.Param("id")
+
+	var input services.UpdateClaimStepInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	claim, err := h.service.UpdateClaimStep(claimID, user.OrganizationID, input)
+	if err != nil {
+		if err.Error() == "claim not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   "Claim not found",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to update claim step: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    claim,
+	})
+}
+
+// Delete deletes a claim
+// DELETE /api/claims/:id
+func (h *ClaimHandler) Delete(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	claimID := c.Param("id")
+
+	err := h.service.DeleteClaim(claimID, user.OrganizationID)
+	if err != nil {
+		if err.Error() == "claim not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   "Claim not found",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to delete claim: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Claim deleted successfully",
+	})
+}

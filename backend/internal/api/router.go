@@ -137,12 +137,14 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.PATCH("/properties/:id", propertyHandler.Update)
 
 		// Policy routes (use same param name :id to avoid gin routing conflicts)
-		policyService := services.NewPolicyService(db, propertyService)
+		policyService := services.NewPolicyService(db, storageClient, propertyService)
 		policyHandler := handlers.NewPolicyHandler(policyService)
 
 		api.POST("/properties/:id/policy", policyHandler.Create)
 		api.GET("/properties/:id/policy", policyHandler.Get)
 		api.DELETE("/properties/:id/policy", policyHandler.Delete)
+		api.POST("/properties/:id/policy/pdf/upload-url", policyHandler.RequestPDFUploadURL)
+		api.POST("/properties/:id/policy/pdf/confirm", policyHandler.ConfirmPDFUpload)
 
 		// Claim routes
 		claimHandler := handlers.NewClaimHandler(claimService)
@@ -150,7 +152,9 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.POST("/claims", claimHandler.Create)
 		api.GET("/claims", claimHandler.List)
 		api.GET("/claims/:id", claimHandler.Get)
+		api.DELETE("/claims/:id", claimHandler.Delete)
 		api.PATCH("/claims/:id/status", claimHandler.UpdateStatus)
+		api.PATCH("/claims/:id/step", claimHandler.UpdateClaimStep)
 		api.PATCH("/claims/:id/estimate", claimHandler.PatchClaimEstimate)
 		api.GET("/claims/:id/activities", claimHandler.GetActivities)
 

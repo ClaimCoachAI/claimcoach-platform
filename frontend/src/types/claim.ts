@@ -1,4 +1,4 @@
-export type LossType = 'fire' | 'water' | 'wind' | 'hail' | 'other'
+export type LossType = 'water' | 'hail'
 export type ClaimStep = 1 | 2 | 3 | 4 | 5 | 6
 export type DeductibleResult = 'worth_filing' | 'not_worth_filing'
 

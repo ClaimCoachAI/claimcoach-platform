@@ -141,7 +141,7 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 	linkURL := fmt.Sprintf("%s/upload/%s", s.cfg.FrontendURL, token)
 
 	// Step 8: Get claim and property data for email
-	claim, err := s.claimService.GetClaim(claimID, "")
+	claim, err := s.claimService.GetClaim(claimID, organizationID)
 	if err != nil {
 		// Log error but don't fail magic link creation
 		fmt.Printf("Warning: failed to get claim for email: %v\n", err)

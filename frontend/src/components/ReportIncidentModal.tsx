@@ -46,6 +46,8 @@ export default function ReportIncidentModal({
       const payload = {
         ...data,
         description: data.description || undefined,
+        current_step: 2,
+        steps_completed: [1],
       }
       const response = await api.post('/api/claims', payload)
       return response.data
@@ -207,11 +209,8 @@ export default function ReportIncidentModal({
                   className="glass-input w-full px-4 py-3 rounded-xl text-navy cursor-pointer"
                 >
                   <option value="">Select loss type</option>
-                  <option value="fire">Fire</option>
                   <option value="water">Water</option>
-                  <option value="wind">Wind</option>
                   <option value="hail">Hail</option>
-                  <option value="other">Other</option>
                 </select>
               </div>
 
