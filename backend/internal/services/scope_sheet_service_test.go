@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -422,9 +423,52 @@ func TestSaveScopeDraft_InvalidToken(t *testing.T) {
 	ctx := context.Background()
 	_, err := service.SaveScopeDraft(ctx, "invalid-token-123", draft)
 
-	// Assert
+	// Assert - check for sentinel error
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "token not found")
+	assert.True(t, errors.Is(err, ErrTokenInvalid), "Expected ErrTokenInvalid")
+}
+
+func TestSaveScopeDraft_InvalidDraftStep(t *testing.T) {
+	// Setup
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create test data
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	policyID := createTestPolicy(t, db, propertyID, 10000.0)
+	claimID := createTestClaim(t, db, propertyID, policyID, orgID, userID)
+
+	// Create magic link
+	magicLinkToken := createTestMagicLink(t, db, claimID)
+
+	// Create service
+	service := NewScopeSheetService(db)
+
+	// Test 1: draft_step = 0 (too low)
+	roofType := "asphalt_shingles"
+	invalidStep := 0
+	draft1 := &CreateScopeSheetInput{
+		RoofType:  &roofType,
+		DraftStep: &invalidStep,
+	}
+
+	ctx := context.Background()
+	_, err := service.SaveScopeDraft(ctx, magicLinkToken, draft1)
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, ErrInvalidDraftStep), "Expected ErrInvalidDraftStep for step 0")
+
+	// Test 2: draft_step = 11 (too high)
+	invalidStep2 := 11
+	draft2 := &CreateScopeSheetInput{
+		RoofType:  &roofType,
+		DraftStep: &invalidStep2,
+	}
+
+	_, err = service.SaveScopeDraft(ctx, magicLinkToken, draft2)
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, ErrInvalidDraftStep), "Expected ErrInvalidDraftStep for step 11")
 }
 
 func TestGetScopeDraft_Success(t *testing.T) {
@@ -492,10 +536,10 @@ func TestGetScopeDraft_NotFound(t *testing.T) {
 	ctx := context.Background()
 	retrieved, err := service.GetScopeDraft(ctx, magicLinkToken)
 
-	// Assert
+	// Assert - check for sentinel error
 	assert.Error(t, err)
 	assert.Nil(t, retrieved)
-	assert.Contains(t, err.Error(), "draft not found")
+	assert.True(t, errors.Is(err, ErrDraftNotFound), "Expected ErrDraftNotFound")
 }
 
 func TestGetScopeDraft_InvalidToken(t *testing.T) {
@@ -510,10 +554,10 @@ func TestGetScopeDraft_InvalidToken(t *testing.T) {
 	ctx := context.Background()
 	retrieved, err := service.GetScopeDraft(ctx, "invalid-token-456")
 
-	// Assert
+	// Assert - check for sentinel error
 	assert.Error(t, err)
 	assert.Nil(t, retrieved)
-	assert.Contains(t, err.Error(), "token not found")
+	assert.True(t, errors.Is(err, ErrTokenInvalid), "Expected ErrTokenInvalid")
 }
 
 // createTestMagicLink creates a test magic link and returns its token

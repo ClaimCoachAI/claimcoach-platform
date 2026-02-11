@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/claimcoach/backend/internal/models"
@@ -175,11 +176,20 @@ func (h *ScopeSheetHandler) SaveDraft(c *gin.Context) {
 	// Save the draft
 	scopeSheet, err := h.scopeSheetService.SaveScopeDraft(c.Request.Context(), token, &input)
 	if err != nil {
-		// Check for token errors
-		if err.Error() == "token not found or expired" {
+		// Check for token errors using errors.Is
+		if errors.Is(err, services.ErrTokenInvalid) {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"error":   "Invalid or expired magic link",
+			})
+			return
+		}
+
+		// Check for invalid draft step
+		if errors.Is(err, services.ErrInvalidDraftStep) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error":   "draft_step must be between 1 and 10",
 			})
 			return
 		}
@@ -205,8 +215,8 @@ func (h *ScopeSheetHandler) GetDraft(c *gin.Context) {
 	// Get the draft
 	scopeSheet, err := h.scopeSheetService.GetScopeDraft(c.Request.Context(), token)
 	if err != nil {
-		// Check for token errors
-		if err.Error() == "token not found or expired" {
+		// Check for token errors using errors.Is
+		if errors.Is(err, services.ErrTokenInvalid) {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"error":   "Invalid or expired magic link",
@@ -214,8 +224,8 @@ func (h *ScopeSheetHandler) GetDraft(c *gin.Context) {
 			return
 		}
 
-		// Check for draft not found
-		if err.Error() == "draft not found" {
+		// Check for draft not found using errors.Is
+		if errors.Is(err, services.ErrDraftNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"success": false,
 				"error":   "No draft exists for this claim",

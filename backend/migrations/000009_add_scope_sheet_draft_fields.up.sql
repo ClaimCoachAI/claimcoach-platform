@@ -4,8 +4,9 @@ ADD COLUMN is_draft BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN draft_step INTEGER CHECK (draft_step >= 1 AND draft_step <= 10),
 ADD COLUMN draft_saved_at TIMESTAMP;
 
--- Create index for efficient draft lookups
-CREATE INDEX idx_scope_sheets_draft ON scope_sheets(claim_id, is_draft) WHERE is_draft = true;
+-- Create UNIQUE partial index to ensure only one draft per claim
+-- This prevents race conditions and enforces the one-draft-per-claim business rule
+CREATE UNIQUE INDEX idx_scope_sheets_draft_unique ON scope_sheets(claim_id) WHERE is_draft = true;
 
 -- Add comment for clarity
 COMMENT ON COLUMN scope_sheets.is_draft IS 'True if this is a draft submission, false if finalized';
