@@ -51,11 +51,14 @@ export function useWizardState(token: string) {
           scopeData.roof_other_fascia_lf
         )
 
+        // Use draft_step if available, otherwise default to step 1
+        const currentStep = draft_step || 1
+
         // Determine completed steps based on draft_step
-        const completedSteps = Array.from({ length: draft_step - 1 }, (_, i) => i + 1)
+        const completedSteps = currentStep > 1 ? Array.from({ length: currentStep - 1 }, (_, i) => i + 1) : []
 
         setWizardState({
-          currentStep: draft_step,
+          currentStep,
           totalSteps: hasSecondaryRoof ? 10 : 9,
           hasSecondaryRoof,
           wizardData: scopeData as unknown as ScopeSheetData,
