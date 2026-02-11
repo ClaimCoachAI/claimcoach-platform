@@ -1,55 +1,40 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import Layout from '../components/Layout'
-import ClaimCard from '../components/ClaimCard'
-import ReportDamageModal from '../components/ReportDamageModal'
-import type { Claim } from '../types/claim'
+import PropertyCard from '../components/PropertyCard'
+import type { Property } from '../types/claim'
 
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [showCreateModal, setShowCreateModal] = useState(false)
+  const navigate = useNavigate()
 
   const {
-    data: claims,
+    data: properties,
     isLoading,
   } = useQuery({
-    queryKey: ['claims'],
+    queryKey: ['properties'],
     queryFn: async () => {
-      const response = await api.get('/api/claims')
-      return response.data.data as Claim[]
+      const response = await api.get('/api/properties')
+      return response.data.data as Property[]
     },
   })
 
-  // Filter and sort claims
-  const { activeClaims, closedClaims } = useMemo(() => {
-    if (!claims) return { activeClaims: [], closedClaims: [] }
+  // Filter properties
+  const filteredProperties = useMemo(() => {
+    if (!properties) return []
 
-    const filtered = searchQuery.trim()
-      ? claims.filter(
-          (claim) =>
-            claim.property?.legal_address?.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      : claims
+    if (searchQuery.trim()) {
+      return properties.filter(
+        (property) =>
+          property.property_address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          property.owner_entity_name?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    }
 
-    const active = filtered.filter((claim) => claim.status !== 'closed')
-    const closed = filtered.filter((claim) => claim.status === 'closed')
-
-    // Sort active claims: waiting for user action first
-    active.sort((a, b) => {
-      // Claims on current step (no waiting) come first
-      const aWaiting = a.contractor_email && !(a.steps_completed || []).includes(2)
-      const bWaiting = b.contractor_email && !(b.steps_completed || []).includes(2)
-
-      if (aWaiting && !bWaiting) return 1
-      if (!aWaiting && bWaiting) return -1
-
-      // Then sort by creation date (newest first)
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    })
-
-    return { activeClaims: active, closedClaims: closed }
-  }, [claims, searchQuery])
+    return properties
+  }, [properties, searchQuery])
 
   return (
     <Layout>
@@ -57,10 +42,10 @@ export default function Dashboard() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-display font-bold text-navy">Your Claims</h2>
+            <h2 className="text-3xl font-display font-bold text-navy">Your Properties</h2>
             <p className="mt-2 text-slate">
-              {claims
-                ? `${activeClaims.length} active • ${closedClaims.length} closed`
+              {properties
+                ? `${properties.length} ${properties.length === 1 ? 'property' : 'properties'}`
                 : 'Loading...'}
             </p>
           </div>
@@ -86,7 +71,7 @@ export default function Dashboard() {
             </div>
             <input
               type="text"
-              placeholder="Search claims..."
+              placeholder="Search properties..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-14 pr-4 py-4 bg-transparent text-navy placeholder-slate/50 focus:outline-none text-lg"
@@ -113,70 +98,26 @@ export default function Dashboard() {
           <div className="flex justify-center items-center py-20">
             <div className="text-center">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-teal border-t-transparent"></div>
-              <p className="mt-4 text-slate">Loading claims...</p>
+              <p className="mt-4 text-slate">Loading properties...</p>
             </div>
           </div>
         ) : (
           <>
-            {/* Active Claims */}
-            {activeClaims.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate">
-                  Active Claims ({activeClaims.length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {activeClaims.map((claim, index) => (
-                    <div
-                      key={claim.id}
-                      style={{ animationDelay: `${index * 50}ms` }}
-                    >
-                      <ClaimCard claim={claim} />
-                    </div>
-                  ))}
-                </div>
+            {/* Properties Grid */}
+            {filteredProperties.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProperties.map((property, index) => (
+                  <div
+                    key={property.id}
+                    style={{ animationDelay: `${index * 50}ms` }}
+                    className="animate-scale-in"
+                  >
+                    <PropertyCard property={property} />
+                  </div>
+                ))}
               </div>
-            )}
-
-            {/* Closed Claims */}
-            {closedClaims.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate">
-                  Closed Claims ({closedClaims.length})
-                </h3>
-                <button
-                  onClick={() => {/* Toggle expand */}}
-                  className="text-sm text-teal hover:text-teal-dark font-medium"
-                >
-                  View all →
-                </button>
-              </div>
-            )}
-
-            {/* Empty State */}
-            {activeClaims.length === 0 && closedClaims.length === 0 && !searchQuery && (
-              <div className="glass-card rounded-2xl p-12 text-center animate-scale-in">
-                <svg
-                  className="mx-auto h-16 w-16 text-slate/50"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                <h3 className="mt-4 text-xl font-display font-semibold text-navy">
-                  No claims yet
-                </h3>
-                <p className="mt-2 text-slate">Create your first claim to get started</p>
-              </div>
-            )}
-
-            {/* No Search Results */}
-            {activeClaims.length === 0 && closedClaims.length === 0 && searchQuery && (
+            ) : searchQuery ? (
+              // No Search Results
               <div className="glass-card rounded-2xl p-12 text-center animate-scale-in">
                 <svg
                   className="mx-auto h-16 w-16 text-slate/50"
@@ -192,9 +133,9 @@ export default function Dashboard() {
                   />
                 </svg>
                 <h3 className="mt-4 text-xl font-display font-semibold text-navy">
-                  No claims found
+                  No properties found
                 </h3>
-                <p className="mt-2 text-slate">No claims match your search for "{searchQuery}"</p>
+                <p className="mt-2 text-slate">No properties match your search for "{searchQuery}"</p>
                 <button
                   onClick={() => setSearchQuery('')}
                   className="mt-6 btn-secondary px-6 py-2 rounded-xl text-sm font-medium"
@@ -202,24 +143,36 @@ export default function Dashboard() {
                   Clear search
                 </button>
               </div>
+            ) : (
+              // Empty State
+              <div className="glass-card rounded-2xl p-12 text-center animate-scale-in">
+                <svg
+                  className="mx-auto h-16 w-16 text-slate/50"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                  />
+                </svg>
+                <h3 className="mt-4 text-xl font-display font-semibold text-navy">
+                  No properties yet
+                </h3>
+                <p className="mt-2 text-slate">Add your first property to get started</p>
+                <button
+                  onClick={() => navigate('/properties/new')}
+                  className="mt-6 btn-primary px-6 py-3 rounded-xl text-sm font-semibold"
+                >
+                  Add Property
+                </button>
+              </div>
             )}
           </>
         )}
-
-        {/* Floating Action Button */}
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-br from-teal to-teal-dark rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center text-white text-2xl z-50"
-          aria-label="Create new claim"
-        >
-          +
-        </button>
-
-        {/* Report Damage Modal */}
-        <ReportDamageModal
-          isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-        />
       </div>
     </Layout>
   )
