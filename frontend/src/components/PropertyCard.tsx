@@ -1,13 +1,8 @@
 import { useNavigate } from 'react-router-dom'
+import { Property } from '../types/claim'
 
 interface PropertyCardProps {
-  property: {
-    id: string
-    nickname: string
-    legal_address: string
-    status: string
-    owner_entity_name: string
-  }
+  property: Property
 }
 
 export default function PropertyCard({ property }: PropertyCardProps) {

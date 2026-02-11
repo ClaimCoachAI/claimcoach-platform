@@ -4,14 +4,7 @@ import api from '../lib/api'
 import Layout from '../components/Layout'
 import PropertyCard from '../components/PropertyCard'
 import AddPropertyModal from '../components/AddPropertyModal'
-
-interface Property {
-  id: string
-  nickname: string
-  legal_address: string
-  status: string
-  owner_entity_name: string
-}
+import { Property } from '../types/claim'
 
 export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false)

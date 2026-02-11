@@ -1,22 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
+import { Property } from '../types/claim'
 
 interface ReportIncidentModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
   preselectedPropertyId?: string
-}
-
-interface Property {
-  id: string
-  nickname: string
-  legal_address: string
-  policy?: {
-    policy_number: string
-    carrier: string
-  }
 }
 
 interface ClaimFormData {

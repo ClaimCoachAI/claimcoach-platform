@@ -1,19 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import ClaimStatusBadge from './ClaimStatusBadge'
+import { Claim } from '../types/claim'
 
 interface ClaimCardProps {
-  claim: {
-    id: string
-    claim_number: string | null
-    property_id: string
-    property?: {
-      nickname: string
-      legal_address: string
-    }
-    loss_type: string
-    status: string
-    incident_date: string
-  }
+  claim: Claim
 }
 
 export default function ClaimCard({ claim }: ClaimCardProps) {

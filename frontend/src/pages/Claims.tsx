@@ -4,24 +4,7 @@ import api from '../lib/api'
 import Layout from '../components/Layout'
 import ClaimCard from '../components/ClaimCard'
 import ReportIncidentModal from '../components/ReportIncidentModal'
-
-interface Claim {
-  id: string
-  claim_number: string | null
-  property_id: string
-  property?: {
-    nickname: string
-    legal_address: string
-  }
-  loss_type: string
-  status: string
-  incident_date: string
-}
-
-interface Property {
-  id: string
-  nickname: string
-}
+import { Claim, Property } from '../types/claim'
 
 export default function Claims() {
   const [isModalOpen, setIsModalOpen] = useState(false)

@@ -1,20 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
-
-interface Policy {
-  id: string
-  property_id: string
-  carrier_name: string
-  policy_number?: string
-  coverage_a_limit?: number
-  coverage_b_limit?: number
-  coverage_d_limit?: number
-  deductible_type?: 'percentage' | 'fixed'
-  deductible_value?: number
-  effective_date?: string
-  expiration_date?: string
-}
+import { Policy } from '../types/claim'
 
 interface AddPolicyFormProps {
   propertyId: string
