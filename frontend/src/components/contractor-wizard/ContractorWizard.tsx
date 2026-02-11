@@ -7,6 +7,7 @@ import Step3MainRoof from './Step3MainRoof'
 import Step4SecondaryRoof from './Step4SecondaryRoof'
 import { Step5FrontExterior, Step6RightExterior, Step7BackExterior, Step8LeftExterior } from './Step5678Exterior'
 import Step9Dimensions from './Step9Dimensions'
+import Step10Review from './Step10Review'
 import type { Claim } from '../../types/claim'
 
 interface ValidationResult {
@@ -75,18 +76,7 @@ export default function ContractorWizard({ token, validationResult }: Contractor
       case 9:
         return <Step9Dimensions {...stepProps} />
       case 10:
-        // TODO: Implement Step10Review
-        return (
-          <div className="min-h-screen flex items-center justify-center">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold text-navy mb-4">Review & Submit</h2>
-              <p className="text-slate mb-6">Review screen coming soon...</p>
-              <button onClick={goBack} className="btn-secondary px-6 py-3 rounded-xl">
-                Go Back
-              </button>
-            </div>
-          </div>
-        )
+        return <Step10Review {...stepProps} token={token} />
       default:
         return <Step1Welcome {...stepProps} claim={validationResult.claim!} />
     }
