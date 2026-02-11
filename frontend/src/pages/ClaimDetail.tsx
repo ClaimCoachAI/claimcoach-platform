@@ -35,12 +35,27 @@ interface Claim {
   property_id: string
   property?: Property
   policy?: Policy
-  loss_type: string
+  loss_type: 'water' | 'hail' // Restrict to only water and hail
   status: string
   incident_date: string
   filed_at?: string
   description?: string
   contractor_estimate_total?: number
+
+  // NEW: Step tracking
+  current_step: 1 | 2 | 3 | 4 | 5 | 6
+  steps_completed: number[]
+
+  // NEW: Step-specific data
+  contractor_email?: string
+  contractor_name?: string
+  contractor_photos_uploaded_at?: string
+  deductible_comparison_result?: 'worth_filing' | 'not_worth_filing'
+  insurance_claim_number?: string
+  adjuster_name?: string
+  adjuster_phone?: string
+  inspection_datetime?: string
+
   created_at: string
   updated_at: string
 }
