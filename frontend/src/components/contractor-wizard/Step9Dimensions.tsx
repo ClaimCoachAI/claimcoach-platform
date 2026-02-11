@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { StepProps } from './types'
+import { StepProps, ScopeSheetData } from './types'
 
 export default function Step9Dimensions({
   wizardState,
@@ -21,7 +21,7 @@ export default function Step9Dimensions({
   }
 
   const handleContinue = async () => {
-    await onNext(formData as any)
+    await onNext(formData as Partial<ScopeSheetData>)
   }
 
   return (

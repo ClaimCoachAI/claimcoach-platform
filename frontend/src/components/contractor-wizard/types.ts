@@ -1,5 +1,8 @@
 import { ScopeSheetData } from '../ScopeSheetForm'
 
+// Re-export ScopeSheetData for convenience
+export type { ScopeSheetData }
+
 /**
  * Represents an uploaded file with tracking information
  */
@@ -48,7 +51,7 @@ export interface DraftResponse {
     updated_at: string
     submitted_at?: string
     // All the scope sheet data fields
-    [key: string]: any
+    [key: string]: unknown
   }
 }
 
@@ -57,5 +60,5 @@ export interface DraftResponse {
  */
 export interface SaveDraftRequest {
   draft_step: number
-  [key: string]: any
+  [key: string]: unknown
 }

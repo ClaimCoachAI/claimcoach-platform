@@ -41,7 +41,8 @@ export function useWizardState(token: string) {
         const draft = response.data.data
 
         // Extract wizard data (all fields except metadata)
-        const { id, claim_id, draft_step, created_at, updated_at, submitted_at, ...scopeData } = draft
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id: _id, claim_id: _claim_id, draft_step, created_at, updated_at, submitted_at, ...scopeData } = draft
 
         // Determine if secondary roof exists based on data
         const hasSecondaryRoof = !!(
@@ -57,15 +58,15 @@ export function useWizardState(token: string) {
           currentStep: draft_step,
           totalSteps: hasSecondaryRoof ? 10 : 9,
           hasSecondaryRoof,
-          wizardData: scopeData as ScopeSheetData,
+          wizardData: scopeData as unknown as ScopeSheetData,
           completedSteps,
           photos: [],
           draftStep: draft_step,
         })
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // 404 means no draft exists yet - this is not an error
-      if (err.response?.status === 404) {
+      if ((err as { response?: { status?: number } })?.response?.status === 404) {
         console.log('No draft found, starting fresh')
       } else {
         console.error('Error loading draft:', err)
@@ -97,7 +98,7 @@ export function useWizardState(token: string) {
       if (response.data.success) {
         console.log('Draft saved successfully')
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving draft:', err)
       setError('Failed to save progress')
       throw err

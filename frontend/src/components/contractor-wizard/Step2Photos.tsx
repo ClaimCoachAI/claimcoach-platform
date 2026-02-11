@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { StepProps, UploadedFile } from './types'
+import { StepProps, UploadedFile, ScopeSheetData } from './types'
 import axios from 'axios'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -109,7 +109,7 @@ export default function Step2Photos({
 
   const handleContinue = async () => {
     // Update wizard state with photos before continuing
-    onUpdateData({ photos } as any)
+    onUpdateData({ photos } as Partial<ScopeSheetData>)
     await onNext()
   }
 

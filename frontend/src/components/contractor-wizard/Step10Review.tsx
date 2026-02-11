@@ -23,9 +23,10 @@ export default function Step10Review({
       // Submit the scope sheet data
       await submitScopeSheet(token, wizardState.wizardData)
       setSubmitted(true)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Submission error:', err)
-      setError(err.response?.data?.error || 'Failed to submit scope sheet. Please try again.')
+      const errorMessage = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to submit scope sheet. Please try again.'
+      setError(errorMessage)
       setSubmitting(false)
     }
   }

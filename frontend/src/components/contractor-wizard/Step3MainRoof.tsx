@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { StepProps } from './types'
+import { StepProps, ScopeSheetData } from './types'
 
 interface Step3MainRoofProps extends StepProps {
   setHasSecondaryRoof: (has: boolean) => void
@@ -66,7 +66,7 @@ export default function Step3MainRoof({
     }
 
     setHasSecondaryRoof(secondaryRoof)
-    await onNext(formData as any)
+    await onNext(formData as Partial<ScopeSheetData>)
   }
 
   return (

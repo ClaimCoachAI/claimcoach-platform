@@ -1,4 +1,4 @@
-import { StepProps } from './types'
+import { StepProps, ScopeSheetData } from './types'
 
 interface ExteriorSideFormProps extends StepProps {
   side: 'front' | 'right' | 'back' | 'left'
@@ -16,15 +16,19 @@ export default function ExteriorSideForm({
   const sideName = side.charAt(0).toUpperCase() + side.slice(1)
 
   // Get field values with side prefix
-  const getFieldValue = (fieldName: string) => {
+  const getFieldValue = (fieldName: string): string | number => {
     const fullFieldName = `${side}_${fieldName}`
-    return (wizardState.wizardData as any)[fullFieldName] || ''
+    const value = (wizardState.wizardData as unknown as Record<string, unknown>)[fullFieldName]
+    // Convert to string or number, default to empty string
+    if (typeof value === 'number') return value
+    if (typeof value === 'string') return value
+    return ''
   }
 
   // Update field with side prefix
   const handleFieldChange = (fieldName: string, value: string | boolean | number) => {
     const fullFieldName = `${side}_${fieldName}`
-    onUpdateData({ [fullFieldName]: value } as any)
+    onUpdateData({ [fullFieldName]: value } as Partial<ScopeSheetData>)
   }
 
   const handleContinue = async () => {
