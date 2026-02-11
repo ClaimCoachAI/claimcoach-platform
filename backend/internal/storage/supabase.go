@@ -13,7 +13,8 @@ const (
 )
 
 type SupabaseStorage struct {
-	client *storage_go.Client
+	client  *storage_go.Client
+	baseURL string
 }
 
 func NewSupabaseStorage(url, serviceKey string) (*SupabaseStorage, error) {
@@ -22,7 +23,8 @@ func NewSupabaseStorage(url, serviceKey string) (*SupabaseStorage, error) {
 	client := storage_go.NewClient(storageURL, serviceKey, nil)
 
 	return &SupabaseStorage{
-		client: client,
+		client:  client,
+		baseURL: url, // Store base URL for constructing full URLs
 	}, nil
 }
 
@@ -53,7 +55,10 @@ func (s *SupabaseStorage) GenerateUploadURL(organizationID, claimID, documentTyp
 		return "", "", fmt.Errorf("failed to generate upload URL: %w", err)
 	}
 
-	return response.Url, filePath, nil
+	// Construct full URL (client returns relative path)
+	fullURL := fmt.Sprintf("%s%s", s.baseURL, response.Url)
+
+	return fullURL, filePath, nil
 }
 
 // GenerateDownloadURL creates a presigned URL for downloading a file
