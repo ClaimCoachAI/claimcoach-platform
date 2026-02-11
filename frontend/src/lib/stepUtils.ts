@@ -1,5 +1,9 @@
 // frontend/src/lib/stepUtils.ts
 
+import type { Claim, LossType } from '../types/claim'
+
+const TOTAL_STEPS = 6 as const
+
 export type StepNumber = 1 | 2 | 3 | 4 | 5 | 6
 
 export interface StepDefinition {
@@ -60,7 +64,7 @@ export function getStepDefinition(step: StepNumber): StepDefinition {
 }
 
 export function getNextStep(currentStep: StepNumber): StepNumber | null {
-  return currentStep < 6 ? (currentStep + 1) as StepNumber : null
+  return currentStep < TOTAL_STEPS ? (currentStep + 1) as StepNumber : null
 }
 
 export function getProgress(stepsCompleted: number[]): {
@@ -70,8 +74,8 @@ export function getProgress(stepsCompleted: number[]): {
 } {
   return {
     completed: stepsCompleted.length,
-    total: 6,
-    percentage: Math.round((stepsCompleted.length / 6) * 100)
+    total: TOTAL_STEPS,
+    percentage: Math.round((stepsCompleted.length / TOTAL_STEPS) * 100)
   }
 }
 
@@ -79,18 +83,18 @@ export function isStepComplete(stepNumber: StepNumber, stepsCompleted: number[])
   return stepsCompleted.includes(stepNumber)
 }
 
-export function getDamageTypeIcon(lossType: 'water' | 'hail'): string {
+export function getDamageTypeIcon(lossType: LossType): string {
   return lossType === 'water' ? '💧' : '🧊'
 }
 
-export function getDamageTypeLabel(lossType: 'water' | 'hail'): string {
+export function getDamageTypeLabel(lossType: LossType): string {
   return lossType === 'water' ? 'Water Damage' : 'Hail Damage'
 }
 
 export function getStepStatusText(
   currentStep: StepNumber,
   stepsCompleted: number[],
-  claim: any
+  claim: Claim
 ): string {
   if (isStepComplete(currentStep, stepsCompleted)) {
     return getCompletedStepText(currentStep, claim)
@@ -98,7 +102,7 @@ export function getStepStatusText(
   return getInProgressStepText(currentStep, claim)
 }
 
-function getCompletedStepText(step: StepNumber, claim: any): string {
+function getCompletedStepText(step: StepNumber, claim: Claim): string {
   switch (step) {
     case 1:
       return `✅ Damage Reported - ${getDamageTypeLabel(claim.loss_type)}`
@@ -119,7 +123,7 @@ function getCompletedStepText(step: StepNumber, claim: any): string {
   }
 }
 
-function getInProgressStepText(step: StepNumber, claim: any): string {
+function getInProgressStepText(step: StepNumber, claim: Claim): string {
   switch (step) {
     case 2:
       return claim.contractor_email
@@ -140,8 +144,20 @@ function getInProgressStepText(step: StepNumber, claim: any): string {
 
 export function formatTimeAgo(dateString: string): string {
   const date = new Date(dateString)
+
+  // Validate date
+  if (isNaN(date.getTime())) {
+    return 'Invalid date'
+  }
+
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
+
+  // Handle future dates
+  if (diffMs < 0) {
+    return 'Future date'
+  }
+
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
   if (diffDays === 0) return 'Today'
