@@ -181,6 +181,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 		// Magic Link routes (protected - requires auth)
 		api.POST("/claims/:id/magic-link", magicLinkHandler.GenerateMagicLink)
+		api.GET("/claims/:id/magic-links", magicLinkHandler.GetMagicLinks)
 
 		// Scope Sheet routes (protected - requires auth)
 		api.GET("/claims/:id/scope-sheet", scopeSheetHandler.GetByClaimID)

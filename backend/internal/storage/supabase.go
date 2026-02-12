@@ -3,6 +3,7 @@ package storage
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	storage_go "github.com/supabase-community/storage-go"
@@ -13,8 +14,9 @@ const (
 )
 
 type SupabaseStorage struct {
-	client  *storage_go.Client
-	baseURL string
+	client     *storage_go.Client
+	baseURL    string
+	projectRef string
 }
 
 func NewSupabaseStorage(url, serviceKey string) (*SupabaseStorage, error) {
@@ -22,9 +24,19 @@ func NewSupabaseStorage(url, serviceKey string) (*SupabaseStorage, error) {
 	storageURL := fmt.Sprintf("%s/storage/v1", url)
 	client := storage_go.NewClient(storageURL, serviceKey, nil)
 
+	// Extract project ref from URL (e.g., "vhksoorcpbpddhsguluv" from "https://vhksoorcpbpddhsguluv.supabase.co")
+	projectRef := ""
+	if strings.Contains(url, ".supabase.co") {
+		parts := strings.Split(strings.TrimPrefix(url, "https://"), ".")
+		if len(parts) > 0 {
+			projectRef = parts[0]
+		}
+	}
+
 	return &SupabaseStorage{
-		client:  client,
-		baseURL: url, // Store base URL for constructing full URLs
+		client:     client,
+		baseURL:    url,
+		projectRef: projectRef,
 	}, nil
 }
 
@@ -55,8 +67,13 @@ func (s *SupabaseStorage) GenerateUploadURL(organizationID, claimID, documentTyp
 		return "", "", fmt.Errorf("failed to generate upload URL: %w", err)
 	}
 
-	// Construct full URL (client returns relative path)
-	fullURL := fmt.Sprintf("%s%s", s.baseURL, response.Url)
+	// Log the response for debugging
+	fmt.Printf("DEBUG: CreateSignedUploadUrl response.Url = %s\n", response.Url)
+	fmt.Printf("DEBUG: Full upload URL will be: https://%s.supabase.co/storage/v1%s\n", s.projectRef, response.Url)
+
+	// Construct full URL with proper Storage API path
+	// The Go library returns /object/upload/sign/... but we need /storage/v1/object/upload/sign/...
+	fullURL := fmt.Sprintf("https://%s.supabase.co/storage/v1%s", s.projectRef, response.Url)
 
 	return fullURL, filePath, nil
 }

@@ -54,19 +54,13 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 		return nil, err
 	}
 
-	// Step 2: Invalidate previous active links for this claim
-	err = s.invalidatePreviousLinks(claimID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invalidate previous links: %w", err)
-	}
-
-	// Step 3: Generate cryptographically secure token (UUID v4)
+	// Step 2: Generate cryptographically secure token (UUID v4)
 	token := uuid.New().String()
 
-	// Step 4: Calculate expiration (72 hours from now)
+	// Step 3: Calculate expiration (72 hours from now)
 	expiresAt := time.Now().Add(72 * time.Hour)
 
-	// Step 5: Insert into database
+	// Step 4: Insert into database
 	magicLink := &models.MagicLink{
 		ID:              uuid.New().String(),
 		ClaimID:         claimID,
@@ -83,9 +77,10 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 	query := `
 		INSERT INTO magic_links (
 			id, claim_id, token, contractor_name, contractor_email, contractor_phone,
-			expires_at, accessed_at, access_count, status, created_at
+			expires_at, accessed_at, access_count, status, created_at, created_by_user_id,
+			email_sent, email_sent_at, email_error
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING id, claim_id, token, contractor_name, contractor_email, contractor_phone,
 			expires_at, accessed_at, access_count, status, created_at
 	`
@@ -103,6 +98,10 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 		magicLink.AccessCount,
 		magicLink.Status,
 		magicLink.CreatedAt,
+		userID,  // created_by_user_id
+		false,   // email_sent (will be updated after email attempt)
+		nil,     // email_sent_at
+		nil,     // email_error
 	).Scan(
 		&magicLink.ID,
 		&magicLink.ClaimID,
@@ -121,7 +120,7 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 		return nil, fmt.Errorf("failed to create magic link: %w", err)
 	}
 
-	// Step 6: Log activity
+	// Step 5: Log activity
 	metadata := map[string]interface{}{
 		"contractor_name":  input.ContractorName,
 		"contractor_email": input.ContractorEmail,
@@ -137,10 +136,10 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 		fmt.Printf("Warning: failed to log activity: %v\n", err)
 	}
 
-	// Step 7: Build frontend URL
+	// Step 6: Build frontend URL
 	linkURL := fmt.Sprintf("%s/upload/%s", s.cfg.FrontendURL, token)
 
-	// Step 8: Get claim and property data for email
+	// Step 7: Get claim and property data for email
 	claim, err := s.claimService.GetClaim(claimID, organizationID)
 	if err != nil {
 		// Log error but don't fail magic link creation
@@ -166,9 +165,33 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 			}
 
 			err = s.emailService.SendMagicLinkEmail(emailInput)
+			
+			// Track email send result
+			var emailSent bool
+			var emailSentAt *time.Time
+			var emailError *string
+			
 			if err != nil {
 				// Log error but don't fail magic link creation
 				fmt.Printf("Warning: Failed to send email notification: %v\n", err)
+				emailSent = false
+				errMsg := err.Error()
+				emailError = &errMsg
+			} else {
+				emailSent = true
+				now := time.Now()
+				emailSentAt = &now
+			}
+			
+			// Update magic link with email send status
+			updateQuery := `
+				UPDATE magic_links
+				SET email_sent = $1, email_sent_at = $2, email_error = $3
+				WHERE id = $4
+			`
+			_, updateErr := s.db.Exec(updateQuery, emailSent, emailSentAt, emailError, magicLink.ID)
+			if updateErr != nil {
+				fmt.Printf("Warning: Failed to update email send status: %v\n", updateErr)
 			}
 		}
 	}
@@ -470,4 +493,108 @@ func (s *MagicLinkService) invalidatePreviousLinks(claimID string) error {
 	}
 
 	return nil
+}
+
+// MagicLinkWithSender contains magic link information with sender details
+type MagicLinkWithSender struct {
+	ID              string     `json:"id"`
+	ContractorName  string     `json:"contractor_name"`
+	ContractorEmail string     `json:"contractor_email"`
+	ContractorPhone *string    `json:"contractor_phone"`
+	Status          string     `json:"status"`
+	CreatedAt       time.Time  `json:"created_at"`
+	ExpiresAt       time.Time  `json:"expires_at"`
+	AccessedAt      *time.Time `json:"accessed_at"`
+	AccessCount     int        `json:"access_count"`
+	EmailSent       bool       `json:"email_sent"`
+	EmailSentAt     *time.Time `json:"email_sent_at"`
+	EmailError      *string    `json:"email_error"`
+	CreatedByUser   *UserInfo  `json:"created_by_user"`
+	LinkURL         string     `json:"link_url"`
+}
+
+// UserInfo contains basic user information for magic link sender
+type UserInfo struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// GetMagicLinksByClaimID retrieves all magic links for a claim with sender information
+func (s *MagicLinkService) GetMagicLinksByClaimID(claimID string, organizationID string) ([]MagicLinkWithSender, error) {
+	// Validate claim ownership
+	_, err := s.claimService.GetClaim(claimID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Query magic links with user join
+	query := `
+		SELECT
+			ml.id, ml.contractor_name, ml.contractor_email, ml.contractor_phone,
+			ml.status, ml.created_at, ml.expires_at, ml.accessed_at, ml.access_count,
+			ml.email_sent, ml.email_sent_at, ml.email_error, ml.token,
+			ml.created_by_user_id,
+			u.name, u.email
+		FROM magic_links ml
+		LEFT JOIN users u ON u.id = ml.created_by_user_id
+		WHERE ml.claim_id = $1
+		ORDER BY ml.created_at DESC
+	`
+
+	rows, err := s.db.Query(query, claimID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query magic links: %w", err)
+	}
+	defer rows.Close()
+
+	var magicLinks []MagicLinkWithSender
+	for rows.Next() {
+		var ml MagicLinkWithSender
+		var token string
+		var createdByUserID *string
+		var userName, userEmail *string
+
+		err := rows.Scan(
+			&ml.ID,
+			&ml.ContractorName,
+			&ml.ContractorEmail,
+			&ml.ContractorPhone,
+			&ml.Status,
+			&ml.CreatedAt,
+			&ml.ExpiresAt,
+			&ml.AccessedAt,
+			&ml.AccessCount,
+			&ml.EmailSent,
+			&ml.EmailSentAt,
+			&ml.EmailError,
+			&token,
+			&createdByUserID,
+			&userName,
+			&userEmail,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan magic link: %w", err)
+		}
+
+		// Build link URL
+		ml.LinkURL = fmt.Sprintf("%s/upload/%s", s.cfg.FrontendURL, token)
+
+		// Set user info if available
+		if createdByUserID != nil && userName != nil && userEmail != nil {
+			ml.CreatedByUser = &UserInfo{
+				ID:    *createdByUserID,
+				Name:  *userName,
+				Email: *userEmail,
+			}
+		}
+
+		magicLinks = append(magicLinks, ml)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate magic links: %w", err)
+	}
+
+	return magicLinks, nil
 }

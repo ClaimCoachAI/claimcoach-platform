@@ -185,3 +185,31 @@ func (h *MagicLinkHandler) ConfirmUpload(c *gin.Context) {
 		"data":    document,
 	})
 }
+
+// GetMagicLinks retrieves all magic links for a claim (protected endpoint)
+// GET /api/claims/:id/magic-links
+func (h *MagicLinkHandler) GetMagicLinks(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	claimID := c.Param("id")
+
+	magicLinks, err := h.service.GetMagicLinksByClaimID(claimID, user.OrganizationID)
+	if err != nil {
+		if err.Error() == "claim not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   "Claim not found",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to retrieve magic links: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    magicLinks,
+	})
+}
