@@ -88,12 +88,19 @@ export default function Step2Photos({
 
     const { upload_url, document_id } = uploadUrlResponse.data.data
 
-    // Step 2: Upload file to storage
-    await axios.put(upload_url, file, {
+    // Step 2: Upload file to storage using fetch (not axios) to avoid extra headers
+    // that could invalidate the presigned URL signature
+    const uploadResponse = await fetch(upload_url, {
+      method: 'PUT',
+      body: file,
       headers: {
         'Content-Type': file.type,
       },
     })
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`)
+    }
 
     // Step 3: Confirm upload
     await axios.post(

@@ -7,6 +7,7 @@ import ClaimStatusBadge from '../components/ClaimStatusBadge'
 import MeetingsSection from '../components/MeetingsSection'
 import PaymentsSection from '../components/PaymentsSection'
 import RCVDemandSection from '../components/RCVDemandSection'
+import MagicLinkHistory from '../components/MagicLinkHistory'
 import { Claim, Policy } from '../types/claim'
 
 interface Document {
@@ -1702,6 +1703,9 @@ export default function ClaimDetail() {
                 )}
               </div>
             </div>
+
+            {/* Magic Link History */}
+            {claim && <MagicLinkHistory claimId={claim.id} />}
 
             {/* Carrier Estimate Upload - show for audit_pending and negotiating status */}
             {claim && ['audit_pending', 'negotiating'].includes(claim.status) && (
