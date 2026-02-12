@@ -33,48 +33,83 @@ export function useWizardState(token: string) {
       setLoading(true)
       setError(null)
 
-      const response = await axios.get<DraftResponse>(
-        `${API_URL}/api/magic-links/${token}/scope-sheet/draft`
-      )
+      // Load both draft and documents in parallel
+      const [draftResponse, documentsResponse] = await Promise.all([
+        axios.get<DraftResponse>(
+          `${API_URL}/api/magic-links/${token}/scope-sheet/draft`
+        ).catch(err => {
+          // 404 for draft is OK (no draft exists yet)
+          if (err?.response?.status === 404) {
+            return { data: { success: false, data: null } }
+          }
+          throw err
+        }),
+        axios.get<{ success: boolean; data: Array<{ id: string; file_name: string; file_url: string; document_type: string }> }>(
+          `${API_URL}/api/magic-links/${token}/documents`
+        ).catch(err => {
+          // If documents fetch fails, just log and continue with empty photos
+          console.error('Error loading documents:', err)
+          return { data: { success: false, data: [] } }
+        }),
+      ])
 
-      if (response.data.success && response.data.data) {
-        const draft = response.data.data
+      let currentStep = 1
+      let hasSecondaryRoof: boolean | null = null
+      let scopeData = {} as ScopeSheetData
+      let completedSteps: number[] = []
+      let draft_step: number | undefined
+
+      // Process draft if it exists
+      if (draftResponse.data.success && draftResponse.data.data) {
+        const draft = draftResponse.data.data
 
         // Extract wizard data (all fields except metadata)
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { id: _id, claim_id: _claim_id, draft_step, created_at, updated_at, submitted_at, ...scopeData } = draft
+        const { id: _id, claim_id: _claim_id, draft_step: dStep, created_at, updated_at, submitted_at, ...draftScopeData } = draft
 
         // Determine if secondary roof exists based on data
-        const hasSecondaryRoof = !!(
-          scopeData.roof_other_type ||
-          scopeData.roof_other_pitch ||
-          scopeData.roof_other_fascia_lf
+        hasSecondaryRoof = !!(
+          draftScopeData.roof_other_type ||
+          draftScopeData.roof_other_pitch ||
+          draftScopeData.roof_other_fascia_lf
         )
 
         // Use draft_step if available, otherwise default to step 1
-        const currentStep = draft_step || 1
+        currentStep = dStep || 1
+        draft_step = dStep
 
         // Determine completed steps based on draft_step
-        const completedSteps = currentStep > 1 ? Array.from({ length: currentStep - 1 }, (_, i) => i + 1) : []
+        completedSteps = currentStep > 1 ? Array.from({ length: currentStep - 1 }, (_, i) => i + 1) : []
 
-        setWizardState({
-          currentStep,
-          totalSteps: hasSecondaryRoof ? 10 : 9,
-          hasSecondaryRoof,
-          wizardData: scopeData as unknown as ScopeSheetData,
-          completedSteps,
-          photos: [],
-          draftStep: draft_step,
-        })
+        scopeData = draftScopeData as unknown as ScopeSheetData
       }
+
+      // Process documents - convert to UploadedFile format for contractor photos only
+      const photos: UploadedFile[] = documentsResponse.data.success && documentsResponse.data.data
+        ? documentsResponse.data.data
+            .filter(doc => doc.document_type === 'contractor_photo')
+            .map(doc => ({
+              // Create a placeholder File object (we don't need the actual file data for display)
+              file: new File([], doc.file_name, { type: 'image/*' }),
+              uploading: false,
+              uploaded: true,
+              documentId: doc.id,
+              previewUrl: doc.file_url, // Use the backend file URL for preview
+            }))
+        : []
+
+      setWizardState({
+        currentStep,
+        totalSteps: hasSecondaryRoof ? 10 : 9,
+        hasSecondaryRoof,
+        wizardData: scopeData,
+        completedSteps,
+        photos,
+        draftStep: draft_step,
+      })
     } catch (err: unknown) {
-      // 404 means no draft exists yet - this is not an error
-      if ((err as { response?: { status?: number } })?.response?.status === 404) {
-        console.log('No draft found, starting fresh')
-      } else {
-        console.error('Error loading draft:', err)
-        setError('Failed to load saved progress')
-      }
+      console.error('Error loading draft:', err)
+      setError('Failed to load saved progress')
     } finally {
       setLoading(false)
     }

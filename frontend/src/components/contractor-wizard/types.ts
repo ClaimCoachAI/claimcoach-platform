@@ -12,6 +12,7 @@ export interface UploadedFile {
   uploading: boolean
   uploaded: boolean
   error?: string
+  previewUrl?: string // URL for displaying already-uploaded photos from backend
 }
 
 /**

@@ -479,6 +479,63 @@ func (s *MagicLinkService) ConfirmUploadWithToken(token string, documentID strin
 	return &doc, nil
 }
 
+// ListDocumentsWithToken retrieves all documents for a claim using magic link token (no auth required)
+func (s *MagicLinkService) ListDocumentsWithToken(token string) ([]models.Document, error) {
+	// Step 1: Validate the token
+	validation, err := s.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	claimID := validation.Claim.ID
+
+	// Step 2: Fetch all documents for this claim
+	query := `
+		SELECT id, claim_id, uploaded_by_user_id, document_type, file_url,
+			file_name, file_size_bytes, mime_type, status, created_at
+		FROM documents
+		WHERE claim_id = $1 AND status = 'active'
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.Query(query, claimID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query documents: %w", err)
+	}
+	defer rows.Close()
+
+	var documents []models.Document
+	for rows.Next() {
+		var doc models.Document
+		err := rows.Scan(
+			&doc.ID,
+			&doc.ClaimID,
+			&doc.UploadedByUserID,
+			&doc.DocumentType,
+			&doc.FileURL,
+			&doc.FileName,
+			&doc.FileSizeBytes,
+			&doc.MimeType,
+			&doc.Status,
+			&doc.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan document: %w", err)
+		}
+		documents = append(documents, doc)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating documents: %w", err)
+	}
+
+	return documents, nil
+}
+
 // invalidatePreviousLinks marks all active magic links for a claim as expired
 func (s *MagicLinkService) invalidatePreviousLinks(claimID string) error {
 	query := `

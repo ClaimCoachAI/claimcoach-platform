@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { StepProps, UploadedFile, ScopeSheetData } from './types'
 import axios from 'axios'
 
@@ -6,6 +6,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
 interface Step2PhotosProps extends StepProps {
   token: string
+  onUpdatePhotos: (photos: UploadedFile[]) => void
 }
 
 export default function Step2Photos({
@@ -15,10 +16,21 @@ export default function Step2Photos({
   onUpdateData,
   submitting,
   token,
+  onUpdatePhotos,
 }: Step2PhotosProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [photos, setPhotos] = useState<UploadedFile[]>(wizardState.photos || [])
   const [uploading, setUploading] = useState(false)
+
+  // Sync local photos state with wizardState.photos when it changes
+  useEffect(() => {
+    setPhotos(wizardState.photos || [])
+  }, [wizardState.photos])
+
+  // Update wizard state whenever photos change
+  useEffect(() => {
+    onUpdatePhotos(photos)
+  }, [photos, onUpdatePhotos])
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return
@@ -115,8 +127,7 @@ export default function Step2Photos({
   }
 
   const handleContinue = async () => {
-    // Update wizard state with photos before continuing
-    onUpdateData({ photos } as Partial<ScopeSheetData>)
+    // Photos are automatically synced to wizard state via useEffect
     await onNext()
   }
 
@@ -279,7 +290,7 @@ export default function Step2Photos({
                 >
                   {/* Photo Preview */}
                   <img
-                    src={URL.createObjectURL(photo.file)}
+                    src={photo.previewUrl || URL.createObjectURL(photo.file)}
                     alt={photo.file.name}
                     className="w-full h-full object-cover"
                   />

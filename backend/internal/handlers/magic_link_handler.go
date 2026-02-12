@@ -186,6 +186,37 @@ func (h *MagicLinkHandler) ConfirmUpload(c *gin.Context) {
 	})
 }
 
+// ListDocuments retrieves all documents for a claim using magic link token (public endpoint, no auth required)
+// GET /api/magic-links/:token/documents
+func (h *MagicLinkHandler) ListDocuments(c *gin.Context) {
+	token := c.Param("token")
+
+	documents, err := h.service.ListDocumentsWithToken(token)
+	if err != nil {
+		// Handle specific errors
+		if err.Error() == "invalid or expired token: expired" ||
+			err.Error() == "invalid or expired token: not_found" ||
+			err.Error() == "invalid or expired token: completed" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   "Invalid or expired magic link",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to retrieve documents: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    documents,
+	})
+}
+
 // GetMagicLinks retrieves all magic links for a claim (protected endpoint)
 // GET /api/claims/:id/magic-links
 func (h *MagicLinkHandler) GetMagicLinks(c *gin.Context) {

@@ -112,6 +112,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 	// Public magic link endpoints (no auth required)
 	r.GET("/api/magic-links/:token/validate", magicLinkHandler.ValidateToken)
+	r.GET("/api/magic-links/:token/documents", magicLinkHandler.ListDocuments)
 	r.POST("/api/magic-links/:token/documents/upload-url", magicLinkHandler.RequestUploadURL)
 	r.POST("/api/magic-links/:token/documents/:documentId/confirm", magicLinkHandler.ConfirmUpload)
 	r.POST("/api/magic-links/:token/scope-sheet", scopeSheetHandler.CreateViaMagicLink)

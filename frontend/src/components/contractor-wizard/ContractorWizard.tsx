@@ -33,6 +33,8 @@ export default function ContractorWizard({ token, validationResult }: Contractor
     goBack,
     updateData,
     setHasSecondaryRoof,
+    updatePhotos,
+    loading,
     saving,
   } = useWizardState(token)
 
@@ -40,6 +42,18 @@ export default function ContractorWizard({ token, validationResult }: Contractor
   useEffect(() => {
     loadDraft()
   }, [loadDraft])
+
+  // Show loading state while draft is being loaded
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-white to-slate/5 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-teal border-t-transparent"></div>
+          <p className="text-slate text-sm">Loading your progress...</p>
+        </div>
+      </div>
+    )
+  }
 
   // Render current step
   const renderStep = () => {
@@ -55,7 +69,7 @@ export default function ContractorWizard({ token, validationResult }: Contractor
       case 1:
         return <Step1Welcome {...stepProps} claim={validationResult.claim!} />
       case 2:
-        return <Step2Photos {...stepProps} token={token} />
+        return <Step2Photos {...stepProps} token={token} onUpdatePhotos={updatePhotos} />
       case 3:
         return <Step3MainRoof {...stepProps} setHasSecondaryRoof={setHasSecondaryRoof} />
       case 4:
