@@ -18,7 +18,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   // Scope sheet query
   const {
     data: scopeSheet,
-    isLoading: loadingScopeSheet,
   } = useQuery({
     queryKey: ['scope-sheet', claim.id],
     queryFn: async () => {
@@ -333,6 +332,20 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                 placeholder="contractor@example.com"
               />
             </div>
+
+            {/* Contractor Status */}
+            <div className="mt-3">
+              <ContractorStatusBadge
+                hasMagicLink={hasMagicLink}
+                hasScopeSheet={hasScopeSheet}
+              />
+            </div>
+
+            {/* Scope Sheet Summary */}
+            {hasScopeSheet && scopeSheet && (
+              <ScopeSheetSummary scopeSheet={scopeSheet} />
+            )}
+
             {step2Mutation.isError && (
               <div className="error">
                 {(step2Mutation.error as any)?.response?.data?.error || 'Failed to send link'}
