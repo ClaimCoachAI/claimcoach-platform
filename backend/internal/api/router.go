@@ -162,6 +162,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.PATCH("/claims/:id/step", claimHandler.UpdateClaimStep)
 		api.PATCH("/claims/:id/estimate", claimHandler.PatchClaimEstimate)
 		api.GET("/claims/:id/activities", claimHandler.GetActivities)
+		api.POST("/claims/:id/notify-claimcoach", claimHandler.NotifyClaimCoach)
 
 		// Document routes
 		documentService := services.NewDocumentService(db, storageClient, claimService)
