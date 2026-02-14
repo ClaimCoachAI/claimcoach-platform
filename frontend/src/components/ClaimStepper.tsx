@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 import { getStepDefinition } from '../lib/stepUtils'
 import Toast from './Toast'
+import ContractorStatusBadge from './ContractorStatusBadge'
+import ScopeSheetSummary from './ScopeSheetSummary'
 import type { Claim } from '../types/claim'
 
 interface ClaimStepperProps {
@@ -12,6 +14,26 @@ interface ClaimStepperProps {
 export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const [activeStep, setActiveStep] = useState(claim.current_step || 1)
   const queryClient = useQueryClient()
+
+  // Scope sheet query
+  const {
+    data: scopeSheet,
+    isLoading: loadingScopeSheet,
+  } = useQuery({
+    queryKey: ['scope-sheet', claim.id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${claim.id}/scope-sheet`)
+        return response.data.data
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          return null
+        }
+        throw error
+      }
+    },
+    enabled: !!claim.id,
+  })
 
   // Toast state
   const [toast, setToast] = useState<{
@@ -217,6 +239,10 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     if (stepNum === claim.current_step) return 'current'
     return 'upcoming'
   }
+
+  // Calculate status flags
+  const hasMagicLink = claim.contractor_email !== null
+  const hasScopeSheet = scopeSheet !== null
 
   const renderStepContent = (stepNum: number) => {
     if (activeStep !== stepNum) return null
