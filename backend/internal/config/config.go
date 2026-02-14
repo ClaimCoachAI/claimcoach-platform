@@ -26,6 +26,7 @@ type Config struct {
 	SendGridAPIKey    string
 	SendGridFromEmail string
 	SendGridFromName  string
+	ClaimCoachEmail   string
 }
 
 func Load() (*Config, error) {
@@ -44,6 +45,7 @@ func Load() (*Config, error) {
 		SendGridAPIKey:       os.Getenv("SENDGRID_API_KEY"),
 		SendGridFromEmail:    getEnvOrDefault("SENDGRID_FROM_EMAIL", "noreply@claimcoach.ai"),
 		SendGridFromName:     getEnvOrDefault("SENDGRID_FROM_NAME", "ClaimCoach AI"),
+		ClaimCoachEmail:      getEnvOrDefault("CLAIMCOACH_EMAIL", "claims@claimcoach.ai"),
 	}
 
 	if cfg.DatabaseURL == "" {
