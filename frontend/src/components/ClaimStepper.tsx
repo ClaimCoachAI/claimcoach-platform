@@ -19,6 +19,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const {
     data: scopeSheet,
     isLoading: loadingScopeSheet,
+    error: scopeSheetError,
   } = useQuery({
     queryKey: ['scope-sheet', claim.id],
     queryFn: async () => {
@@ -29,10 +30,13 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         if (error.response?.status === 404) {
           return null
         }
-        throw error
+        // Return null for other errors instead of throwing
+        console.error('Error fetching scope sheet:', error)
+        return null
       }
     },
     enabled: !!claim.id,
+    retry: false,
   })
 
   // Toast state
