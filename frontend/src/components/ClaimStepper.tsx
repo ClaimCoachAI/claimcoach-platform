@@ -19,7 +19,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const {
     data: scopeSheet,
     isLoading: loadingScopeSheet,
-    error: scopeSheetError,
   } = useQuery({
     queryKey: ['scope-sheet', claim.id],
     queryFn: async () => {
@@ -60,6 +59,8 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     worthFiling: boolean
   } | null>(null)
   const deductible = claim.policy?.deductible_calculated || 0
+
+  const [step4Description, setStep4Description] = useState<string>(claim.description || '')
 
   // Initialize comparison if estimate exists
   useEffect(() => {
@@ -152,10 +153,41 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   })
 
   const step4Mutation = useMutation({
+    mutationFn: async (data: { description: string }) => {
+      // Update claim with description and mark step complete
+      const updatedStepsCompleted = [...(claim.steps_completed || []), 4]
+      await api.patch(`/api/claims/${claim.id}/step`, {
+        current_step: 5,
+        steps_completed: updatedStepsCompleted,
+        description: data.description
+      })
+
+      // Notify ClaimCoach team
+      await api.post(`/api/claims/${claim.id}/notify-claimcoach`)
+
+      return data
+    },
+    onSuccess: () => {
+      setToast({
+        message: '✓ Claim submitted to ClaimCoach team',
+        type: 'success',
+      })
+      queryClient.invalidateQueries({ queryKey: ['claim', claim.id] })
+    },
+    onError: (error: any) => {
+      console.error('Step 4 submission error:', error)
+      setToast({
+        message: 'Failed to submit claim. Please try again.',
+        type: 'error',
+      })
+    }
+  })
+
+  const step5Mutation = useMutation({
     mutationFn: async () => {
       const response = await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 5,
-        steps_completed: [1, 2, 3, 4],
+        current_step: 6,
+        steps_completed: [1, 2, 3, 4, 5],
         insurance_claim_number: filingData.insurance_claim_number,
         adjuster_name: filingData.adjuster_name || undefined,
         adjuster_phone: filingData.adjuster_phone || undefined,
@@ -174,23 +206,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         adjuster_name: '',
         adjuster_phone: '',
         inspection_datetime: '',
-      })
-    },
-  })
-
-  const step5Mutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 6,
-        steps_completed: [1, 2, 3, 4, 5],
-      })
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['claim', claim.id] })
-      setToast({
-        message: '✓ Step marked complete',
-        type: 'success',
       })
     },
   })
@@ -227,10 +242,18 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
   const handleStep4Submit = (e: React.FormEvent) => {
     e.preventDefault()
-    step4Mutation.mutate()
+    if (step4Description.trim().length < 20) {
+      setToast({
+        message: 'Please provide a detailed description (at least 20 characters)',
+        type: 'error',
+      })
+      return
+    }
+    step4Mutation.mutate({ description: step4Description.trim() })
   }
 
-  const handleStep5Submit = () => {
+  const handleStep5Submit = (e: React.FormEvent) => {
+    e.preventDefault()
     step5Mutation.mutate()
   }
 
@@ -430,6 +453,92 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
       case 4:
         return (
           <form onSubmit={handleStep4Submit} className="step-content step-form">
+            {/* Review Card */}
+            <div className="glass-card">
+              <h4 className="review-heading">Claim Details Review</h4>
+              <div className="review-grid">
+                <div className="review-item">
+                  <span className="review-label">Loss Type</span>
+                  <span className="review-value">
+                    {claim.loss_type === 'water' ? '💧 Water Damage' : '🧊 Hail Damage'}
+                  </span>
+                </div>
+                <div className="review-item">
+                  <span className="review-label">Incident Date</span>
+                  <span className="review-value">
+                    {new Date(claim.incident_date).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </span>
+                </div>
+                <div className="review-item">
+                  <span className="review-label">Property</span>
+                  <span className="review-value">
+                    {claim.property?.nickname || claim.property?.legal_address || 'N/A'}
+                  </span>
+                </div>
+                <div className="review-item">
+                  <span className="review-label">Your Deductible</span>
+                  <span className="review-value">
+                    ${(claim.policy?.deductible_calculated || 0).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+                <div className="review-item">
+                  <span className="review-label">Contractor Estimate</span>
+                  <span className="review-value">
+                    ${(claim.contractor_estimate_total || 0).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Description Field */}
+            <div className="form-field">
+              <label>
+                Damage Description <span className="required">*</span>
+              </label>
+              <textarea
+                required
+                minLength={20}
+                maxLength={2000}
+                value={step4Description}
+                onChange={(e) => setStep4Description(e.target.value)}
+                placeholder="Describe the damage in detail. What happened? What was affected? Any additional information that would help the ClaimCoach team understand your situation..."
+                rows={6}
+                className="description-textarea"
+              />
+              <div className="char-count">
+                {step4Description.length} / 2000 characters
+                {step4Description.length < 20 && (
+                  <span className="char-count-warning"> (minimum 20 required)</span>
+                )}
+              </div>
+            </div>
+
+            {step4Mutation.isError && (
+              <div className="error">
+                {(step4Mutation.error as any)?.response?.data?.error || 'Failed to submit claim'}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={step4Mutation.isPending || step4Description.trim().length < 20}
+            >
+              {step4Mutation.isPending ? 'Submitting...' : 'Submit to ClaimCoach Team'}
+            </button>
+          </form>
+        )
+
+      case 5:
+        return (
+          <form onSubmit={handleStep5Submit} className="step-content step-form">
             <div className="form-field">
               <label>
                 Insurance Claim Number <span className="required">*</span>
@@ -476,18 +585,18 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                 }
               />
             </div>
-            {step4Mutation.isError && (
+            {step5Mutation.isError && (
               <div className="error">
-                {(step4Mutation.error as any)?.response?.data?.error || 'Failed to update'}
+                {(step5Mutation.error as any)?.response?.data?.error || 'Failed to update'}
               </div>
             )}
-            <button type="submit" disabled={step4Mutation.isPending}>
-              {step4Mutation.isPending ? 'Saving...' : 'Complete This Step'}
+            <button type="submit" disabled={step5Mutation.isPending}>
+              {step5Mutation.isPending ? 'Saving...' : 'Complete This Step'}
             </button>
           </form>
         )
 
-      case 5:
+      case 6:
         return (
           <div className="step-content">
             <div className="info-box">
@@ -498,31 +607,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                   We're building AI-powered estimate comparison. Mark complete when you've reviewed
                   the insurance offer.
                 </p>
-              </div>
-            </div>
-            {step5Mutation.isError && (
-              <div className="error">
-                {(step5Mutation.error as any)?.response?.data?.error || 'Failed to update'}
-              </div>
-            )}
-            <button onClick={handleStep5Submit} disabled={step5Mutation.isPending}>
-              {step5Mutation.isPending ? 'Saving...' : 'Mark as Complete'}
-            </button>
-          </div>
-        )
-
-      case 6:
-        return (
-          <div className="step-content">
-            <div className="info-box">
-              <div className="info-icon">💰</div>
-              <div>
-                <strong>Payment Tracking</strong>
-                <p>Insurance typically pays in two parts:</p>
-                <ul>
-                  <li>ACV (Actual Cash Value) - Upfront to start repairs</li>
-                  <li>RCV (Recoverable Depreciation) - After repairs complete</li>
-                </ul>
               </div>
             </div>
             {step6Mutation.isError && (
@@ -1039,6 +1123,80 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           border-radius: 9999px;
         }
 
+        /* Glass Card (Step 4 Review) */
+        .glass-card {
+          background: rgba(255, 255, 255, 0.7);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 12px;
+          padding: 20px;
+        }
+
+        .review-heading {
+          font-family: 'Work Sans', sans-serif;
+          font-size: 16px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0 0 16px 0;
+          letter-spacing: -0.01em;
+        }
+
+        .review-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .review-item {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .review-label {
+          font-size: 11px;
+          font-weight: 600;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .review-value {
+          font-size: 14px;
+          font-weight: 600;
+          color: #0f172a;
+        }
+
+        /* Description Textarea */
+        .description-textarea {
+          padding: 12px 14px;
+          border: 2px solid rgba(148, 163, 184, 0.25);
+          border-radius: 10px;
+          font-size: 15px;
+          font-family: inherit;
+          transition: all 0.2s ease;
+          background: white;
+          resize: vertical;
+          line-height: 1.5;
+        }
+
+        .description-textarea:focus {
+          outline: none;
+          border-color: #0d9488;
+          box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1);
+        }
+
+        .char-count {
+          font-size: 12px;
+          color: #94a3b8;
+          text-align: right;
+        }
+
+        .char-count-warning {
+          color: #ef4444;
+          font-weight: 600;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
           .step-item {
@@ -1065,6 +1223,10 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           }
 
           .claim-details-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .review-grid {
             grid-template-columns: 1fr;
           }
         }
