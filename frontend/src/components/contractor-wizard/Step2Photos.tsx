@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { StepProps, UploadedFile, ScopeSheetData } from './types'
+import { StepProps, UploadedFile } from './types'
 import axios from 'axios'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -13,7 +13,6 @@ export default function Step2Photos({
   wizardState,
   onNext,
   onBack,
-  onUpdateData,
   submitting,
   token,
   onUpdatePhotos,
