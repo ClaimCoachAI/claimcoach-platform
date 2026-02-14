@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/claimcoach/backend/internal/models"
 )
 
 // EmailService defines the interface for sending emails
 type EmailService interface {
 	SendMagicLinkEmail(input SendMagicLinkEmailInput) error
 	SendMeetingNotification(input SendMeetingNotificationInput) error
+	SendClaimCoachNotification(claim *models.Claim) error
 }
 
 // SendMagicLinkEmailInput contains all data needed to send a magic link email
@@ -124,6 +127,19 @@ func (s *MockEmailService) SendMeetingNotification(input SendMeetingNotification
 	log.Println("")
 	log.Println("Thank you!")
 	log.Println("ClaimCoach AI Team")
+	log.Println("=======================================================")
+	log.Println("")
+
+	return nil
+}
+
+// SendClaimCoachNotification logs ClaimCoach notification to console for development
+func (s *MockEmailService) SendClaimCoachNotification(claim *models.Claim) error {
+	log.Println("=======================================================")
+	log.Println("📧 CLAIMCOACH NOTIFICATION (MOCK - Development Only)")
+	log.Println("=======================================================")
+	log.Println("This method is not implemented in MockEmailService.")
+	log.Println("Use SendGridEmailService for production.")
 	log.Println("=======================================================")
 	log.Println("")
 

@@ -75,6 +75,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 			cfg.SendGridAPIKey,
 			cfg.SendGridFromEmail,
 			cfg.SendGridFromName,
+			cfg.ClaimCoachEmail,
+			cfg.FrontendURL,
 		)
 		log.Println("✓ Using SendGrid email service")
 	} else {

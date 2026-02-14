@@ -3,23 +3,28 @@ package services
 import (
 	"fmt"
 
+	"github.com/claimcoach/backend/internal/models"
 	"github.com/sendgrid/sendgrid-go"
 	"github.com/sendgrid/sendgrid-go/helpers/mail"
 )
 
 // SendGridEmailService is a production email service using SendGrid
 type SendGridEmailService struct {
-	apiKey    string
-	fromEmail string
-	fromName  string
+	apiKey          string
+	fromEmail       string
+	fromName        string
+	claimCoachEmail string
+	appURL          string
 }
 
 // NewSendGridEmailService creates a new SendGrid email service
-func NewSendGridEmailService(apiKey, fromEmail, fromName string) *SendGridEmailService {
+func NewSendGridEmailService(apiKey, fromEmail, fromName, claimCoachEmail, appURL string) *SendGridEmailService {
 	return &SendGridEmailService{
-		apiKey:    apiKey,
-		fromEmail: fromEmail,
-		fromName:  fromName,
+		apiKey:          apiKey,
+		fromEmail:       fromEmail,
+		fromName:        fromName,
+		claimCoachEmail: claimCoachEmail,
+		appURL:          appURL,
 	}
 }
 
@@ -166,4 +171,133 @@ This email was sent by ClaimCoach AI. If you did not expect this email, please c
 		input.Location,
 		adjusterLine,
 	)
+}
+
+// SendClaimCoachNotification sends a notification email to ClaimCoach team when a claim is ready to file
+func (s *SendGridEmailService) SendClaimCoachNotification(claim *models.Claim) error {
+	if claim.Property == nil {
+		return fmt.Errorf("claim property relationship not loaded")
+	}
+	if claim.Policy == nil {
+		return fmt.Errorf("claim policy relationship not loaded")
+	}
+
+	subject := fmt.Sprintf("New Claim Ready to File - %s", claim.Property.LegalAddress)
+
+	lossTypeDisplay := "Unknown"
+	if claim.LossType == "water" {
+		lossTypeDisplay = "💧 Water Damage"
+	} else if claim.LossType == "hail" {
+		lossTypeDisplay = "🧊 Hail Damage"
+	}
+
+	incidentDateFormatted := claim.IncidentDate.Format("January 2, 2006")
+
+	description := "No description provided"
+	if claim.Description != nil {
+		description = *claim.Description
+	}
+
+	deductible := claim.Policy.DeductibleCalculated
+
+	estimateTotal := 0.0
+	estimateDisplay := "Pending estimate"
+	if claim.ContractorEstimateTotal != nil {
+		estimateTotal = *claim.ContractorEstimateTotal
+		estimateDisplay = fmt.Sprintf("$%.2f", estimateTotal)
+	}
+
+	amountAboveDeductible := 0.0
+	if estimateTotal > 0 {
+		amountAboveDeductible = estimateTotal - deductible
+		if amountAboveDeductible < 0 {
+			amountAboveDeductible = 0
+		}
+	}
+
+	carrierName := "Not specified"
+	if claim.Policy.CarrierName != "" {
+		carrierName = claim.Policy.CarrierName
+	}
+
+	policyNumber := "Not specified"
+	if claim.Policy.PolicyNumber != nil {
+		policyNumber = *claim.Policy.PolicyNumber
+	}
+
+	ownerEntity := "Not specified"
+	if claim.Property.OwnerEntityName != "" {
+		ownerEntity = claim.Property.OwnerEntityName
+	}
+
+	body := fmt.Sprintf(`
+	<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+		<h2 style="color: #1e3a8a;">New Claim Submission</h2>
+
+		<h3 style="color: #475569; margin-top: 24px;">Property Information</h3>
+		<ul style="line-height: 1.6;">
+			<li><strong>Address:</strong> %s</li>
+			<li><strong>Owner:</strong> %s</li>
+		</ul>
+
+		<h3 style="color: #475569; margin-top: 24px;">Claim Details</h3>
+		<ul style="line-height: 1.6;">
+			<li><strong>Loss Type:</strong> %s</li>
+			<li><strong>Incident Date:</strong> %s</li>
+			<li><strong>Description:</strong> %s</li>
+		</ul>
+
+		<h3 style="color: #475569; margin-top: 24px;">Financial Summary</h3>
+		<ul style="line-height: 1.6;">
+			<li><strong>Policy Deductible:</strong> $%.2f</li>
+			<li><strong>Contractor Estimate:</strong> %s</li>
+			<li><strong>Amount Above Deductible:</strong> $%.2f</li>
+		</ul>
+
+		<h3 style="color: #475569; margin-top: 24px;">Insurance Information</h3>
+		<ul style="line-height: 1.6;">
+			<li><strong>Carrier:</strong> %s</li>
+			<li><strong>Policy Number:</strong> %s</li>
+		</ul>
+
+		<p style="margin-top: 24px;">
+			<a href="%s/claims/%s" style="background-color: #1e3a8a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View Claim in Dashboard</a>
+		</p>
+	</div>
+	`,
+		claim.Property.LegalAddress,
+		ownerEntity,
+		lossTypeDisplay,
+		incidentDateFormatted,
+		description,
+		deductible,
+		estimateDisplay,
+		amountAboveDeductible,
+		carrierName,
+		policyNumber,
+		s.appURL,
+		claim.ID,
+	)
+
+	return s.sendEmail(s.claimCoachEmail, subject, body)
+}
+
+// sendEmail is a helper method that sends an email via SendGrid
+func (s *SendGridEmailService) sendEmail(to, subject, htmlBody string) error {
+	from := mail.NewEmail(s.fromName, s.fromEmail)
+	toEmail := mail.NewEmail("", to)
+
+	message := mail.NewSingleEmail(from, subject, toEmail, "", htmlBody)
+	client := sendgrid.NewSendClient(s.apiKey)
+
+	response, err := client.Send(message)
+	if err != nil {
+		return fmt.Errorf("failed to send email: %w", err)
+	}
+
+	if response.StatusCode >= 400 {
+		return fmt.Errorf("email service error: %d - %s", response.StatusCode, response.Body)
+	}
+
+	return nil
 }
