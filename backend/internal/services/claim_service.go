@@ -21,12 +21,14 @@ type ComparisonResult struct {
 type ClaimService struct {
 	db              *sql.DB
 	propertyService *PropertyService
+	policyService   *PolicyService
 }
 
-func NewClaimService(db *sql.DB, propertyService *PropertyService) *ClaimService {
+func NewClaimService(db *sql.DB, propertyService *PropertyService, policyService *PolicyService) *ClaimService {
 	return &ClaimService{
 		db:              db,
 		propertyService: propertyService,
+		policyService:   policyService,
 	}
 }
 
@@ -318,6 +320,18 @@ func (s *ClaimService) GetClaim(claimID string, organizationID string) (*models.
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get claim: %w", err)
+	}
+
+	// Load property relationship
+	property, err := s.propertyService.GetProperty(claim.PropertyID, organizationID)
+	if err == nil {
+		claim.Property = property
+	}
+
+	// Load policy relationship
+	policy, err := s.policyService.GetPolicy(claim.PropertyID, organizationID)
+	if err == nil {
+		claim.Policy = policy
 	}
 
 	return &claim, nil

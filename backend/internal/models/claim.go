@@ -65,6 +65,10 @@ type Claim struct {
 	CreatedByUserID string     `json:"created_by_user_id" db:"created_by_user_id"`
 	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
+
+	// Relationships - populated separately, not from DB scan
+	Property *Property `json:"property,omitempty" db:"-"`
+	Policy   *Policy   `json:"policy,omitempty" db:"-"`
 }
 
 type ClaimActivity struct {

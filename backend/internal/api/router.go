@@ -65,7 +65,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 	// Initialize services needed for both public and protected routes
 	propertyService := services.NewPropertyService(db)
-	claimService := services.NewClaimService(db, propertyService)
+	policyService := services.NewPolicyService(db, storageClient, propertyService)
+	claimService := services.NewClaimService(db, propertyService, policyService)
 
 	// Conditionally use SendGrid or Mock email service based on API key
 	var emailService services.EmailService
@@ -140,7 +141,6 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.PATCH("/properties/:id", propertyHandler.Update)
 
 		// Policy routes (use same param name :id to avoid gin routing conflicts)
-		policyService := services.NewPolicyService(db, storageClient, propertyService)
 		policyHandler := handlers.NewPolicyHandler(policyService)
 
 		api.POST("/properties/:id/policy", policyHandler.Create)
