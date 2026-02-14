@@ -18,6 +18,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   // Scope sheet query
   const {
     data: scopeSheet,
+    isLoading: loadingScopeSheet,
   } = useQuery({
     queryKey: ['scope-sheet', claim.id],
     queryFn: async () => {
@@ -334,16 +335,23 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
             </div>
 
             {/* Contractor Status */}
-            <div className="mt-3">
-              <ContractorStatusBadge
-                hasMagicLink={hasMagicLink}
-                hasScopeSheet={hasScopeSheet}
-              />
-            </div>
+            {loadingScopeSheet ? (
+              <div className="mt-3 animate-pulse">
+                <div className="h-8 w-48 bg-slate-200 rounded-full"></div>
+              </div>
+            ) : (
+              <>
+                <div className="mt-3">
+                  <ContractorStatusBadge
+                    hasMagicLink={hasMagicLink}
+                    hasScopeSheet={hasScopeSheet}
+                  />
+                </div>
 
-            {/* Scope Sheet Summary */}
-            {hasScopeSheet && scopeSheet && (
-              <ScopeSheetSummary scopeSheet={scopeSheet} />
+                {hasScopeSheet && scopeSheet && (
+                  <ScopeSheetSummary scopeSheet={scopeSheet} />
+                )}
+              </>
             )}
 
             {step2Mutation.isError && (
@@ -991,6 +999,40 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
         button.final:hover:not(:disabled) {
           box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+        }
+
+        /* Loading Skeleton */
+        .animate-pulse {
+          animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
+        }
+
+        .mt-3 {
+          margin-top: 0.75rem;
+        }
+
+        .h-8 {
+          height: 2rem;
+        }
+
+        .w-48 {
+          width: 12rem;
+        }
+
+        .bg-slate-200 {
+          background-color: #e2e8f0;
+        }
+
+        .rounded-full {
+          border-radius: 9999px;
         }
 
         /* Responsive */
