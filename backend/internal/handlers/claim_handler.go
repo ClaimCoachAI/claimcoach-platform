@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strings"
 
@@ -10,11 +11,15 @@ import (
 )
 
 type ClaimHandler struct {
-	service *services.ClaimService
+	claimService *services.ClaimService
+	emailService services.EmailService
 }
 
-func NewClaimHandler(service *services.ClaimService) *ClaimHandler {
-	return &ClaimHandler{service: service}
+func NewClaimHandler(claimService *services.ClaimService, emailService services.EmailService) *ClaimHandler {
+	return &ClaimHandler{
+		claimService: claimService,
+		emailService: emailService,
+	}
 }
 
 func (h *ClaimHandler) Create(c *gin.Context) {
@@ -29,7 +34,7 @@ func (h *ClaimHandler) Create(c *gin.Context) {
 		return
 	}
 
-	claim, err := h.service.CreateClaim(input, user.ID, user.OrganizationID)
+	claim, err := h.claimService.CreateClaim(input, user.ID, user.OrganizationID)
 	if err != nil {
 		if err.Error() == "property not found" {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -76,7 +81,7 @@ func (h *ClaimHandler) List(c *gin.Context) {
 		propertyIDPtr = &propertyIDFilter
 	}
 
-	claims, err := h.service.GetClaims(user.OrganizationID, statusPtr, propertyIDPtr)
+	claims, err := h.claimService.GetClaims(user.OrganizationID, statusPtr, propertyIDPtr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -95,7 +100,7 @@ func (h *ClaimHandler) Get(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
 	claimID := c.Param("id")
 
-	claim, err := h.service.GetClaim(claimID, user.OrganizationID)
+	claim, err := h.claimService.GetClaim(claimID, user.OrganizationID)
 	if err != nil {
 		if err.Error() == "claim not found" {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -130,7 +135,7 @@ func (h *ClaimHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
-	claim, err := h.service.UpdateClaimStatus(claimID, user.OrganizationID, user.ID, input)
+	claim, err := h.claimService.UpdateClaimStatus(claimID, user.OrganizationID, user.ID, input)
 	if err != nil {
 		if err.Error() == "claim not found" {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -156,7 +161,7 @@ func (h *ClaimHandler) GetActivities(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
 	claimID := c.Param("id")
 
-	activities, err := h.service.GetClaimActivities(claimID, user.OrganizationID)
+	activities, err := h.claimService.GetClaimActivities(claimID, user.OrganizationID)
 	if err != nil {
 		if err.Error() == "claim not found" {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -176,6 +181,28 @@ func (h *ClaimHandler) GetActivities(c *gin.Context) {
 		"success": true,
 		"data":    activities,
 	})
+}
+
+func (h *ClaimHandler) NotifyClaimCoach(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	claimID := c.Param("id")
+
+	// Get full claim with relationships
+	claim, err := h.claimService.GetClaim(claimID, user.OrganizationID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Claim not found"})
+		return
+	}
+
+	// Send email to ClaimCoach team
+	err = h.emailService.SendClaimCoachNotification(claim)
+	if err != nil {
+		log.Printf("Failed to send ClaimCoach notification for claim %s: %v", claimID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to notify ClaimCoach team"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 type UpdateEstimateRequest struct {
@@ -202,7 +229,7 @@ func (h *ClaimHandler) PatchClaimEstimate(c *gin.Context) {
 	}
 
 	// Update estimate
-	claim, comparison, err := h.service.UpdateEstimate(
+	claim, comparison, err := h.claimService.UpdateEstimate(
 		claimID,
 		req.ContractorEstimateTotal,
 		userModel.ID,
@@ -245,7 +272,7 @@ func (h *ClaimHandler) UpdateClaimStep(c *gin.Context) {
 		return
 	}
 
-	claim, err := h.service.UpdateClaimStep(claimID, user.OrganizationID, input)
+	claim, err := h.claimService.UpdateClaimStep(claimID, user.OrganizationID, input)
 	if err != nil {
 		if err.Error() == "claim not found" {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -273,7 +300,7 @@ func (h *ClaimHandler) Delete(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
 	claimID := c.Param("id")
 
-	err := h.service.DeleteClaim(claimID, user.OrganizationID)
+	err := h.claimService.DeleteClaim(claimID, user.OrganizationID)
 	if err != nil {
 		if err.Error() == "claim not found" {
 			c.JSON(http.StatusNotFound, gin.H{

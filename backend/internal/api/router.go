@@ -152,7 +152,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.POST("/properties/:id/policy/pdf/confirm", policyHandler.ConfirmPDFUpload)
 
 		// Claim routes
-		claimHandler := handlers.NewClaimHandler(claimService)
+		claimHandler := handlers.NewClaimHandler(claimService, emailService)
 
 		api.POST("/claims", claimHandler.Create)
 		api.GET("/claims", claimHandler.List)
