@@ -189,7 +189,7 @@ func (h *ScopeSheetHandler) SaveDraft(c *gin.Context) {
 		if errors.Is(err, services.ErrInvalidDraftStep) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
-				"error":   "draft_step must be between 1 and 10",
+				"error":   "draft_step must be a non-negative integer",
 			})
 			return
 		}

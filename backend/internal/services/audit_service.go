@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"reflect"
 	"strings"
 	"time"
 
@@ -99,7 +98,7 @@ Always respond with valid JSON only, no additional text or explanations.`,
 	return reportID, nil
 }
 
-// buildEstimatePrompt creates a comprehensive prompt from the scope sheet data
+// buildEstimatePrompt creates a structured prompt from the JSONB scope sheet areas
 func (s *AuditService) buildEstimatePrompt(scope *models.ScopeSheet) string {
 	var builder strings.Builder
 
@@ -107,25 +106,31 @@ func (s *AuditService) buildEstimatePrompt(scope *models.ScopeSheet) string {
 	builder.WriteString("produce a detailed Xactimate-style estimate in JSON format.\n\n")
 	builder.WriteString("SCOPE SHEET DATA:\n")
 
-	// Use reflection to iterate through all non-null fields
-	val := reflect.ValueOf(*scope)
-	typ := val.Type()
+	for _, area := range scope.Areas {
+		builder.WriteString(fmt.Sprintf("\n- Area: %s\n", area.Category))
 
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Field(i)
-		fieldType := typ.Field(i)
-		jsonTag := fieldType.Tag.Get("json")
-
-		// Skip ID and timestamp fields
-		if jsonTag == "id" || jsonTag == "claim_id" || jsonTag == "created_at" || jsonTag == "updated_at" || jsonTag == "submitted_at" {
-			continue
+		if len(area.Tags) > 0 {
+			builder.WriteString(fmt.Sprintf("  Damage tags: %s\n", strings.Join(area.Tags, ", ")))
 		}
 
-		// Check if field has a value (non-nil for pointers, non-zero for booleans)
-		if !isFieldEmpty(field) {
-			fieldValue := getFieldValue(field)
-			builder.WriteString(fmt.Sprintf("- %s: %v\n", jsonTag, fieldValue))
+		if sqft, ok := area.Dimensions["square_footage"]; ok && sqft > 0 {
+			builder.WriteString(fmt.Sprintf("  Square footage: %.0f sq ft\n", sqft))
 		}
+		if l, okL := area.Dimensions["length"]; okL {
+			if w, okW := area.Dimensions["width"]; okW {
+				builder.WriteString(fmt.Sprintf("  Dimensions: %.0f x %.0f ft\n", l, w))
+			}
+		}
+
+		if area.Notes != "" {
+			builder.WriteString(fmt.Sprintf("  Notes: %s\n", area.Notes))
+		}
+
+		builder.WriteString(fmt.Sprintf("  Photos: %d image(s) attached\n", len(area.PhotoIDs)))
+	}
+
+	if scope.GeneralNotes != nil && *scope.GeneralNotes != "" {
+		builder.WriteString(fmt.Sprintf("\nGENERAL NOTES: %s\n", *scope.GeneralNotes))
 	}
 
 	builder.WriteString("\nRESPONSE FORMAT:\n")
@@ -146,37 +151,12 @@ func (s *AuditService) buildEstimatePrompt(scope *models.ScopeSheet) string {
 	builder.WriteString("  \"total\": number\n")
 	builder.WriteString("}\n\n")
 	builder.WriteString("Use current 2026 industry-standard pricing for materials and labor. ")
-	builder.WriteString("Include all items from the scope sheet with appropriate quantities and costs.")
+	builder.WriteString("For each damage tag, include all relevant line items with accurate quantities ")
+	builder.WriteString("derived from the dimensions provided. Tags like 'Pitch_Steep' should trigger ")
+	builder.WriteString("appropriate steep-slope labor charges. Tags like 'Shingles_Damaged' should ")
+	builder.WriteString("include tear-off, underlayment, and shingle replacement line items.")
 
 	return builder.String()
-}
-
-// isFieldEmpty checks if a field is empty (nil for pointers, false for bool, empty for strings)
-func isFieldEmpty(field reflect.Value) bool {
-	switch field.Kind() {
-	case reflect.Ptr:
-		return field.IsNil()
-	case reflect.Bool:
-		// For booleans, we only include 'true' values
-		return !field.Bool()
-	case reflect.String:
-		return field.String() == ""
-	default:
-		return field.IsZero()
-	}
-}
-
-// getFieldValue extracts the actual value from a field
-func getFieldValue(field reflect.Value) interface{} {
-	switch field.Kind() {
-	case reflect.Ptr:
-		if !field.IsNil() {
-			return field.Elem().Interface()
-		}
-		return nil
-	default:
-		return field.Interface()
-	}
 }
 
 // saveAuditReport creates and saves an audit report record to the database
