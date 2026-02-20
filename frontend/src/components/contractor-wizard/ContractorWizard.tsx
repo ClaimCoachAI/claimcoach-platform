@@ -1,13 +1,10 @@
-import { useEffect } from 'react'
 import { useWizardState } from './useWizardState'
 import WizardProgress from './WizardProgress'
 import Step1Welcome from './Step1Welcome'
-import Step2Photos from './Step2Photos'
-import Step3MainRoof from './Step3MainRoof'
-import Step4SecondaryRoof from './Step4SecondaryRoof'
-import { Step5FrontExterior, Step6RightExterior, Step7BackExterior, Step8LeftExterior } from './Step5678Exterior'
-import Step9Dimensions from './Step9Dimensions'
-import Step10Review from './Step10Review'
+import TriageScreen from './TriageScreen'
+import TourStep from './TourStep'
+import ReviewScreen from './ReviewScreen'
+import { CATEGORY_MAP } from './taxonomy'
 import type { Claim } from '../../types/claim'
 
 interface ValidationResult {
@@ -15,9 +12,6 @@ interface ValidationResult {
   reason?: string
   magic_link_id?: string
   claim?: Claim
-  contractor_name?: string
-  expires_at?: string
-  status?: string
 }
 
 interface ContractorWizardProps {
@@ -25,87 +19,115 @@ interface ContractorWizardProps {
   validationResult: ValidationResult
 }
 
+function computeProgress(
+  phase: string,
+  currentTourStep: number,
+  totalAreas: number
+): { percent: number; label: string } {
+  switch (phase) {
+    case 'welcome':
+      return { percent: 5, label: 'Welcome' }
+    case 'triage':
+      return { percent: 15, label: 'Triage — select affected areas' }
+    case 'tour': {
+      const total = totalAreas || 1
+      const pct = 20 + Math.round(((currentTourStep + 1) / (total + 1)) * 65)
+      return { percent: Math.min(pct, 85), label: `Walkthrough — area ${currentTourStep + 1} of ${total}` }
+    }
+    case 'review':
+      return { percent: 90, label: 'Review & Submit' }
+    default:
+      return { percent: 5, label: '' }
+  }
+}
+
 export default function ContractorWizard({ token, validationResult }: ContractorWizardProps) {
   const {
     wizardState,
-    loadDraft,
-    goNext,
-    goBack,
-    updateData,
-    setHasSecondaryRoof,
-    updatePhotos,
     loading,
     saving,
+    goToTriage,
+    startTour,
+    completeTourStep,
+    goBackInTour,
+    goBackToTour,
+    submit,
   } = useWizardState(token)
 
-  // Load draft on mount
-  useEffect(() => {
-    loadDraft()
-  }, [loadDraft])
-
-  // Show loading state while draft is being loaded
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-white to-slate/5 flex items-center justify-center">
         <div className="text-center space-y-4">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-teal border-t-transparent"></div>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-teal border-t-transparent" />
           <p className="text-slate text-sm">Loading your progress...</p>
         </div>
       </div>
     )
   }
 
-  // Render current step
-  const renderStep = () => {
-    const stepProps = {
-      wizardState,
-      onNext: goNext,
-      onBack: goBack,
-      onUpdateData: updateData,
-      submitting: saving,
-    }
+  const { percent, label } = computeProgress(
+    wizardState.phase,
+    wizardState.currentTourStep,
+    wizardState.areas.length
+  )
 
-    switch (wizardState.currentStep) {
-      case 1:
-        return <Step1Welcome {...stepProps} claim={validationResult.claim!} />
-      case 2:
-        return <Step2Photos {...stepProps} token={token} onUpdatePhotos={updatePhotos} />
-      case 3:
-        return <Step3MainRoof {...stepProps} setHasSecondaryRoof={setHasSecondaryRoof} />
-      case 4:
-        // Only render if hasSecondaryRoof is true
-        if (wizardState.hasSecondaryRoof) {
-          return <Step4SecondaryRoof {...stepProps} />
-        }
-        // Skip to step 5 if no secondary roof
-        return <Step5FrontExterior {...stepProps} />
-      case 5:
-        return <Step5FrontExterior {...stepProps} />
-      case 6:
-        return <Step6RightExterior {...stepProps} />
-      case 7:
-        return <Step7BackExterior {...stepProps} />
-      case 8:
-        return <Step8LeftExterior {...stepProps} />
-      case 9:
-        return <Step9Dimensions {...stepProps} />
-      case 10:
-        return <Step10Review {...stepProps} token={token} />
-      default:
-        return <Step1Welcome {...stepProps} claim={validationResult.claim!} />
+  const renderPhase = () => {
+    switch (wizardState.phase) {
+      case 'welcome':
+        return (
+          <Step1Welcome
+            claim={validationResult.claim!}
+            onNext={goToTriage}
+            submitting={saving}
+          />
+        )
+
+      case 'triage':
+        return (
+          <TriageScreen
+            selections={wizardState.triageSelections}
+            onStartTour={startTour}
+            onBack={() => {/* welcome phase has no back */}}
+          />
+        )
+
+      case 'tour': {
+        const area = wizardState.areas[wizardState.currentTourStep]
+        if (!area) return null
+        const catDef = CATEGORY_MAP[area.category_key]
+        if (!catDef) return null
+        return (
+          <TourStep
+            area={area}
+            areaIndex={wizardState.currentTourStep}
+            totalAreas={wizardState.areas.length}
+            categoryDef={catDef}
+            token={token}
+            onComplete={completeTourStep}
+            onBack={goBackInTour}
+            saving={saving}
+          />
+        )
+      }
+
+      case 'review':
+        return (
+          <ReviewScreen
+            areas={wizardState.areas}
+            generalNotes={wizardState.generalNotes}
+            onSubmit={submit}
+            onBack={goBackToTour}
+            saving={saving}
+          />
+        )
     }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-slate/5">
-      <WizardProgress
-        currentStep={wizardState.currentStep}
-        totalSteps={wizardState.totalSteps}
-        completedSteps={wizardState.completedSteps}
-      />
-
-      <div className="pb-24">
-        {renderStep()}
+      <WizardProgress progressPercent={percent} phaseLabel={label} />
+      <div className="pb-8">
+        {renderPhase()}
       </div>
     </div>
   )

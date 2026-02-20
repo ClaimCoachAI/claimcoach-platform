@@ -1,13 +1,22 @@
+export interface ScopeArea {
+  id: string
+  category: string
+  category_key: string
+  order: number
+  tags: string[]
+  dimensions: Record<string, number>
+  photo_ids: string[]
+  notes: string
+}
+
 export interface ScopeSheet {
   id: string
   claim_id: string
-  roof_type?: string
-  roof_square_footage?: number
-  notes?: string
+  areas: ScopeArea[]
+  triage_selections: string[]
+  general_notes: string | null
   is_draft: boolean
-  submitted_at?: string
+  submitted_at?: string | null
   created_at: string
   updated_at: string
-  // Allow additional fields from the extensive scope sheet model
-  [key: string]: any
 }

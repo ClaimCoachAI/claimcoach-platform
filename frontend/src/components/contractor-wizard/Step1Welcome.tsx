@@ -1,15 +1,15 @@
-import { StepProps } from './types'
 import type { Claim } from '../../types/claim'
 
-interface Step1WelcomeProps extends StepProps {
+interface Step1WelcomeProps {
   claim: Claim
+  onNext: () => void
+  submitting: boolean
 }
 
 export default function Step1Welcome({ claim, onNext, submitting }: Step1WelcomeProps) {
   const contractorName = claim.contractor_name || 'there'
   const lossTypeLabel = claim.loss_type === 'water' ? 'Water Damage' : 'Hail Damage'
 
-  // Format incident date
   const incidentDate = new Date(claim.incident_date).toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
@@ -76,11 +76,7 @@ export default function Step1Welcome({ claim, onNext, submitting }: Step1Welcome
             <div className="space-y-1">
               <p className="text-xs font-medium text-navy/60">Loss Type</p>
               <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal/10">
-                <svg
-                  className="w-4 h-4 text-teal"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
+                <svg className="w-4 h-4 text-teal" fill="currentColor" viewBox="0 0 20 20">
                   <circle cx="10" cy="10" r="3" />
                 </svg>
                 <span className="text-sm font-semibold text-teal">{lossTypeLabel}</span>
@@ -99,24 +95,14 @@ export default function Step1Welcome({ claim, onNext, submitting }: Step1Welcome
           <div className="glass-card rounded-2xl p-5 border-l-4 border-teal">
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 mt-0.5">
-                <svg
-                  className="w-5 h-5 text-teal"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
+                <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-bold text-navy mb-1">What to Expect</h3>
                 <p className="text-sm text-slate leading-relaxed">
-                  We'll guide you through assessing the property damage step-by-step.
+                  You'll select which areas were damaged, then walk through each one.
                   This should take <span className="font-semibold text-navy">10-15 minutes</span>.
                 </p>
               </div>
@@ -126,18 +112,8 @@ export default function Step1Welcome({ claim, onNext, submitting }: Step1Welcome
           {/* Preparation Checklist */}
           <div className="glass-card rounded-2xl p-5">
             <h3 className="text-sm font-bold text-navy mb-4 flex items-center gap-2">
-              <svg
-                className="w-5 h-5 text-teal"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                />
+              <svg className="w-5 h-5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
               Have Ready
             </h3>
@@ -163,30 +139,17 @@ export default function Step1Welcome({ claim, onNext, submitting }: Step1Welcome
         <div className="animate-slide-up delay-300">
           <button
             type="button"
-            onClick={() => onNext()}
+            onClick={onNext}
             disabled={submitting}
             className="w-full btn-primary py-5 px-6 rounded-2xl text-lg font-bold shadow-xl hover:shadow-2xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden group"
           >
-            {/* Button shine effect */}
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-700" />
-
             <span className="relative flex items-center justify-center gap-2">
               {submitting ? (
                 <>
                   <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
                   Loading...
                 </>
@@ -200,11 +163,7 @@ export default function Step1Welcome({ claim, onNext, submitting }: Step1Welcome
                     viewBox="0 0 24 24"
                     strokeWidth={2.5}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M13 7l5 5m0 0l-5 5m5-5H6"
-                    />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
                 </>
               )}

@@ -1,65 +1,45 @@
-import { ScopeSheetData } from '../ScopeSheetForm'
-
-// Re-export ScopeSheetData for convenience
-export type { ScopeSheetData }
-
-/**
- * Represents an uploaded file with tracking information
- */
-export interface UploadedFile {
-  file: File
-  documentId?: string
-  uploading: boolean
-  uploaded: boolean
-  error?: string
-  previewUrl?: string // URL for displaying already-uploaded photos from backend
+// Scope area — one per selected damage category
+export interface ScopeArea {
+  id: string
+  category: string
+  category_key: string
+  order: number
+  tags: string[]
+  dimensions: Record<string, number>
+  photo_ids: string[]
+  notes: string
 }
 
-/**
- * Main wizard state interface
- */
+// Main wizard state — phase-based
 export interface WizardState {
-  currentStep: number
-  totalSteps: number
-  hasSecondaryRoof: boolean | null
-  wizardData: ScopeSheetData
-  completedSteps: number[]
-  photos: UploadedFile[]
-  draftStep?: number
+  phase: 'welcome' | 'triage' | 'tour' | 'review'
+  triageSelections: string[]
+  areas: ScopeArea[]
+  currentTourStep: number
+  generalNotes: string
 }
 
-/**
- * Props interface for all wizard step components
- */
-export interface StepProps {
-  wizardState: WizardState
-  onNext: (stepData?: Partial<ScopeSheetData>) => Promise<void>
-  onBack: () => void
-  onUpdateData: (data: Partial<ScopeSheetData>) => void
-  submitting: boolean
+// Tracks an in-flight photo upload within a TourStep
+export interface UploadingPhoto {
+  file: File
+  status: 'uploading' | 'done' | 'error'
+  previewUrl: string
+  documentId?: string
 }
 
-/**
- * API response format for draft operations
- */
+// Draft API response shape
 export interface DraftResponse {
   success: boolean
   data: {
     id: string
     claim_id: string
-    draft_step: number
+    areas: ScopeArea[]
+    triage_selections: string[]
+    general_notes: string | null
+    is_draft: boolean
+    draft_step: number | null
+    submitted_at: string | null
     created_at: string
     updated_at: string
-    submitted_at?: string
-    // All the scope sheet data fields
-    [key: string]: unknown
-  }
-}
-
-/**
- * API request format for saving drafts
- */
-export interface SaveDraftRequest {
-  draft_step: number
-  [key: string]: unknown
+  } | null
 }
