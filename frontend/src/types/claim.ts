@@ -1,6 +1,20 @@
 export type LossType = 'water' | 'hail'
-export type ClaimStep = 1 | 2 | 3 | 4 | 5 | 6
+export type ClaimStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
 export type DeductibleResult = 'worth_filing' | 'not_worth_filing'
+
+export interface Payment {
+  id: string
+  claim_id: string
+  payment_type: 'acv' | 'rcv'
+  amount: number
+  expected_amount?: number
+  check_number?: string
+  received_date?: string
+  notes?: string
+  status: 'expected' | 'received' | 'reconciled' | 'disputed'
+  created_at: string
+  updated_at: string
+}
 
 export interface Property {
   id: string

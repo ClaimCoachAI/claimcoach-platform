@@ -681,15 +681,34 @@ Four subsections: Front, Right, Back, Left (each with):
 
 ---
 
-## LLM Integration (Perplexity API)
+## LLM Integration
+
+> **📝 COST OPTIMIZATION NOTE (updated 2026-02-19):**
+> The original design used Perplexity `sonar-pro` for all three calls (~$1.00–$2.00/audit).
+> Only Call 1 (Generate Industry Estimate) actually requires live web-grounded pricing.
+> Calls 2 and 3 are pure reasoning/text generation and should use **Claude Haiku 4.5**
+> (`claude-haiku-4-5-20251001`) instead, which reduces cost to ~$0.20–$0.40/audit (~80% savings).
+>
+> **Revised LLM routing:**
+> - Call 1 (Generate Industry Estimate) → Perplexity `sonar` (not sonar-pro, still web-grounded)
+> - Call 2 (Compare Estimates) → Claude Haiku 4.5
+> - Call 3 (Generate Rebuttal Letter) → Claude Haiku 4.5
+>
+> **TODO before implementing:** Update env vars, service layer, and cost tracking to reflect
+> this split. The Anthropic SDK is already available in the project stack.
 
 ### API Configuration
 
-**Environment Variables:**
+**Environment Variables (revised):**
 ```bash
+# Perplexity — only used for web-grounded estimate generation
 PERPLEXITY_API_KEY=your-api-key-here
-PERPLEXITY_MODEL=sonar-pro  # or sonar-turbo for cheaper option
-PERPLEXITY_TIMEOUT=60       # seconds
+PERPLEXITY_MODEL=sonar           # was sonar-pro — sonar is sufficient and ~60% cheaper
+PERPLEXITY_TIMEOUT=60
+
+# Anthropic — used for comparison and rebuttal (no web search needed)
+ANTHROPIC_API_KEY=your-api-key-here
+ANTHROPIC_HAIKU_MODEL=claude-haiku-4-5-20251001
 ```
 
 ### Three API Calls
@@ -903,13 +922,16 @@ Error details logged for admin
 
 ## API Costs & Budget Controls
 
-### Perplexity Pricing (Estimated)
+### Pricing (Estimated)
 
-**Cost per Audit:** ~$1.00 - $2.00
+> **📝 NOTE:** Costs below reflect the revised hybrid LLM approach. Original all-sonar-pro
+> estimate was $1.00–$2.00/audit. See LLM Integration section for full rationale.
 
-- **Generate Estimate:** ~$0.40-0.60 (2000 tokens, web search)
-- **Compare Estimates:** ~$0.40-0.60 (3000 tokens, web search)
-- **Generate Rebuttal:** ~$0.20-0.40 (2000 tokens, less search)
+**Cost per Audit:** ~$0.20 - $0.40 (down from ~$1.00–$2.00)
+
+- **Generate Estimate:** ~$0.15-0.25 (Perplexity sonar, web-grounded, 2000 tokens)
+- **Compare Estimates:** ~$0.02-0.08 (Claude Haiku 4.5, 3000 tokens, no web search)
+- **Generate Rebuttal:** ~$0.02-0.06 (Claude Haiku 4.5, 2000 tokens, no web search)
 
 **Monthly Budget Examples:**
 - 10 audits: $10-20

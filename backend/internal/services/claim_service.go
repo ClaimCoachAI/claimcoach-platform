@@ -203,7 +203,8 @@ func (s *ClaimService) GetClaims(organizationID string, statusFilter *string, pr
 			c.contractor_email, c.contractor_name, c.contractor_photos_uploaded_at,
 			c.deductible_comparison_result, c.insurance_claim_number, c.inspection_datetime,
 			c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
-			c.meeting_datetime, c.created_by_user_id, c.created_at, c.updated_at
+			c.meeting_datetime, c.created_by_user_id, c.created_at, c.updated_at,
+			c.contractor_estimate_total
 		FROM claims c
 		INNER JOIN properties p ON c.property_id = p.id
 		WHERE p.organization_id = $1
@@ -260,6 +261,7 @@ func (s *ClaimService) GetClaims(organizationID string, statusFilter *string, pr
 			&claim.CreatedByUserID,
 			&claim.CreatedAt,
 			&claim.UpdatedAt,
+			&claim.ContractorEstimateTotal,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan claim: %w", err)
@@ -281,7 +283,8 @@ func (s *ClaimService) GetClaim(claimID string, organizationID string) (*models.
 			c.contractor_email, c.contractor_name, c.contractor_photos_uploaded_at,
 			c.deductible_comparison_result, c.insurance_claim_number, c.inspection_datetime,
 			c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
-			c.meeting_datetime, c.created_by_user_id, c.created_at, c.updated_at
+			c.meeting_datetime, c.created_by_user_id, c.created_at, c.updated_at,
+			c.contractor_estimate_total
 		FROM claims c
 		INNER JOIN properties p ON c.property_id = p.id
 		WHERE c.id = $1 AND p.organization_id = $2
@@ -313,6 +316,7 @@ func (s *ClaimService) GetClaim(claimID string, organizationID string) (*models.
 		&claim.CreatedByUserID,
 		&claim.CreatedAt,
 		&claim.UpdatedAt,
+		&claim.ContractorEstimateTotal,
 	)
 
 	if err == sql.ErrNoRows {

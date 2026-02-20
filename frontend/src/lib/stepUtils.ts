@@ -2,9 +2,9 @@
 
 import type { Claim, LossType } from '../types/claim'
 
-const TOTAL_STEPS = 6 as const
+const TOTAL_STEPS = 7 as const
 
-export type StepNumber = 1 | 2 | 3 | 4 | 5 | 6
+export type StepNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
 export interface StepDefinition {
   number: StepNumber
@@ -38,23 +38,30 @@ export const STEP_DEFINITIONS: Record<StepNumber, StepDefinition> = {
   },
   4: {
     number: 4,
-    title: 'File & Schedule',
-    description: 'File with insurance and schedule their inspection',
-    learnMore: 'Call your insurance company or use their online portal to file the claim. They\'ll give you a claim number and assign an adjuster. The adjuster will want to inspect the damage - schedule a time that works for you.',
-    icon: '📋'
+    title: 'Submit to ClaimCoach',
+    description: 'Send your claim details for our team to file on your behalf',
+    learnMore: 'Our team will file the claim with your insurance carrier and handle all the paperwork. Provide as much detail about the damage as possible so we can give your carrier a clear picture.',
+    icon: '📤'
   },
   5: {
     number: 5,
-    title: 'Review Insurance Offer',
-    description: 'See if their offer is fair (we\'ll help!)',
-    learnMore: 'Insurance companies sometimes offer less than repairs actually cost. Our AI compares their estimate to your contractor\'s estimate and current market rates to find discrepancies. If we find issues, we\'ll help you write a rebuttal letter.',
-    icon: '🤖'
+    title: 'Add Adjuster Info',
+    description: 'Enter details once insurance assigns an adjuster',
+    learnMore: 'Once your carrier assigns an adjuster, enter their name, phone number, and the scheduled inspection date. This helps us track the timeline and prepare for the inspection.',
+    icon: '🔍'
   },
   6: {
     number: 6,
+    title: 'Review Insurance Offer',
+    description: 'Our AI audits the carrier estimate for discrepancies',
+    learnMore: 'Insurance companies sometimes offer less than repairs actually cost. Our AI compares their estimate to your contractor\'s estimate and current market rates to find discrepancies. If we find issues, we\'ll help you write a rebuttal letter.',
+    icon: '🤖'
+  },
+  7: {
+    number: 7,
     title: 'Get Paid & Close',
-    description: 'Track payments and wrap up',
-    learnMore: 'Insurance usually pays in two parts: ACV (Actual Cash Value) upfront to start repairs, then RCV (Recoverable Depreciation) after repairs are done. We\'ll help you request the second payment and make sure you get everything you\'re owed.',
+    description: 'Track your ACV and RCV payments',
+    learnMore: 'Insurance usually pays in two parts: ACV (Actual Cash Value) upfront to start repairs, then RCV (Recoverable Depreciation) after repairs are done. Log each payment here so you always know where things stand.',
     icon: '✅'
   }
 }
@@ -113,10 +120,12 @@ function getCompletedStepText(step: StepNumber, claim: Claim): string {
         ? '✅ Worth Filing - Above deductible'
         : '⚠️ Below deductible'
     case 4:
-      return `✅ Filed with insurance - Claim #${claim.insurance_claim_number}`
+      return '✅ Submitted to ClaimCoach'
     case 5:
-      return '✅ Insurance offer reviewed'
+      return `✅ Adjuster assigned - ${claim.adjuster_name || 'Inspection scheduled'}`
     case 6:
+      return '✅ Insurance offer reviewed'
+    case 7:
       return '✅ Claim closed'
     default:
       return '✅ Complete'
@@ -132,10 +141,12 @@ function getInProgressStepText(step: StepNumber, claim: Claim): string {
     case 3:
       return '🎯 NEXT: Compare estimate to deductible'
     case 4:
-      return '🎯 NEXT: File with insurance'
+      return '🎯 NEXT: Submit claim to ClaimCoach'
     case 5:
-      return '🎯 NEXT: Review insurance offer'
+      return '🎯 NEXT: Enter adjuster info'
     case 6:
+      return '🎯 NEXT: Review insurance offer'
+    case 7:
       return '🎯 NEXT: Track payments'
     default:
       return ''

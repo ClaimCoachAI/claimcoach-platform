@@ -5,7 +5,45 @@ import { getStepDefinition } from '../lib/stepUtils'
 import Toast from './Toast'
 import ContractorStatusBadge from './ContractorStatusBadge'
 import ScopeSheetSummary from './ScopeSheetSummary'
-import type { Claim } from '../types/claim'
+import type { Claim, Payment } from '../types/claim'
+
+interface CarrierEstimateData {
+  id: string
+  file_name: string
+  file_size_bytes: number | null
+  parse_status: 'pending' | 'processing' | 'completed' | 'failed'
+  parse_error: string | null
+  uploaded_at: string
+  parsed_at: string | null
+}
+
+interface DiscrepancyItem {
+  item: string
+  industry_price: number
+  carrier_price: number
+  delta: number
+  justification: string
+}
+
+interface ComparisonData {
+  discrepancies: DiscrepancyItem[]
+  summary: {
+    total_industry: number
+    total_carrier: number
+    total_delta: number
+  }
+}
+
+interface AuditReportData {
+  id: string
+  generated_estimate: string | null
+  comparison_data: string | null
+  total_contractor_estimate: number | null
+  total_carrier_estimate: number | null
+  total_delta: number | null
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  error_message: string | null
+}
 
 interface ClaimStepperProps {
   claim: Claim
@@ -14,6 +52,12 @@ interface ClaimStepperProps {
 export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const [activeStep, setActiveStep] = useState(claim.current_step || 1)
   const queryClient = useQueryClient()
+
+  // AI Audit states (Step 6) — declared early because carrier estimate query uses isPollingCarrierEstimate
+  const [carrierEstimateFile, setCarrierEstimateFile] = useState<File | null>(null)
+  const [isPollingCarrierEstimate, setIsPollingCarrierEstimate] = useState(false)
+  const [rebuttalText, setRebuttalText] = useState<string | null>(null)
+  const [auditLoadingStep, setAuditLoadingStep] = useState(0)
 
   // Scope sheet query
   const {
@@ -38,6 +82,63 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     retry: false,
   })
 
+  // Payments query
+  const {
+    data: payments,
+  } = useQuery<Payment[]>({
+    queryKey: ['payments', claim.id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${claim.id}/payments`)
+        return response.data.data || []
+      } catch (error: any) {
+        if (error.response?.status === 404) return []
+        console.error('Error fetching payments:', error)
+        return []
+      }
+    },
+    enabled: !!claim.id,
+    retry: false,
+  })
+
+  // Carrier estimate query (Step 6 - with polling)
+  const {
+    data: carrierEstimates,
+    refetch: refetchCarrierEstimates,
+  } = useQuery<CarrierEstimateData[]>({
+    queryKey: ['carrier-estimates', claim.id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${claim.id}/carrier-estimate`)
+        return response.data.data || []
+      } catch {
+        return []
+      }
+    },
+    enabled: !!claim.id,
+    retry: false,
+    refetchInterval: isPollingCarrierEstimate ? 3000 : false,
+  })
+
+  // Audit report query (Step 6)
+  const {
+    data: auditReport,
+    refetch: refetchAuditReport,
+  } = useQuery<AuditReportData | null>({
+    queryKey: ['audit-report', claim.id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${claim.id}/audit`)
+        return response.data.data
+      } catch (error: any) {
+        if (error.response?.status === 404) return null
+        return null
+      }
+    },
+    enabled: !!claim.id,
+    retry: false,
+  })
+
   // Toast state
   const [toast, setToast] = useState<{
     message: string
@@ -49,10 +150,12 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     contractor_name: claim.contractor_name || '',
     contractor_email: claim.contractor_email || '',
   })
+  const [isEditingContractor, setIsEditingContractor] = useState(!claim.contractor_name)
 
   const [estimateAmount, setEstimateAmount] = useState(
     claim.contractor_estimate_total?.toString() || ''
   )
+  const [isEditingEstimate, setIsEditingEstimate] = useState(!claim.contractor_estimate_total)
   const [comparison, setComparison] = useState<{
     estimate: number
     deductible: number
@@ -61,6 +164,27 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const deductible = claim.policy?.deductible_calculated || 0
 
   const [step4Description, setStep4Description] = useState<string>(claim.description || '')
+
+  // Payment form states
+  const [acvForm, setAcvForm] = useState({ amount: '', received_date: '', check_number: '' })
+  const [rcvForm, setRcvForm] = useState({ amount: '', received_date: '', check_number: '' })
+  const [isEditingAcv, setIsEditingAcv] = useState(true)
+  const [isEditingRcv, setIsEditingRcv] = useState(true)
+  const [confirmingClose, setConfirmingClose] = useState(false)
+
+  // Derive payment records from query data
+  const acvPayment = payments?.find(p => p.payment_type === 'acv' && (p.status === 'received' || p.status === 'reconciled'))
+  const rcvPayment = payments?.find(p => p.payment_type === 'rcv' && (p.status === 'received' || p.status === 'reconciled'))
+  const totalReceived = (acvPayment?.amount || 0) + (rcvPayment?.amount || 0)
+
+  // Sync locked state with loaded payment data
+  useEffect(() => {
+    if (acvPayment) setIsEditingAcv(false)
+  }, [acvPayment?.id])
+
+  useEffect(() => {
+    if (rcvPayment) setIsEditingRcv(false)
+  }, [rcvPayment?.id])
 
   // Initialize comparison if estimate exists
   useEffect(() => {
@@ -72,6 +196,15 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
       })
     }
   }, [claim.contractor_estimate_total, deductible])
+
+  // Stop polling when carrier estimate parse completes or fails
+  useEffect(() => {
+    const latest = carrierEstimates?.[0]
+    if (latest?.parse_status === 'completed' || latest?.parse_status === 'failed') {
+      setIsPollingCarrierEstimate(false)
+    }
+  }, [carrierEstimates])
+
 
   useEffect(() => {
     if (activeStep === 3 && estimateAmount) {
@@ -120,7 +253,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         message: `✓ Email sent successfully to ${contractorData.contractor_email}`,
         type: 'success',
       })
-      setContractorData({ contractor_name: '', contractor_email: '' })
+      setIsEditingContractor(false)
     },
     onError: () => {
       setToast({
@@ -147,8 +280,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         message: '✓ Estimate saved successfully',
         type: 'success',
       })
-      setEstimateAmount('')
-      setComparison(null)
+      setIsEditingEstimate(false)
     },
   })
 
@@ -212,9 +344,27 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
   const step6Mutation = useMutation({
     mutationFn: async () => {
+      const updatedStepsCompleted = [...new Set([...(claim.steps_completed || []), 6])]
       const response = await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 6,
-        steps_completed: [1, 2, 3, 4, 5, 6],
+        current_step: 7,
+        steps_completed: updatedStepsCompleted,
+      })
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['claim', claim.id] })
+      setToast({
+        message: '✓ Insurance offer reviewed',
+        type: 'success',
+      })
+    },
+  })
+
+  const step7Mutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.patch(`/api/claims/${claim.id}/step`, {
+        current_step: 7,
+        steps_completed: [1, 2, 3, 4, 5, 6, 7],
         status: 'closed',
       })
       return response.data
@@ -225,6 +375,132 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         message: '✓ Claim closed successfully',
         type: 'success',
       })
+    },
+  })
+
+  const acvMutation = useMutation({
+    mutationFn: async (data: { amount: number; received_date: string; check_number?: string }) => {
+      const createRes = await api.post(`/api/claims/${claim.id}/payments`, {
+        payment_type: 'acv',
+        amount: data.amount,
+        expected_amount: data.amount,
+      })
+      const paymentId = createRes.data.data?.id || createRes.data.id
+      await api.patch(`/api/payments/${paymentId}/received`, {
+        amount: data.amount,
+        received_date: data.received_date,
+        check_number: data.check_number,
+      })
+      return createRes.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments', claim.id] })
+      setToast({ message: '✓ ACV payment logged', type: 'success' })
+      setIsEditingAcv(false)
+    },
+    onError: () => {
+      setToast({ message: 'Failed to log ACV payment. Please try again.', type: 'error' })
+    },
+  })
+
+  const rcvMutation = useMutation({
+    mutationFn: async (data: { amount: number; received_date: string; check_number?: string }) => {
+      const createRes = await api.post(`/api/claims/${claim.id}/payments`, {
+        payment_type: 'rcv',
+        amount: data.amount,
+        expected_amount: data.amount,
+      })
+      const paymentId = createRes.data.data?.id || createRes.data.id
+      await api.patch(`/api/payments/${paymentId}/received`, {
+        amount: data.amount,
+        received_date: data.received_date,
+        check_number: data.check_number,
+      })
+      return createRes.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments', claim.id] })
+      setToast({ message: '✓ RCV payment logged', type: 'success' })
+      setIsEditingRcv(false)
+    },
+    onError: () => {
+      setToast({ message: 'Failed to log RCV payment. Please try again.', type: 'error' })
+    },
+  })
+
+  const uploadCarrierEstimateMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const urlRes = await api.post(`/api/claims/${claim.id}/carrier-estimate/upload-url`, {
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: 'application/pdf',
+      })
+      const { upload_url, estimate_id } = urlRes.data.data
+      await fetch(upload_url, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': 'application/pdf' },
+      })
+      await api.post(`/api/claims/${claim.id}/carrier-estimate/${estimate_id}/confirm`)
+      await api.post(`/api/claims/${claim.id}/carrier-estimate/${estimate_id}/parse`)
+      return estimate_id
+    },
+    onSuccess: () => {
+      setCarrierEstimateFile(null)
+      setIsPollingCarrierEstimate(true)
+      refetchCarrierEstimates()
+      setToast({ message: '✓ PDF uploaded — parsing in progress', type: 'success' })
+    },
+    onError: (err: any) => {
+      setToast({
+        message: err?.response?.data?.error || 'Failed to upload PDF. Please try again.',
+        type: 'error',
+      })
+    },
+  })
+
+  const generateAuditMutation = useMutation({
+    mutationFn: async () => {
+      const genRes = await api.post(`/api/claims/${claim.id}/audit/generate`)
+      const auditReportId = genRes.data.data.audit_report_id
+      await api.post(`/api/claims/${claim.id}/audit/${auditReportId}/compare`)
+      return auditReportId
+    },
+    onSuccess: () => {
+      refetchAuditReport()
+      setToast({ message: '✓ AI analysis complete', type: 'success' })
+    },
+    onError: (err: any) => {
+      setToast({
+        message: err?.response?.data?.error || 'Analysis failed. Please try again.',
+        type: 'error',
+      })
+    },
+  })
+
+  // Cycle through loading steps while AI analysis runs
+  useEffect(() => {
+    if (!generateAuditMutation.isPending) {
+      setAuditLoadingStep(0)
+      return
+    }
+    const interval = setInterval(() => {
+      setAuditLoadingStep(s => (s + 1) % 4)
+    }, 3500)
+    return () => clearInterval(interval)
+  }, [generateAuditMutation.isPending])
+
+  const generateRebuttalMutation = useMutation({
+    mutationFn: async (auditReportId: string) => {
+      const res = await api.post(`/api/claims/${claim.id}/audit/${auditReportId}/rebuttal`)
+      return res.data.data.content as string
+    },
+    onSuccess: (content) => {
+      setRebuttalText(content)
+      setToast({ message: '✓ Rebuttal letter generated', type: 'success' })
+    },
+    onError: () => {
+      setToast({ message: 'Failed to generate rebuttal. Please try again.', type: 'error' })
     },
   })
 
@@ -261,6 +537,44 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     step6Mutation.mutate()
   }
 
+  const handleCarrierEstimateUpload = () => {
+    if (carrierEstimateFile) {
+      uploadCarrierEstimateMutation.mutate(carrierEstimateFile)
+    }
+  }
+
+  const handleAcvSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const amount = parseFloat(acvForm.amount)
+    if (!acvForm.amount || isNaN(amount) || amount <= 0) {
+      setToast({ message: 'Please enter a valid payment amount', type: 'error' })
+      return
+    }
+    if (!acvForm.received_date) {
+      setToast({ message: 'Please enter the payment date', type: 'error' })
+      return
+    }
+    acvMutation.mutate({ amount, received_date: acvForm.received_date, check_number: acvForm.check_number || undefined })
+  }
+
+  const handleRcvSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const amount = parseFloat(rcvForm.amount)
+    if (!rcvForm.amount || isNaN(amount) || amount <= 0) {
+      setToast({ message: 'Please enter a valid payment amount', type: 'error' })
+      return
+    }
+    if (!rcvForm.received_date) {
+      setToast({ message: 'Please enter the payment date', type: 'error' })
+      return
+    }
+    rcvMutation.mutate({ amount, received_date: rcvForm.received_date, check_number: rcvForm.check_number || undefined })
+  }
+
+  const handleStep7Submit = () => {
+    step7Mutation.mutate()
+  }
+
   const getStepStatus = (stepNum: number): 'completed' | 'current' | 'upcoming' => {
     if (claim.steps_completed?.includes(stepNum)) return 'completed'
     if (stepNum === claim.current_step) return 'current'
@@ -274,6 +588,27 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const renderStepContent = (stepNum: number) => {
     if (activeStep !== stepNum) return null
 
+    const isLocked = !claim.steps_completed?.includes(stepNum) && stepNum !== claim.current_step
+
+    // Derived values for Step 6 audit flow
+    const latestCarrierEstimate = carrierEstimates?.[0]
+    const isParsed = latestCarrierEstimate?.parse_status === 'completed'
+    const isParsing = isPollingCarrierEstimate ||
+      latestCarrierEstimate?.parse_status === 'pending' ||
+      latestCarrierEstimate?.parse_status === 'processing'
+    const parseFailed = latestCarrierEstimate?.parse_status === 'failed'
+    const hasAuditResult = auditReport?.status === 'completed' && !!auditReport?.comparison_data
+
+    let comparisonData: ComparisonData | null = null
+    if (auditReport?.comparison_data) {
+      try {
+        comparisonData = JSON.parse(auditReport.comparison_data) as ComparisonData
+      } catch {
+        comparisonData = null
+      }
+    }
+
+    const content = (() => {
     switch (stepNum) {
       case 1:
         return (
@@ -332,34 +667,77 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
       case 2:
         return (
           <form onSubmit={handleStep2Submit} className="step-content step-form">
-            <div className="form-field">
-              <label>
-                Contractor Name <span className="required">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={contractorData.contractor_name}
-                onChange={(e) =>
-                  setContractorData({ ...contractorData, contractor_name: e.target.value })
-                }
-                placeholder="ABC Roofing Company"
-              />
-            </div>
-            <div className="form-field">
-              <label>
-                Contractor Email <span className="required">*</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={contractorData.contractor_email}
-                onChange={(e) =>
-                  setContractorData({ ...contractorData, contractor_email: e.target.value })
-                }
-                placeholder="contractor@example.com"
-              />
-            </div>
+            {!isEditingContractor ? (
+              <div className="contractor-view-card">
+                <div className="contractor-view-fields">
+                  <div className="contractor-view-field">
+                    <span className="contractor-view-label">Contractor Name</span>
+                    <span className="contractor-view-value">{contractorData.contractor_name}</span>
+                  </div>
+                  <div className="contractor-view-field">
+                    <span className="contractor-view-label">Contractor Email</span>
+                    <span className="contractor-view-value">{contractorData.contractor_email}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="edit-contractor-btn"
+                  onClick={() => setIsEditingContractor(true)}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  Edit
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="form-field">
+                  <label>
+                    Contractor Name <span className="required">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={contractorData.contractor_name}
+                    onChange={(e) =>
+                      setContractorData({ ...contractorData, contractor_name: e.target.value })
+                    }
+                    placeholder="ABC Roofing Company"
+                  />
+                </div>
+                <div className="form-field">
+                  <label>
+                    Contractor Email <span className="required">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={contractorData.contractor_email}
+                    onChange={(e) =>
+                      setContractorData({ ...contractorData, contractor_email: e.target.value })
+                    }
+                    placeholder="contractor@example.com"
+                  />
+                </div>
+                {!!claim.contractor_name && (
+                  <button
+                    type="button"
+                    className="cancel-edit-btn"
+                    onClick={() => {
+                      setIsEditingContractor(false)
+                      setContractorData({
+                        contractor_name: claim.contractor_name || '',
+                        contractor_email: claim.contractor_email || '',
+                      })
+                    }}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </>
+            )}
 
             {/* Contractor Status */}
             {loadingScopeSheet ? (
@@ -387,7 +765,11 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
               </div>
             )}
             <button type="submit" disabled={step2Mutation.isPending}>
-              {step2Mutation.isPending ? 'Sending...' : 'Send Link to Contractor'}
+              {step2Mutation.isPending
+                ? 'Sending...'
+                : !!claim.contractor_name && !isEditingContractor
+                  ? 'Resend Link to Contractor'
+                  : 'Send Link to Contractor'}
             </button>
           </form>
         )
@@ -395,22 +777,64 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
       case 3:
         return (
           <form onSubmit={handleStep3Submit} className="step-content step-form">
-            <div className="form-field">
-              <label>
-                Contractor Estimate <span className="required">*</span>
-              </label>
-              <div className="input-with-prefix">
-                <span className="prefix">$</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  value={estimateAmount}
-                  onChange={(e) => setEstimateAmount(e.target.value)}
-                  placeholder="0.00"
-                />
+            {!isEditingEstimate ? (
+              <div className="contractor-view-card">
+                <div className="contractor-view-fields">
+                  <span className="contractor-view-label">Contractor Estimate</span>
+                  <span className="estimate-view-amount">
+                    ${(comparison?.estimate ?? claim.contractor_estimate_total ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="edit-contractor-btn"
+                  onClick={() => setIsEditingEstimate(true)}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  Edit
+                </button>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="form-field">
+                  <label>
+                    Contractor Estimate <span className="required">*</span>
+                  </label>
+                  <div className="input-with-prefix">
+                    <span className="prefix">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={estimateAmount}
+                      onChange={(e) => setEstimateAmount(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                {!!claim.contractor_estimate_total && (
+                  <button
+                    type="button"
+                    className="cancel-edit-btn"
+                    onClick={() => {
+                      setIsEditingEstimate(false)
+                      const saved = claim.contractor_estimate_total!
+                      setEstimateAmount(saved.toString())
+                      setComparison({
+                        estimate: saved,
+                        deductible,
+                        worthFiling: saved > deductible,
+                      })
+                    }}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </>
+            )}
 
             <div className="info-box">
               <div className="info-row">
@@ -444,9 +868,15 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                 {(step3Mutation.error as any)?.response?.data?.error || 'Failed to update'}
               </div>
             )}
-            <button type="submit" disabled={step3Mutation.isPending || !comparison}>
-              {step3Mutation.isPending ? 'Saving...' : 'Continue to Next Step'}
-            </button>
+            {isEditingEstimate && (
+              <button type="submit" disabled={step3Mutation.isPending || !comparison}>
+                {step3Mutation.isPending
+                  ? 'Saving...'
+                  : !!claim.contractor_estimate_total
+                    ? 'Save Changes'
+                    : 'Continue to Next Step'}
+              </button>
+            )}
           </form>
         )
 
@@ -487,14 +917,33 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                     })}
                   </span>
                 </div>
-                <div className="review-item">
-                  <span className="review-label">Contractor Estimate</span>
-                  <span className="review-value">
-                    ${(claim.contractor_estimate_total || 0).toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
+                {!!claim.contractor_estimate_total && (
+                  <div className="review-item">
+                    <span className="review-label">Contractor Estimate</span>
+                    <span className="review-value">
+                      ${claim.contractor_estimate_total.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Filing Notice Banner */}
+            <div className="filing-notice">
+              <div className="filing-notice-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <div className="filing-notice-body">
+                <strong className="filing-notice-title">ClaimCoach will file this claim on your behalf</strong>
+                <p className="filing-notice-text">
+                  Our team submits your claim directly to the insurance carrier. The more detail you provide
+                  about the damage below — what was affected, how severe it is, and when it occurred —
+                  the stronger your case will be.
+                </p>
               </div>
             </div>
 
@@ -539,6 +988,21 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
       case 5:
         return (
           <form onSubmit={handleStep5Submit} className="step-content step-form">
+            <div className="claimcoach-notice">
+              <div className="claimcoach-notice-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M12 8v4m0 4h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <div>
+                <strong className="claimcoach-notice-title">This info comes from the ClaimCoach team</strong>
+                <p className="claimcoach-notice-text">
+                  Once your carrier assigns an adjuster, ClaimCoach will notify you with the claim number,
+                  adjuster details, and inspection date. Enter those details here when you receive them.
+                </p>
+              </div>
+            </div>
             <div className="form-field">
               <label>
                 Insurance Claim Number <span className="required">*</span>
@@ -598,31 +1062,603 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
       case 6:
         return (
-          <div className="step-content">
-            <div className="info-box">
-              <div className="info-icon">📊</div>
-              <div>
-                <strong>AI Audit Coming Soon</strong>
-                <p>
-                  We're building AI-powered estimate comparison. Mark complete when you've reviewed
-                  the insurance offer.
-                </p>
-              </div>
-            </div>
-            {step6Mutation.isError && (
-              <div className="error">
-                {(step6Mutation.error as any)?.response?.data?.error || 'Failed to close'}
+          <div className="step-content step-form">
+            {/* Adjuster summary */}
+            {claim.insurance_claim_number && (
+              <div className="adjuster-summary-card">
+                <div className="adjuster-summary-row">
+                  <span className="adjuster-summary-label">Claim Number</span>
+                  <span className="adjuster-summary-value">{claim.insurance_claim_number}</span>
+                </div>
+                {claim.adjuster_name && (
+                  <div className="adjuster-summary-row">
+                    <span className="adjuster-summary-label">Adjuster</span>
+                    <span className="adjuster-summary-value">{claim.adjuster_name}{claim.adjuster_phone ? ` · ${claim.adjuster_phone}` : ''}</span>
+                  </div>
+                )}
+                {claim.inspection_datetime && (
+                  <div className="adjuster-summary-row">
+                    <span className="adjuster-summary-label">Inspection</span>
+                    <span className="adjuster-summary-value">
+                      {new Date(claim.inspection_datetime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
-            <button onClick={handleStep6Submit} disabled={step6Mutation.isPending} className="final">
-              {step6Mutation.isPending ? 'Closing...' : 'Close Claim'}
-            </button>
+
+            {/* AI Audit header */}
+            <div className="audit-section-header">
+              <div className="audit-section-icon">🤖</div>
+              <div>
+                <strong className="audit-section-title">AI Estimate Audit</strong>
+                <p className="audit-section-subtitle">Upload the carrier's PDF estimate to compare against your contractor's scope</p>
+              </div>
+            </div>
+
+            {/* Phase 1: Upload zone */}
+            {!latestCarrierEstimate && !uploadCarrierEstimateMutation.isPending && (
+              <div className="audit-upload-zone">
+                <div className="audit-upload-icon">📄</div>
+                <div className="audit-upload-label">Insurance Carrier Estimate (PDF only)</div>
+                <div className="audit-upload-hint">The estimate document your insurance company sent after the adjuster inspection</div>
+                <label className="audit-file-btn">
+                  {carrierEstimateFile ? `✓ ${carrierEstimateFile.name}` : 'Choose PDF File'}
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) setCarrierEstimateFile(file)
+                    }}
+                  />
+                </label>
+                {carrierEstimateFile && (
+                  <button
+                    type="button"
+                    onClick={handleCarrierEstimateUpload}
+                    disabled={uploadCarrierEstimateMutation.isPending}
+                  >
+                    Upload &amp; Parse PDF
+                  </button>
+                )}
+                {uploadCarrierEstimateMutation.isError && (
+                  <div className="error">
+                    {(uploadCarrierEstimateMutation.error as any)?.response?.data?.error || 'Upload failed. Please try again.'}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Uploading progress */}
+            {uploadCarrierEstimateMutation.isPending && (
+              <div className="audit-progress-card">
+                <div className="audit-spinner" />
+                <div>
+                  <span className="audit-progress-label">Uploading PDF...</span>
+                  <span className="audit-progress-sub">Sending file to storage</span>
+                </div>
+              </div>
+            )}
+
+            {/* Parsing progress */}
+            {isParsing && !uploadCarrierEstimateMutation.isPending && (
+              <div className="audit-progress-card">
+                <div className="audit-spinner" />
+                <div>
+                  <span className="audit-progress-label">Parsing insurance document</span>
+                  <span className="audit-progress-sub">Extracting line items from PDF — this takes about 30 seconds</span>
+                </div>
+              </div>
+            )}
+
+            {/* Parse failed */}
+            {parseFailed && (
+              <div className="audit-error-card">
+                <span className="audit-error-text">Failed to parse PDF. The file may be corrupted or in an unsupported format. Try uploading a different file.</span>
+                <button
+                  type="button"
+                  className="audit-retry-btn"
+                  onClick={() => queryClient.setQueryData(['carrier-estimates', claim.id], [])}
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+
+            {/* Parsed — ready to run analysis */}
+            {isParsed && !hasAuditResult && !generateAuditMutation.isPending && (
+              <>
+                <div className="audit-file-card">
+                  <span className="audit-file-icon">📄</span>
+                  <div className="audit-file-info">
+                    <span className="audit-file-name">{latestCarrierEstimate?.file_name}</span>
+                    <span className="audit-file-status">✓ Document parsed successfully</span>
+                  </div>
+                </div>
+                <div className="audit-run-card">
+                  <div className="audit-run-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                      <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div className="audit-run-body">
+                    <strong className="audit-run-title">Ready to analyze</strong>
+                    <p className="audit-run-text">AI will compare the carrier's estimate against your contractor's scope sheet and flag any underpayments or missing items.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => generateAuditMutation.mutate()}
+                  disabled={generateAuditMutation.isPending}
+                >
+                  Run AI Analysis
+                </button>
+                {generateAuditMutation.isError && (
+                  <div className="error">
+                    {(generateAuditMutation.error as any)?.response?.data?.error || 'Analysis failed. Please try again.'}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* AI analyzing — fun loading screen */}
+            {generateAuditMutation.isPending && (
+              <div className="audit-loading-screen">
+                <div className="audit-loading-orb">
+                  <div className="audit-orb-ring audit-orb-ring-1" />
+                  <div className="audit-orb-ring audit-orb-ring-2" />
+                  <div className="audit-orb-ring audit-orb-ring-3" />
+                  <div className="audit-orb-core">🤖</div>
+                </div>
+                <div className="audit-loading-steps">
+                  {[
+                    { icon: '📄', label: 'Reading carrier estimate' },
+                    { icon: '🔍', label: 'Comparing against contractor scope' },
+                    { icon: '⚡', label: 'Identifying discrepancies' },
+                    { icon: '📊', label: 'Calculating delta amounts' },
+                  ].map((s, i) => (
+                    <div
+                      key={i}
+                      className={`audit-loading-step ${i < auditLoadingStep ? 'done' : i === auditLoadingStep ? 'active' : 'pending'}`}
+                    >
+                      <div className="audit-loading-step-icon">
+                        {i < auditLoadingStep ? '✓' : s.icon}
+                      </div>
+                      <span className="audit-loading-step-label">{s.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="audit-loading-note">This takes about 60 seconds</p>
+              </div>
+            )}
+
+            {/* Audit failed */}
+            {auditReport?.status === 'failed' && (
+              <div className="audit-error-card">
+                <span className="audit-error-text">{auditReport.error_message || 'Analysis failed. Please try again.'}</span>
+                <button
+                  type="button"
+                  className="audit-retry-btn"
+                  onClick={() => generateAuditMutation.mutate()}
+                  disabled={generateAuditMutation.isPending}
+                >
+                  Retry Analysis
+                </button>
+              </div>
+            )}
+
+            {/* Audit results */}
+            {hasAuditResult && comparisonData && (
+              <div className="audit-results">
+                {/* Summary totals */}
+                <div className="audit-summary-grid">
+                  <div className="audit-summary-cell">
+                    <span className="audit-summary-label">Industry Estimate</span>
+                    <span className="audit-summary-value">
+                      ${(comparisonData.summary.total_industry || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="audit-summary-cell">
+                    <span className="audit-summary-label">Carrier Estimate</span>
+                    <span className="audit-summary-value carrier-value">
+                      ${(comparisonData.summary.total_carrier || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className={`audit-summary-cell ${(comparisonData.summary.total_delta || 0) > 0 ? 'delta-positive' : ''}`}>
+                    <span className="audit-summary-label">Delta (Underpaid)</span>
+                    <span className="audit-summary-delta">
+                      ${Math.abs(comparisonData.summary.total_delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Discrepancies list */}
+                {comparisonData.discrepancies.length > 0 ? (
+                  <div className="audit-discrepancies">
+                    <div className="audit-disc-header-row">
+                      <span className="audit-disc-count">{comparisonData.discrepancies.length} Discrepanc{comparisonData.discrepancies.length === 1 ? 'y' : 'ies'} Found</span>
+                    </div>
+                    {comparisonData.discrepancies.map((disc, i) => (
+                      <div key={i} className="audit-disc-item">
+                        <div className="audit-disc-top">
+                          <span className="audit-disc-item-name">{disc.item}</span>
+                          <span className="audit-disc-delta-badge">+${(disc.delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="audit-disc-prices">
+                          <span className="audit-disc-price">Industry: ${(disc.industry_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                          <span className="audit-disc-sep">·</span>
+                          <span className="audit-disc-price carrier-price">Carrier: ${(disc.carrier_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        {disc.justification && (
+                          <p className="audit-disc-justification">{disc.justification}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="audit-no-disc">
+                    <span>✓ No significant discrepancies found. The carrier estimate appears to be in line with industry standards.</span>
+                  </div>
+                )}
+
+                {/* Rebuttal section */}
+                {!rebuttalText && comparisonData.discrepancies.length > 0 && (
+                  <div className="audit-rebuttal-cta">
+                    <div>
+                      <strong className="audit-rebuttal-cta-title">Generate a rebuttal letter?</strong>
+                      <p className="audit-rebuttal-cta-text">Our AI will draft a professional letter addressing each discrepancy that you can send to your carrier to request additional payment.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => generateRebuttalMutation.mutate(auditReport!.id)}
+                      disabled={generateRebuttalMutation.isPending}
+                    >
+                      {generateRebuttalMutation.isPending ? 'Generating...' : 'Generate Rebuttal Letter'}
+                    </button>
+                    {generateRebuttalMutation.isError && (
+                      <div className="error">Failed to generate rebuttal. Please try again.</div>
+                    )}
+                  </div>
+                )}
+
+                {rebuttalText && (
+                  <div className="audit-rebuttal">
+                    <div className="audit-rebuttal-header">
+                      <span className="audit-rebuttal-title">Rebuttal Letter</span>
+                      <button
+                        type="button"
+                        className="audit-copy-btn"
+                        onClick={() => {
+                          navigator.clipboard.writeText(rebuttalText)
+                          setToast({ message: '✓ Copied to clipboard', type: 'success' })
+                        }}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <pre className="audit-rebuttal-text">{rebuttalText}</pre>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Continue CTA — only shown after audit is complete */}
+            {hasAuditResult && (
+              <>
+                {step6Mutation.isError && (
+                  <div className="error">
+                    {(step6Mutation.error as any)?.response?.data?.error || 'Failed to advance'}
+                  </div>
+                )}
+                <button onClick={handleStep6Submit} disabled={step6Mutation.isPending} className="audit-continue-btn">
+                  {step6Mutation.isPending ? 'Saving...' : 'Review Complete — Continue to Payments →'}
+                </button>
+              </>
+            )}
+          </div>
+        )
+
+      case 7:
+        return (
+          <div className="step-content step-form">
+            {/* Mortgage bank endorsement warning */}
+            {claim.property?.mortgage_bank_id && (
+              <div className="mortgage-warning">
+                <div className="mortgage-warning-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <strong className="mortgage-warning-title">Mortgage Bank Endorsement Required</strong>
+                  <p className="mortgage-warning-text">
+                    Your property has a mortgage. Insurance checks are typically made out to both you
+                    and your lender. Contact your mortgage servicer to endorse the check before depositing.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Payment summary bar */}
+            {(acvPayment || rcvPayment) && (
+              <div className="payment-summary-bar">
+                <span className="payment-summary-label">Total Received</span>
+                <span className="payment-summary-total">
+                  ${totalReceived.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
+            {/* ACV Payment Card */}
+            <div className="payment-section">
+              <div className="payment-section-header">
+                <div className="payment-type-badge acv-badge">ACV</div>
+                <div>
+                  <span className="payment-section-title">Actual Cash Value</span>
+                  <span className="payment-section-subtitle">First check — received before or during repairs</span>
+                </div>
+              </div>
+
+              {!isEditingAcv && acvPayment ? (
+                <div className="contractor-view-card">
+                  <div className="contractor-view-fields">
+                    <div className="contractor-view-field">
+                      <span className="contractor-view-label">Amount Received</span>
+                      <span className="estimate-view-amount">
+                        ${acvPayment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="payment-view-meta">
+                      {acvPayment.received_date && (
+                        <span className="payment-meta-item">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                          {new Date(acvPayment.received_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      )}
+                      {acvPayment.check_number && (
+                        <span className="payment-meta-item">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+                          </svg>
+                          #{acvPayment.check_number}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="edit-contractor-btn"
+                    onClick={() => setIsEditingAcv(true)}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                    Edit
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleAcvSubmit} className="payment-form">
+                  <div className="form-grid">
+                    <div className="form-field">
+                      <label>Amount Received <span className="required">*</span></label>
+                      <div className="input-with-prefix">
+                        <span className="prefix">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={acvForm.amount}
+                          onChange={e => setAcvForm({ ...acvForm, amount: e.target.value })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                    <div className="form-field">
+                      <label>Date Received <span className="required">*</span></label>
+                      <input
+                        type="date"
+                        required
+                        value={acvForm.received_date}
+                        onChange={e => setAcvForm({ ...acvForm, received_date: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-field">
+                    <label>Check Number</label>
+                    <input
+                      type="text"
+                      value={acvForm.check_number}
+                      onChange={e => setAcvForm({ ...acvForm, check_number: e.target.value })}
+                      placeholder="e.g. 10042"
+                    />
+                  </div>
+                  {acvMutation.isError && (
+                    <div className="error">
+                      {(acvMutation.error as any)?.response?.data?.error || 'Failed to log payment'}
+                    </div>
+                  )}
+                  <div className="payment-form-actions">
+                    {acvPayment && (
+                      <button type="button" className="cancel-edit-btn" onClick={() => setIsEditingAcv(false)}>
+                        Cancel
+                      </button>
+                    )}
+                    <button type="submit" className="payment-log-btn" disabled={acvMutation.isPending}>
+                      {acvMutation.isPending ? 'Logging...' : 'Log ACV Payment'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            {/* RCV Payment Card */}
+            <div className="payment-section">
+              <div className="payment-section-header">
+                <div className="payment-type-badge rcv-badge">RCV</div>
+                <div>
+                  <span className="payment-section-title">Recoverable Cash Value</span>
+                  <span className="payment-section-subtitle">Second check — received after repairs are complete</span>
+                </div>
+              </div>
+
+              {!isEditingRcv && rcvPayment ? (
+                <div className="contractor-view-card">
+                  <div className="contractor-view-fields">
+                    <div className="contractor-view-field">
+                      <span className="contractor-view-label">Amount Received</span>
+                      <span className="estimate-view-amount">
+                        ${rcvPayment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="payment-view-meta">
+                      {rcvPayment.received_date && (
+                        <span className="payment-meta-item">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                          {new Date(rcvPayment.received_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      )}
+                      {rcvPayment.check_number && (
+                        <span className="payment-meta-item">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+                          </svg>
+                          #{rcvPayment.check_number}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="edit-contractor-btn"
+                    onClick={() => setIsEditingRcv(true)}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                    Edit
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleRcvSubmit} className="payment-form">
+                  <div className="form-grid">
+                    <div className="form-field">
+                      <label>Amount Received <span className="required">*</span></label>
+                      <div className="input-with-prefix">
+                        <span className="prefix">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={rcvForm.amount}
+                          onChange={e => setRcvForm({ ...rcvForm, amount: e.target.value })}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                    <div className="form-field">
+                      <label>Date Received <span className="required">*</span></label>
+                      <input
+                        type="date"
+                        required
+                        value={rcvForm.received_date}
+                        onChange={e => setRcvForm({ ...rcvForm, received_date: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-field">
+                    <label>Check Number</label>
+                    <input
+                      type="text"
+                      value={rcvForm.check_number}
+                      onChange={e => setRcvForm({ ...rcvForm, check_number: e.target.value })}
+                      placeholder="e.g. 10043"
+                    />
+                  </div>
+                  {rcvMutation.isError && (
+                    <div className="error">
+                      {(rcvMutation.error as any)?.response?.data?.error || 'Failed to log payment'}
+                    </div>
+                  )}
+                  <div className="payment-form-actions">
+                    {rcvPayment && (
+                      <button type="button" className="cancel-edit-btn" onClick={() => setIsEditingRcv(false)}>
+                        Cancel
+                      </button>
+                    )}
+                    <button type="submit" className="payment-log-btn" disabled={rcvMutation.isPending}>
+                      {rcvMutation.isPending ? 'Logging...' : 'Log RCV Payment'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            {/* Close Claim */}
+            {step7Mutation.isError && (
+              <div className="error">
+                {(step7Mutation.error as any)?.response?.data?.error || 'Failed to close claim'}
+              </div>
+            )}
+            {confirmingClose ? (
+              <div className="close-confirm">
+                <div className="close-confirm-body">
+                  <div className="close-confirm-icon">⚠️</div>
+                  <div>
+                    <strong className="close-confirm-title">Close this claim?</strong>
+                    <p className="close-confirm-text">This will mark the claim as fully closed. Make sure all payments have been received before proceeding.</p>
+                  </div>
+                </div>
+                <div className="close-confirm-actions">
+                  <button
+                    type="button"
+                    className="cancel-edit-btn"
+                    onClick={() => setConfirmingClose(false)}
+                    disabled={step7Mutation.isPending}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="final"
+                    onClick={handleStep7Submit}
+                    disabled={step7Mutation.isPending}
+                  >
+                    {step7Mutation.isPending ? 'Closing...' : 'Yes, Close Claim'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingClose(true)}
+                className="final"
+              >
+                Close Claim
+              </button>
+            )}
           </div>
         )
 
       default:
         return null
     }
+    })()
+
+    if (!isLocked) return content
+
+    return (
+      <fieldset disabled className="step-locked-fieldset">
+        {content}
+      </fieldset>
+    )
   }
 
   return (
@@ -1197,6 +2233,1083 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           font-weight: 600;
         }
 
+        /* Filing Notice Banner (Step 4) */
+        .filing-notice {
+          display: flex;
+          gap: 14px;
+          align-items: flex-start;
+          padding: 16px 18px;
+          background: rgba(13, 148, 136, 0.05);
+          border: 1px solid rgba(13, 148, 136, 0.18);
+          border-left: 3px solid #0d9488;
+          border-radius: 10px;
+        }
+
+        .filing-notice-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25);
+        }
+
+        .filing-notice-body {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .filing-notice-title {
+          display: block;
+          font-family: 'Work Sans', sans-serif;
+          font-size: 14px;
+          font-weight: 700;
+          color: #0f172a;
+          margin-bottom: 5px;
+        }
+
+        .filing-notice-text {
+          font-size: 13px;
+          color: #475569;
+          line-height: 1.6;
+          margin: 0;
+        }
+
+        /* Estimate amount display in locked view */
+        .estimate-view-amount {
+          font-family: 'Work Sans', sans-serif;
+          font-size: 26px;
+          font-weight: 800;
+          color: #334155;
+          letter-spacing: -0.02em;
+          margin-top: 4px;
+        }
+
+        /* Contractor View Card (Step 2 locked state) */
+        .contractor-view-card {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          padding: 18px 20px;
+          background: rgba(241, 245, 249, 0.7);
+          border: 1.5px solid rgba(148, 163, 184, 0.25);
+          border-radius: 12px;
+        }
+
+        .contractor-view-fields {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .contractor-view-field {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+
+        .contractor-view-label {
+          font-size: 11px;
+          font-weight: 600;
+          color: #94a3b8;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .contractor-view-value {
+          font-size: 15px;
+          font-weight: 500;
+          color: #475569;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .edit-contractor-btn {
+          padding: 8px 14px;
+          background: white;
+          color: #64748b;
+          border: 1.5px solid rgba(148, 163, 184, 0.35);
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          font-family: 'DM Sans', sans-serif;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .edit-contractor-btn:hover:not(:disabled) {
+          background: rgba(13, 148, 136, 0.05);
+          border-color: #0d9488;
+          color: #0d9488;
+          transform: none;
+          box-shadow: 0 2px 8px rgba(13, 148, 136, 0.12);
+        }
+
+        .cancel-edit-btn {
+          padding: 12px 20px;
+          background: transparent;
+          color: #64748b;
+          border: 1.5px solid rgba(148, 163, 184, 0.35);
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 600;
+          font-family: 'DM Sans', sans-serif;
+          box-shadow: none;
+        }
+
+        .cancel-edit-btn:hover:not(:disabled) {
+          background: rgba(241, 245, 249, 0.8);
+          border-color: #94a3b8;
+          color: #334155;
+          transform: none;
+          box-shadow: none;
+        }
+
+        /* Adjuster Summary Card (Step 6) */
+        .adjuster-summary-card {
+          background: rgba(241, 245, 249, 0.6);
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 10px;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .adjuster-summary-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .adjuster-summary-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #94a3b8;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          white-space: nowrap;
+        }
+
+        .adjuster-summary-value {
+          font-size: 14px;
+          font-weight: 600;
+          color: #334155;
+          text-align: right;
+        }
+
+        /* AI Audit Section (Step 6) */
+        .audit-section-header {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+        }
+
+        .audit-section-icon {
+          font-size: 24px;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .audit-section-title {
+          display: block;
+          font-family: 'Work Sans', sans-serif;
+          font-size: 15px;
+          font-weight: 700;
+          color: #0f172a;
+          margin-bottom: 3px;
+        }
+
+        .audit-section-subtitle {
+          font-size: 13px;
+          color: #64748b;
+          margin: 0;
+          line-height: 1.5;
+        }
+
+        /* Upload zone */
+        .audit-upload-zone {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          padding: 28px 24px;
+          background: rgba(248, 250, 252, 0.8);
+          border: 1.5px dashed rgba(148, 163, 184, 0.4);
+          border-radius: 14px;
+          text-align: center;
+        }
+
+        .audit-upload-icon {
+          font-size: 36px;
+        }
+
+        .audit-upload-label {
+          font-size: 15px;
+          font-weight: 600;
+          color: #334155;
+        }
+
+        .audit-upload-hint {
+          font-size: 13px;
+          color: #94a3b8;
+          max-width: 340px;
+          line-height: 1.5;
+        }
+
+        .audit-file-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 18px;
+          background: white;
+          color: #334155;
+          border: 1.5px solid rgba(148, 163, 184, 0.4);
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+          font-family: 'DM Sans', sans-serif;
+        }
+
+        .audit-file-btn:hover {
+          border-color: #0d9488;
+          color: #0d9488;
+          background: rgba(13, 148, 136, 0.04);
+        }
+
+        /* Progress card */
+        .audit-progress-card {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 18px 20px;
+          background: rgba(241, 245, 249, 0.7);
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 12px;
+        }
+
+        .audit-analyzing {
+          background: rgba(13, 148, 136, 0.04);
+          border-color: rgba(13, 148, 136, 0.2);
+        }
+
+        .audit-spinner {
+          width: 24px;
+          height: 24px;
+          border: 3px solid rgba(148, 163, 184, 0.3);
+          border-top-color: #94a3b8;
+          border-radius: 50%;
+          flex-shrink: 0;
+          animation: spin 0.8s linear infinite;
+        }
+
+        .audit-spinner-teal {
+          border-color: rgba(13, 148, 136, 0.2);
+          border-top-color: #0d9488;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        .audit-progress-label {
+          display: block;
+          font-size: 14px;
+          font-weight: 600;
+          color: #334155;
+          margin-bottom: 2px;
+        }
+
+        .audit-progress-sub {
+          display: block;
+          font-size: 12px;
+          color: #94a3b8;
+        }
+
+        /* Error card */
+        .audit-error-card {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          padding: 16px 18px;
+          background: rgba(239, 68, 68, 0.05);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          border-radius: 10px;
+        }
+
+        .audit-error-text {
+          font-size: 13px;
+          color: #dc2626;
+          line-height: 1.5;
+        }
+
+        .audit-retry-btn {
+          align-self: flex-start;
+          padding: 8px 16px;
+          font-size: 13px;
+        }
+
+        /* File card (after upload success) */
+        .audit-file-card {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 14px 16px;
+          background: rgba(240, 253, 250, 0.7);
+          border: 1px solid rgba(13, 148, 136, 0.2);
+          border-radius: 10px;
+        }
+
+        .audit-file-icon {
+          font-size: 24px;
+          flex-shrink: 0;
+        }
+
+        .audit-file-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .audit-file-name {
+          font-size: 14px;
+          font-weight: 600;
+          color: #334155;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .audit-file-status {
+          font-size: 12px;
+          color: #0d9488;
+          font-weight: 500;
+        }
+
+        /* Run analysis card */
+        .audit-run-card {
+          display: flex;
+          gap: 14px;
+          align-items: flex-start;
+          padding: 16px 18px;
+          background: rgba(249, 250, 251, 0.8);
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 10px;
+        }
+
+        .audit-run-icon {
+          width: 36px;
+          height: 36px;
+          border-radius: 8px;
+          background: rgba(13, 148, 136, 0.1);
+          color: #0d9488;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .audit-run-body {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .audit-run-title {
+          display: block;
+          font-size: 14px;
+          font-weight: 700;
+          color: #0f172a;
+          margin-bottom: 4px;
+        }
+
+        .audit-run-text {
+          font-size: 13px;
+          color: #64748b;
+          line-height: 1.5;
+          margin: 0;
+        }
+
+        /* Results section */
+        .audit-results {
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+        }
+
+        /* Summary grid */
+        .audit-summary-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 1px;
+          background: rgba(148, 163, 184, 0.15);
+          border-radius: 12px;
+          overflow: hidden;
+          border: 1px solid rgba(148, 163, 184, 0.15);
+        }
+
+        .audit-summary-cell {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          padding: 14px 16px;
+          background: white;
+        }
+
+        .audit-summary-label {
+          font-size: 11px;
+          font-weight: 600;
+          color: #94a3b8;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .audit-summary-value {
+          font-family: 'Work Sans', sans-serif;
+          font-size: 18px;
+          font-weight: 800;
+          color: #0f172a;
+          letter-spacing: -0.02em;
+        }
+
+        .carrier-value {
+          color: #64748b;
+        }
+
+        .delta-positive .audit-summary-label {
+          color: #d97706;
+        }
+
+        .audit-summary-delta {
+          font-family: 'Work Sans', sans-serif;
+          font-size: 18px;
+          font-weight: 800;
+          color: #d97706;
+          letter-spacing: -0.02em;
+        }
+
+        /* Discrepancies */
+        .audit-discrepancies {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+          border-radius: 12px;
+          overflow: hidden;
+          border: 1px solid rgba(148, 163, 184, 0.15);
+        }
+
+        .audit-disc-header-row {
+          padding: 10px 16px;
+          background: rgba(241, 245, 249, 0.7);
+          border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+        }
+
+        .audit-disc-count {
+          font-size: 12px;
+          font-weight: 700;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .audit-disc-item {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          padding: 14px 16px;
+          background: white;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .audit-disc-item:last-child {
+          border-bottom: none;
+        }
+
+        .audit-disc-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+        }
+
+        .audit-disc-item-name {
+          font-size: 14px;
+          font-weight: 600;
+          color: #0f172a;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .audit-disc-delta-badge {
+          padding: 2px 8px;
+          background: rgba(217, 119, 6, 0.1);
+          color: #d97706;
+          border-radius: 5px;
+          font-family: 'Work Sans', sans-serif;
+          font-size: 12px;
+          font-weight: 700;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .audit-disc-prices {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .audit-disc-price {
+          font-size: 12px;
+          font-weight: 500;
+          color: #64748b;
+        }
+
+        .carrier-price {
+          color: #94a3b8;
+        }
+
+        .audit-disc-sep {
+          color: #cbd5e1;
+          font-size: 12px;
+        }
+
+        .audit-disc-justification {
+          font-size: 12px;
+          color: #64748b;
+          line-height: 1.5;
+          margin: 2px 0 0 0;
+          padding-left: 10px;
+          border-left: 2px solid rgba(148, 163, 184, 0.3);
+        }
+
+        /* No discrepancies */
+        .audit-no-disc {
+          padding: 14px 16px;
+          background: rgba(240, 253, 250, 0.6);
+          border: 1px solid rgba(13, 148, 136, 0.2);
+          border-radius: 10px;
+          font-size: 13px;
+          color: #0d9488;
+          font-weight: 500;
+        }
+
+        /* Rebuttal CTA */
+        .audit-rebuttal-cta {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          padding: 18px 20px;
+          background: rgba(249, 250, 251, 0.8);
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 12px;
+        }
+
+        .audit-rebuttal-cta-title {
+          display: block;
+          font-size: 14px;
+          font-weight: 700;
+          color: #0f172a;
+          margin-bottom: 4px;
+        }
+
+        .audit-rebuttal-cta-text {
+          font-size: 13px;
+          color: #64748b;
+          line-height: 1.5;
+          margin: 0;
+        }
+
+        /* Rebuttal letter display */
+        .audit-rebuttal {
+          display: flex;
+          flex-direction: column;
+          gap: 0;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 12px;
+          overflow: hidden;
+        }
+
+        .audit-rebuttal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 16px;
+          background: rgba(241, 245, 249, 0.7);
+          border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+        }
+
+        .audit-rebuttal-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: #334155;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .audit-copy-btn {
+          padding: 6px 12px;
+          background: white;
+          color: #64748b;
+          border: 1.5px solid rgba(148, 163, 184, 0.35);
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          font-family: 'DM Sans', sans-serif;
+          cursor: pointer;
+          box-shadow: none;
+        }
+
+        .audit-copy-btn:hover:not(:disabled) {
+          border-color: #0d9488;
+          color: #0d9488;
+          background: rgba(13, 148, 136, 0.04);
+          transform: none;
+          box-shadow: none;
+        }
+
+        .audit-rebuttal-text {
+          padding: 18px 20px;
+          background: white;
+          font-size: 13px;
+          font-family: 'DM Sans', monospace;
+          color: #334155;
+          line-height: 1.7;
+          white-space: pre-wrap;
+          word-break: break-word;
+          margin: 0;
+          max-height: 400px;
+          overflow-y: auto;
+        }
+
+        /* AI Analysis Loading Screen */
+        .audit-loading-screen {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 28px;
+          padding: 36px 24px;
+          background: linear-gradient(135deg, rgba(13, 148, 136, 0.03) 0%, rgba(99, 102, 241, 0.03) 100%);
+          border: 1px solid rgba(13, 148, 136, 0.12);
+          border-radius: 16px;
+        }
+
+        /* Animated orb */
+        .audit-loading-orb {
+          position: relative;
+          width: 80px;
+          height: 80px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .audit-orb-ring {
+          position: absolute;
+          border-radius: 50%;
+          border: 2px solid transparent;
+          border-top-color: #0d9488;
+          animation: orb-spin linear infinite;
+        }
+
+        .audit-orb-ring-1 {
+          width: 80px;
+          height: 80px;
+          animation-duration: 1.8s;
+          border-top-color: rgba(13, 148, 136, 0.7);
+        }
+
+        .audit-orb-ring-2 {
+          width: 60px;
+          height: 60px;
+          animation-duration: 1.2s;
+          animation-direction: reverse;
+          border-top-color: rgba(99, 102, 241, 0.5);
+        }
+
+        .audit-orb-ring-3 {
+          width: 40px;
+          height: 40px;
+          animation-duration: 2.4s;
+          border-top-color: rgba(20, 184, 166, 0.4);
+        }
+
+        @keyframes orb-spin {
+          to { transform: rotate(360deg); }
+        }
+
+        .audit-orb-core {
+          font-size: 20px;
+          position: relative;
+          z-index: 2;
+          animation: orb-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes orb-pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.15); }
+        }
+
+        /* Step list */
+        .audit-loading-steps {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          width: 100%;
+          max-width: 320px;
+        }
+
+        .audit-loading-step {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
+          border-radius: 10px;
+          transition: all 0.4s ease;
+        }
+
+        .audit-loading-step.pending {
+          opacity: 0.35;
+        }
+
+        .audit-loading-step.active {
+          background: rgba(13, 148, 136, 0.07);
+          border: 1px solid rgba(13, 148, 136, 0.18);
+          opacity: 1;
+        }
+
+        .audit-loading-step.done {
+          opacity: 0.6;
+        }
+
+        .audit-loading-step-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 15px;
+          flex-shrink: 0;
+          transition: all 0.3s ease;
+        }
+
+        .audit-loading-step.active .audit-loading-step-icon {
+          background: rgba(13, 148, 136, 0.12);
+          animation: step-bounce 0.6s ease infinite alternate;
+        }
+
+        .audit-loading-step.done .audit-loading-step-icon {
+          background: rgba(13, 148, 136, 0.1);
+          color: #0d9488;
+          font-size: 14px;
+          font-weight: 700;
+        }
+
+        @keyframes step-bounce {
+          from { transform: translateY(0); }
+          to { transform: translateY(-3px); }
+        }
+
+        .audit-loading-step-label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #334155;
+        }
+
+        .audit-loading-step.active .audit-loading-step-label {
+          font-weight: 600;
+          color: #0d9488;
+        }
+
+        .audit-loading-note {
+          font-size: 12px;
+          color: #94a3b8;
+          margin: 0;
+        }
+
+        /* Continue button after audit complete */
+        .audit-continue-btn {
+          background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+          font-size: 15px;
+          font-weight: 700;
+        }
+
+        /* Mortgage Bank Warning */
+        .mortgage-warning {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          padding: 14px 16px;
+          background: rgba(251, 191, 36, 0.06);
+          border: 1px solid rgba(251, 191, 36, 0.3);
+          border-left: 3px solid #f59e0b;
+          border-radius: 10px;
+        }
+
+        .mortgage-warning-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+          background: rgba(251, 191, 36, 0.15);
+          color: #d97706;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .mortgage-warning-title {
+          display: block;
+          font-size: 13px;
+          font-weight: 700;
+          color: #92400e;
+          margin-bottom: 4px;
+        }
+
+        .mortgage-warning-text {
+          font-size: 12px;
+          color: #78350f;
+          line-height: 1.5;
+          margin: 0;
+        }
+
+        /* Payment Summary Bar */
+        .payment-summary-bar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 14px 18px;
+          background: linear-gradient(135deg, rgba(13, 148, 136, 0.06) 0%, rgba(20, 184, 166, 0.04) 100%);
+          border: 1px solid rgba(13, 148, 136, 0.15);
+          border-radius: 10px;
+        }
+
+        .payment-summary-label {
+          font-size: 13px;
+          font-weight: 600;
+          color: #0d9488;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        .payment-summary-total {
+          font-family: 'Work Sans', sans-serif;
+          font-size: 22px;
+          font-weight: 800;
+          color: #0d9488;
+          letter-spacing: -0.02em;
+        }
+
+        /* Payment Section */
+        .payment-section {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          padding: 18px 20px;
+          background: rgba(248, 250, 252, 0.6);
+          border: 1px solid rgba(148, 163, 184, 0.15);
+          border-radius: 12px;
+        }
+
+        .payment-section-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .payment-type-badge {
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-family: 'Work Sans', sans-serif;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          flex-shrink: 0;
+        }
+
+        .acv-badge {
+          background: rgba(13, 148, 136, 0.12);
+          color: #0d9488;
+        }
+
+        .rcv-badge {
+          background: rgba(99, 102, 241, 0.1);
+          color: #6366f1;
+        }
+
+        .payment-section-title {
+          display: block;
+          font-size: 14px;
+          font-weight: 700;
+          color: #0f172a;
+        }
+
+        .payment-section-subtitle {
+          display: block;
+          font-size: 12px;
+          color: #94a3b8;
+          margin-top: 1px;
+        }
+
+        .payment-form {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .payment-form-actions {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+        }
+
+        .payment-log-btn {
+          padding: 12px 20px;
+          font-size: 14px;
+        }
+
+        /* Payment view meta (date + check number chips) */
+        .payment-view-meta {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-top: 2px;
+        }
+
+        .payment-meta-item {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 12px;
+          font-weight: 500;
+          color: #64748b;
+        }
+
+        /* ClaimCoach notice banner (Step 5) */
+        .claimcoach-notice {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          padding: 14px 16px;
+          background: rgba(13, 148, 136, 0.05);
+          border: 1px solid rgba(13, 148, 136, 0.18);
+          border-left: 3px solid #0d9488;
+          border-radius: 10px;
+        }
+
+        .claimcoach-notice-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+
+        .claimcoach-notice-title {
+          display: block;
+          font-size: 13px;
+          font-weight: 700;
+          color: #0f172a;
+          margin-bottom: 3px;
+        }
+
+        .claimcoach-notice-text {
+          font-size: 13px;
+          color: #475569;
+          line-height: 1.55;
+          margin: 0;
+        }
+
+        /* Close Claim confirmation */
+        .close-confirm {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding: 18px 20px;
+          background: rgba(251, 191, 36, 0.06);
+          border: 1.5px solid rgba(251, 191, 36, 0.35);
+          border-radius: 12px;
+          animation: fadeIn 0.2s ease;
+        }
+
+        .close-confirm-body {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+        }
+
+        .close-confirm-icon {
+          font-size: 20px;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+
+        .close-confirm-title {
+          display: block;
+          font-size: 14px;
+          font-weight: 700;
+          color: #92400e;
+          margin-bottom: 4px;
+        }
+
+        .close-confirm-text {
+          font-size: 13px;
+          color: #78350f;
+          line-height: 1.5;
+          margin: 0;
+        }
+
+        .close-confirm-actions {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+        }
+
+        /* Step Locked — disable only interactive elements */
+        .step-locked-fieldset {
+          border: none;
+          padding: 0;
+          margin: 0;
+          min-width: 0;
+        }
+
+        .step-locked-fieldset input,
+        .step-locked-fieldset textarea,
+        .step-locked-fieldset select,
+        .step-locked-fieldset button,
+        .step-locked-fieldset label {
+          opacity: 0.45;
+          cursor: not-allowed;
+          pointer-events: none;
+        }
+
+        .step-locked-fieldset .required {
+          display: none;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
           .step-item {
@@ -1241,8 +3354,8 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           />
         )}
 
-        {[1, 2, 3, 4, 5, 6].map((stepNum) => {
-          const step = getStepDefinition(stepNum as 1 | 2 | 3 | 4 | 5 | 6)
+        {[1, 2, 3, 4, 5, 6, 7].map((stepNum) => {
+          const step = getStepDefinition(stepNum as 1 | 2 | 3 | 4 | 5 | 6 | 7)
           const status = getStepStatus(stepNum)
           const isExpanded = activeStep === stepNum
 
@@ -1278,7 +3391,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
               <div className="step-main">
                 <div
                   className="step-header"
-                  onClick={() => setActiveStep((isExpanded ? 0 : stepNum) as 1 | 2 | 3 | 4 | 5 | 6)}
+                  onClick={() => setActiveStep((isExpanded ? 0 : stepNum) as 1 | 2 | 3 | 4 | 5 | 6 | 7)}
                   role="button"
                   tabIndex={0}
                 >
