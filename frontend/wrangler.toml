@@ -4,4 +4,4 @@ compatibility_date = "2024-01-01"
 
 [assets]
 directory = "./dist"     # the output of `npm run build`
-html_handling = "single-page-application"
+not_found_handling = "single-page-application"
