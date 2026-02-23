@@ -1,0 +1,75 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Download dependencies
+        working-directory: backend
+        run: go mod download
+
+      - name: Build Lambda binary
+        working-directory: backend
+        run: |
+          mkdir -p dist
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build \
+            -tags lambda.norpc \
+            -ldflags="-s -w" \
+            -o dist/bootstrap \
+            ./cmd/lambda/
+
+      - name: Package Lambda zip
+        working-directory: backend/dist
+        run: zip bootstrap.zip bootstrap
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+
+      - name: Terraform Init
+        working-directory: backend/deploy
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: backend/deploy
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          TF_VAR_frontend_url: ${{ vars.FRONTEND_URL }}
+          TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
+          TF_VAR_supabase_url: ${{ secrets.SUPABASE_URL }}
+          TF_VAR_supabase_service_key: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TF_VAR_perplexity_api_key: ${{ secrets.PERPLEXITY_API_KEY }}
+          TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+          TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL }}
+          TF_VAR_sendgrid_from_name: ${{ vars.SENDGRID_FROM_NAME }}
+          TF_VAR_claimcoach_email: ${{ vars.CLAIMCOACH_EMAIL }}
+        run: terraform apply -auto-approve
+
+      - name: Output API URL
+        working-directory: backend/deploy
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: terraform output api_gateway_url
