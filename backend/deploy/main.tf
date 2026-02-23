@@ -34,11 +34,6 @@ import {
 }
 
 import {
-  to = aws_cloudwatch_log_group.lambda_logs
-  id = "/aws/lambda/claimcoach-api"
-}
-
-import {
   to = aws_cloudwatch_log_group.api_gateway_logs
   id = "/aws/apigateway/claimcoach-api"
 }
@@ -75,7 +70,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 
 # CloudWatch Log Group for Lambda
 resource "aws_cloudwatch_log_group" "lambda_logs" {
-  name              = "/aws/lambda/${var.project_name}-api"
+  name              = "/aws/lambda/${var.project_name}-prod-api"
   retention_in_days = var.log_retention_days
 
   tags = {
@@ -100,7 +95,7 @@ resource "aws_cloudwatch_log_group" "api_gateway_logs" {
 # Lambda Function
 resource "aws_lambda_function" "api" {
   filename         = "${path.module}/../dist/bootstrap.zip"
-  function_name    = "${var.project_name}-api"
+  function_name    = "${var.project_name}-prod-api"
   role             = aws_iam_role.lambda_role.arn
   handler          = "bootstrap"
   runtime          = "provided.al2023"
