@@ -6,14 +6,15 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+
 	"github.com/claimcoach/backend/internal/auth"
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/claimcoach/backend/internal/handlers"
 	"github.com/claimcoach/backend/internal/llm"
 	"github.com/claimcoach/backend/internal/services"
 	"github.com/claimcoach/backend/internal/storage"
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
 )
 
 func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
