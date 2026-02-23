@@ -27,6 +27,22 @@ locals {
   supabase_jwks_uri   = "https://${local.supabase_project_id}.supabase.co/auth/v1/jwks"
 }
 
+# Import pre-existing resources so Terraform doesn't try to recreate them
+import {
+  to = aws_iam_role.lambda_role
+  id = "claimcoach-lambda-role"
+}
+
+import {
+  to = aws_cloudwatch_log_group.lambda_logs
+  id = "/aws/lambda/claimcoach-api"
+}
+
+import {
+  to = aws_cloudwatch_log_group.api_gateway_logs
+  id = "/aws/apigateway/claimcoach-api"
+}
+
 # IAM Role for Lambda
 resource "aws_iam_role" "lambda_role" {
   name = "${var.project_name}-lambda-role"
