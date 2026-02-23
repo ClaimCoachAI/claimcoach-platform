@@ -133,18 +133,13 @@ resource "aws_lambda_function" "api" {
 }
 
 # HTTP API Gateway (API Gateway v2)
+# No cors_configuration here — gin handles all CORS (preflight OPTIONS and actual requests)
+# via gin-contrib/cors middleware. Letting API Gateway also handle CORS would cause duplicate
+# Access-Control-Allow-Origin headers which browsers reject.
 resource "aws_apigatewayv2_api" "api" {
   name          = "${var.project_name}-api"
   protocol_type = "HTTP"
   description   = "ClaimCoach AI HTTP API Gateway"
-
-  cors_configuration {
-    allow_origins     = [var.frontend_url]
-    allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_headers     = ["Content-Type", "Authorization", "X-Amz-Date", "X-Api-Key", "X-Amz-Security-Token"]
-    allow_credentials = true
-    max_age           = 300
-  }
 
   tags = {
     Name        = "${var.project_name}-api"
