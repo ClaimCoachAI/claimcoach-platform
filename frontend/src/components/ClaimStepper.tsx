@@ -164,6 +164,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const deductible = claim.policy?.deductible_calculated || 0
 
   const [step4Description, setStep4Description] = useState<string>(claim.description || '')
+  const [isEditingDescription, setIsEditingDescription] = useState<boolean>(false)
 
   // Payment form states
   const [acvForm, setAcvForm] = useState({ amount: '', received_date: '', check_number: '' })
@@ -286,20 +287,22 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
   const step4Mutation = useMutation({
     mutationFn: async (data: { description: string }) => {
-      // Update claim with description and mark step complete
-      const updatedStepsCompleted = [...(claim.steps_completed || []), 4]
+      const alreadyCompleted = (claim.steps_completed || []).includes(4)
+      const updatedStepsCompleted = alreadyCompleted
+        ? claim.steps_completed
+        : [...(claim.steps_completed || []), 4]
+
       await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 5,
+        ...(alreadyCompleted ? {} : { current_step: 5 }),
         steps_completed: updatedStepsCompleted,
-        description: data.description
+        description: data.description,
       })
 
-      // Notify ClaimCoach team
       await api.post(`/api/claims/${claim.id}/notify-claimcoach`)
-
       return data
     },
     onSuccess: () => {
+      setIsEditingDescription(false)
       setToast({
         message: '✓ Claim submitted to ClaimCoach team',
         type: 'success',
@@ -880,7 +883,63 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           </form>
         )
 
-      case 4:
+      case 4: {
+        const isStep4Done = claim.steps_completed?.includes(4)
+        const showReadOnly = isStep4Done && !isEditingDescription
+
+        if (showReadOnly) {
+          return (
+            <div className="step-content">
+              {/* Submitted confirmation banner */}
+              <div className="filing-notice" style={{ borderLeftColor: '#10b981' }}>
+                <div className="filing-notice-icon" style={{ background: '#10b981' }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <div className="filing-notice-body">
+                  <strong className="filing-notice-title">Submitted to ClaimCoach team</strong>
+                  <p className="filing-notice-text">
+                    Your claim details have been sent. Our team will file this on your behalf.
+                  </p>
+                </div>
+              </div>
+
+              {/* Submitted description */}
+              <div className="glass-card">
+                <h4 className="review-heading" style={{ marginBottom: '12px' }}>Your Damage Description</h4>
+                <p style={{
+                  color: '#374151',
+                  lineHeight: '1.6',
+                  whiteSpace: 'pre-wrap',
+                  margin: 0,
+                  fontSize: '14px',
+                }}>
+                  {claim.description || '—'}
+                </p>
+              </div>
+
+              {/* Edit & Resend */}
+              <button
+                type="button"
+                onClick={() => setIsEditingDescription(true)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid #d1d5db',
+                  color: '#6b7280',
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  alignSelf: 'flex-start',
+                }}
+              >
+                Edit & Resend
+              </button>
+            </div>
+          )
+        }
+
         return (
           <form onSubmit={handleStep4Submit} className="step-content step-form">
             {/* Review Card */}
@@ -976,14 +1035,38 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={step4Mutation.isPending || step4Description.trim().length < 20}
-            >
-              {step4Mutation.isPending ? 'Submitting...' : 'Submit to ClaimCoach Team'}
-            </button>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {isStep4Done && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingDescription(false)}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #d1d5db',
+                    color: '#6b7280',
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={step4Mutation.isPending || step4Description.trim().length < 20}
+              >
+                {step4Mutation.isPending
+                  ? 'Submitting...'
+                  : isStep4Done
+                  ? 'Resend to ClaimCoach Team'
+                  : 'Submit to ClaimCoach Team'}
+              </button>
+            </div>
           </form>
         )
+      }
 
       case 5:
         return (
