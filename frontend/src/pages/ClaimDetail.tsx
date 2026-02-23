@@ -1003,6 +1003,7 @@ const STATUS_TRANSITIONS: { [key: string]: string[] } = {
   closed: [],
 }
 
+// Main Claim Detail Component
 export default function ClaimDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
