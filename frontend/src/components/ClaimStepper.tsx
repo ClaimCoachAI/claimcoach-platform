@@ -67,6 +67,20 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const [auditLoadingStep, setAuditLoadingStep] = useState(0)
   const [photosOpen, setPhotosOpen] = useState(false)
 
+  // Legal escalation state (Step 6)
+  const [discrepanciesOpen, setDiscrepanciesOpen] = useState(false)
+  const [legalEscalationDismissed, setLegalEscalationDismissed] = useState(false)
+  const [showLegalEscalationForm, setShowLegalEscalationForm] = useState(false)
+  const [legalEscalationSubmitted, setLegalEscalationSubmitted] = useState<{
+    ownerName: string
+    ownerEmail: string
+    legalPartnerName: string
+  } | null>(null)
+  const [legalPartnerName, setLegalPartnerName] = useState('')
+  const [legalPartnerEmail, setLegalPartnerEmail] = useState('')
+  const [ownerName, setOwnerName] = useState(claim.property?.owner_entity_name || '')
+  const [ownerEmail, setOwnerEmail] = useState('')
+
   // Scope sheet query
   const {
     data: scopeSheet,
@@ -539,6 +553,25 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     },
     onError: () => {
       setToast({ message: 'Failed to generate rebuttal. Please try again.', type: 'error' })
+    },
+  })
+
+  const legalEscalationMutation = useMutation({
+    mutationFn: async (data: {
+      legal_partner_name: string
+      legal_partner_email: string
+      owner_name: string
+      owner_email: string
+    }) => {
+      const res = await api.post(`/api/claims/${claim.id}/legal-escalation`, data)
+      return res.data
+    },
+    onSuccess: (_, variables) => {
+      setLegalEscalationSubmitted({
+        ownerName: variables.owner_name,
+        ownerEmail: variables.owner_email,
+        legalPartnerName: variables.legal_partner_name,
+      })
     },
   })
 
@@ -1499,37 +1532,59 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                   </div>
                 </div>
 
-                {/* Discrepancies list */}
-                {comparisonData.discrepancies.length > 0 ? (
-                  <div className="audit-discrepancies">
-                    <div className="audit-disc-header-row">
-                      <span className="audit-disc-count">{comparisonData.discrepancies.length} Discrepanc{comparisonData.discrepancies.length === 1 ? 'y' : 'ies'} Found</span>
-                    </div>
-                    {comparisonData.discrepancies.map((disc, i) => (
-                      <div key={i} className="audit-disc-item">
-                        <div className="audit-disc-top">
-                          <span className="audit-disc-item-name">{disc.item}</span>
-                          <span className="audit-disc-delta-badge">+${(disc.delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="audit-disc-prices">
-                          <span className="audit-disc-price">Industry: ${(disc.industry_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                          <span className="audit-disc-sep">·</span>
-                          <span className="audit-disc-price carrier-price">Carrier: ${(disc.carrier_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        {disc.justification && (
-                          <p className="audit-disc-justification">{disc.justification}</p>
-                        )}
+                {/* Discrepancies — collapsible summary row */}
+                {comparisonData.discrepancies.length > 0 ? (() => {
+                  const sorted = [...comparisonData.discrepancies].sort((a, b) => b.delta - a.delta)
+                  const topGap = sorted[0]
+                  return (
+                    <div className="audit-discrepancies">
+                      <div className="audit-disc-summary-row">
+                        <span className="audit-disc-count">
+                          {comparisonData.discrepancies.length} Discrepanc{comparisonData.discrepancies.length === 1 ? 'y' : 'ies'} Found
+                        </span>
+                        <span className="audit-disc-top-gap">
+                          Top gap: {topGap.item} +${(topGap.delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </span>
+                        <button
+                          type="button"
+                          className="audit-disc-toggle"
+                          onClick={() => setDiscrepanciesOpen(o => !o)}
+                        >
+                          {discrepanciesOpen ? 'Hide Details ▴' : 'View Details ▾'}
+                        </button>
                       </div>
-                    ))}
-                  </div>
-                ) : (
+                      {discrepanciesOpen && (
+                        <div className="audit-disc-expanded">
+                          {comparisonData.discrepancies.map((disc, i) => (
+                            <div key={i} className="audit-disc-item">
+                              <div className="audit-disc-top">
+                                <span className="audit-disc-item-name">{disc.item}</span>
+                                <span className="audit-disc-delta-badge">+${(disc.delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                              </div>
+                              <div className="audit-disc-prices">
+                                <span className="audit-disc-price">Industry: ${(disc.industry_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                                <span className="audit-disc-sep">·</span>
+                                <span className="audit-disc-price carrier-price">Carrier: ${(disc.carrier_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                              </div>
+                              {disc.justification && (
+                                <p className="audit-disc-justification">{disc.justification}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })() : (
                   <div className="audit-no-disc">
                     <span>✓ No significant discrepancies found. The carrier estimate appears to be in line with industry standards.</span>
                   </div>
                 )}
 
-                {/* Rebuttal section */}
-                {!rebuttalText && comparisonData.discrepancies.length > 0 && (
+                {/* Rebuttal section — only shown for delta $500–$9,999.99 */}
+                {!rebuttalText && comparisonData.discrepancies.length > 0 &&
+                  (comparisonData.summary.total_delta || 0) >= 500 &&
+                  (comparisonData.summary.total_delta || 0) < 10000 && (
                   <div className="audit-rebuttal-cta">
                     <div>
                       <strong className="audit-rebuttal-cta-title">Generate a rebuttal letter?</strong>
@@ -1568,6 +1623,144 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                 )}
               </div>
             )}
+
+                {/* Legal action prompt — delta >= $10,000 */}
+                {comparisonData && (comparisonData.summary.total_delta || 0) >= 10000 &&
+                  !legalEscalationDismissed &&
+                  !showLegalEscalationForm &&
+                  !legalEscalationSubmitted &&
+                  !claim.legal_escalation_status && (
+                  <div className="legal-escalation-prompt">
+                    <div className="legal-escalation-prompt-content">
+                      <strong className="legal-escalation-prompt-title">
+                        You may be leaving ${(comparisonData.summary.total_delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} on the table
+                      </strong>
+                      <p className="legal-escalation-prompt-text">
+                        The carrier underpaid by a significant amount relative to industry-standard repair costs.
+                        You may have grounds to escalate this claim with a legal partner.
+                      </p>
+                    </div>
+                    <div className="legal-escalation-prompt-actions">
+                      <button
+                        type="button"
+                        className="legal-escalation-btn-primary"
+                        onClick={() => setShowLegalEscalationForm(true)}
+                      >
+                        Pursue Legal Action
+                      </button>
+                      <button
+                        type="button"
+                        className="legal-escalation-btn-secondary"
+                        onClick={() => setLegalEscalationDismissed(true)}
+                      >
+                        Skip for Now
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Legal escalation form */}
+                {showLegalEscalationForm && !legalEscalationSubmitted && (
+                  <div className="legal-escalation-form-wrap">
+                    <h4 className="legal-escalation-form-title">Escalate to Legal Partner</h4>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        legalEscalationMutation.mutate({
+                          legal_partner_name: legalPartnerName,
+                          legal_partner_email: legalPartnerEmail,
+                          owner_name: ownerName,
+                          owner_email: ownerEmail,
+                        })
+                      }}
+                      className="legal-escalation-form"
+                    >
+                      <label className="form-label">
+                        Legal Partner Name
+                        <input
+                          type="text"
+                          required
+                          className="form-input"
+                          placeholder="Sarah Chen"
+                          value={legalPartnerName}
+                          onChange={e => setLegalPartnerName(e.target.value)}
+                        />
+                      </label>
+                      <label className="form-label">
+                        Legal Partner Email
+                        <input
+                          type="email"
+                          required
+                          className="form-input"
+                          placeholder="schen@chenlaw.com"
+                          value={legalPartnerEmail}
+                          onChange={e => setLegalPartnerEmail(e.target.value)}
+                        />
+                      </label>
+                      <label className="form-label">
+                        Owner Name
+                        <input
+                          type="text"
+                          required
+                          className="form-input"
+                          value={ownerName}
+                          onChange={e => setOwnerName(e.target.value)}
+                        />
+                      </label>
+                      <label className="form-label">
+                        Owner Email
+                        <input
+                          type="email"
+                          required
+                          className="form-input"
+                          placeholder="owner@example.com"
+                          value={ownerEmail}
+                          onChange={e => setOwnerEmail(e.target.value)}
+                        />
+                      </label>
+                      {legalEscalationMutation.isError && (
+                        <div className="error">Failed to send escalation. Please try again.</div>
+                      )}
+                      <div className="legal-escalation-form-actions">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => { setShowLegalEscalationForm(false); setLegalEscalationDismissed(false) }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="btn-primary"
+                          disabled={legalEscalationMutation.isPending}
+                        >
+                          {legalEscalationMutation.isPending ? 'Sending...' : 'Send Approval Request'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {/* Legal escalation confirmation */}
+                {legalEscalationSubmitted && (
+                  <div className="legal-escalation-confirmation">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{color: '#16a34a', flexShrink: 0}}>
+                      <path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M22 4L12 14.01l-3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <p>
+                      Approval request sent to <strong>{legalEscalationSubmitted.ownerName}</strong> ({legalEscalationSubmitted.ownerEmail}).
+                      Once they approve, the legal package will be automatically sent to <strong>{legalEscalationSubmitted.legalPartnerName}</strong>.
+                    </p>
+                  </div>
+                )}
+
+                {/* Already escalated — show status */}
+                {claim.legal_escalation_status && (
+                  <div className="legal-escalation-status-badge">
+                    Legal escalation: {claim.legal_escalation_status.replace(/_/g, ' ')}
+                  </div>
+                )}
 
             {/* Continue CTA — only shown after audit is complete */}
             {hasAuditResult && (
@@ -3064,6 +3257,145 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           margin: 2px 0 0 0;
           padding-left: 10px;
           border-left: 2px solid rgba(148, 163, 184, 0.3);
+        }
+
+        /* Discrepancy summary row (collapsible) */
+        .audit-disc-summary-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 16px;
+          background: rgba(241, 245, 249, 0.7);
+          border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+          flex-wrap: wrap;
+        }
+        .audit-disc-top-gap {
+          font-size: 12px;
+          color: #64748b;
+          flex: 1;
+          min-width: 0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .audit-disc-toggle {
+          font-size: 12px;
+          font-weight: 600;
+          color: #2563eb;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+          white-space: nowrap;
+        }
+        .audit-disc-expanded {
+          display: flex;
+          flex-direction: column;
+        }
+
+        /* Legal escalation prompt */
+        .legal-escalation-prompt {
+          background: white;
+          border: 1px solid rgba(217, 119, 6, 0.3);
+          border-left: 3px solid #d97706;
+          border-radius: 10px;
+          padding: 18px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .legal-escalation-prompt-content {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .legal-escalation-prompt-title {
+          font-size: 15px;
+          font-weight: 700;
+          color: #0f172a;
+        }
+        .legal-escalation-prompt-text {
+          font-size: 13px;
+          color: #475569;
+          margin: 0;
+          line-height: 1.5;
+        }
+        .legal-escalation-prompt-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .legal-escalation-btn-primary {
+          background: #111827;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 10px 20px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .legal-escalation-btn-primary:hover {
+          background: #1f2937;
+        }
+        .legal-escalation-btn-secondary {
+          background: none;
+          color: #64748b;
+          border: 1px solid rgba(148, 163, 184, 0.3);
+          border-radius: 8px;
+          padding: 10px 20px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+        }
+
+        /* Legal escalation form */
+        .legal-escalation-form-wrap {
+          background: white;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 10px;
+          padding: 20px;
+        }
+        .legal-escalation-form-title {
+          font-size: 14px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0 0 16px 0;
+        }
+        .legal-escalation-form {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .legal-escalation-form-actions {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+          padding-top: 4px;
+        }
+
+        /* Legal escalation confirmation */
+        .legal-escalation-confirmation {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          background: rgba(22, 163, 74, 0.06);
+          border: 1px solid rgba(22, 163, 74, 0.2);
+          border-radius: 10px;
+          padding: 14px 16px;
+          font-size: 13px;
+          color: #166534;
+          line-height: 1.5;
+        }
+
+        /* Legal escalation status badge */
+        .legal-escalation-status-badge {
+          font-size: 12px;
+          color: #64748b;
+          padding: 6px 12px;
+          background: rgba(241, 245, 249, 0.7);
+          border-radius: 6px;
+          text-transform: capitalize;
         }
 
         /* No discrepancies */
