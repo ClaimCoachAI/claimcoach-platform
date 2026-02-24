@@ -76,6 +76,9 @@ export default function ScopeSheetSummary({ scopeSheet }: ScopeSheetSummaryProps
                     ))}
                   </div>
                 )}
+                {area.notes && (
+                  <p className="text-xs text-slate/70 pl-6 mt-1 italic">{area.notes}</p>
+                )}
               </div>
             )
           })}
@@ -96,11 +99,6 @@ export default function ScopeSheetSummary({ scopeSheet }: ScopeSheetSummaryProps
         </div>
       )}
 
-      <div className="mt-4 pt-3 border-t border-slate/10">
-        <p className="text-xs text-slate">
-          Complete scope sheet details are available in the documents section.
-        </p>
-      </div>
     </div>
   )
 }
