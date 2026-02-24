@@ -7,6 +7,13 @@ import ContractorStatusBadge from './ContractorStatusBadge'
 import ScopeSheetSummary from './ScopeSheetSummary'
 import type { Claim, Payment } from '../types/claim'
 
+interface ContractorPhoto {
+  id: string
+  file_name: string
+  document_type: string
+  uploaded_at: string
+}
+
 interface CarrierEstimateData {
   id: string
   file_name: string
@@ -81,6 +88,30 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     enabled: !!claim.id,
     retry: false,
   })
+
+  // Contractor photos query
+  const { data: contractorPhotos = [] } = useQuery<ContractorPhoto[]>({
+    queryKey: ['claim-documents', claim.id],
+    queryFn: async () => {
+      const response = await api.get(`/api/claims/${claim.id}/documents`)
+      const docs = response.data.data as ContractorPhoto[]
+      return docs.filter(d => d.document_type === 'contractor_photo')
+    },
+    enabled: !!claim.id,
+  })
+
+  const handlePhotoDownload = async (documentId: string) => {
+    try {
+      const response = await api.get(`/api/documents/${documentId}`)
+      const downloadUrl = response.data.data.download_url
+      const isValid = downloadUrl.startsWith('https://') ||
+                      downloadUrl.startsWith(import.meta.env.VITE_API_URL || '')
+      if (!isValid) throw new Error('Invalid download URL received')
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+    } catch (err) {
+      console.error('Download failed:', err)
+    }
+  }
 
   // Payments query
   const {
@@ -758,7 +789,32 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                 </div>
 
                 {hasScopeSheet && scopeSheet && (
-                  <ScopeSheetSummary scopeSheet={scopeSheet} />
+                  <>
+                    <ScopeSheetSummary scopeSheet={scopeSheet} />
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">
+                        Photos ({contractorPhotos.length})
+                      </h4>
+                      {contractorPhotos.length > 0 ? (
+                        <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+                          {contractorPhotos.map(photo => (
+                            <li key={photo.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                              <span className="text-gray-900 truncate max-w-xs">{photo.file_name}</span>
+                              <button
+                                type="button"
+                                onClick={() => handlePhotoDownload(photo.id)}
+                                className="ml-4 shrink-0 text-blue-600 hover:text-blue-800 font-medium"
+                              >
+                                Download
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-gray-500">No photos uploaded.</p>
+                      )}
+                    </div>
+                  </>
                 )}
               </>
             )}
