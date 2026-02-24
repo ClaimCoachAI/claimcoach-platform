@@ -802,12 +802,14 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                       {/* Accordion header */}
                       <button
                         type="button"
+                        aria-expanded={photosOpen}
+                        aria-controls="photos-accordion-body"
                         onClick={() => setPhotosOpen(prev => !prev)}
                         className="w-full flex items-center justify-between px-4 py-2.5 bg-white hover:bg-gray-50 transition-colors text-sm"
                       >
                         <span className="flex items-center gap-2 font-medium text-gray-700">
                           <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                               d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                           Photos ({contractorPhotos.length})
@@ -822,8 +824,9 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
                       {/* Accordion body */}
                       <div
-                        className={`transition-all duration-200 ease-in-out overflow-hidden ${
-                          photosOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                        id="photos-accordion-body"
+                        className={`transition-all duration-200 ease-in-out overflow-y-auto ${
+                          photosOpen ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'
                         }`}
                       >
                         {contractorPhotos.length > 0 ? (
