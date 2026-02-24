@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/claimcoach/backend/internal/llm"
 	"github.com/claimcoach/backend/internal/models"
 	"github.com/stretchr/testify/assert"
 )
@@ -38,16 +37,16 @@ func (m *MockStorageClient) GetPublicURL(filePath string) string {
 	return ""
 }
 
-// MockPerplexityClient for testing
-type MockPerplexityClient struct {
-	ChatFunc func(ctx context.Context, messages []llm.Message, temperature float64, maxTokens int) (*llm.ChatResponse, error)
+// MockPDFParserClient for testing
+type MockPDFParserClient struct {
+	ParsePDFFunc func(ctx context.Context, pdfContent []byte, prompt string, maxTokens int) (string, error)
 }
 
-func (m *MockPerplexityClient) Chat(ctx context.Context, messages []llm.Message, temperature float64, maxTokens int) (*llm.ChatResponse, error) {
-	if m.ChatFunc != nil {
-		return m.ChatFunc(ctx, messages, temperature, maxTokens)
+func (m *MockPDFParserClient) ParsePDF(ctx context.Context, pdfContent []byte, prompt string, maxTokens int) (string, error) {
+	if m.ParsePDFFunc != nil {
+		return m.ParsePDFFunc(ctx, pdfContent, prompt, maxTokens)
 	}
-	return nil, errors.New("not implemented")
+	return "", errors.New("not implemented")
 }
 
 // MockClaimService for testing
@@ -169,77 +168,47 @@ func TestUpdateParsedData(t *testing.T) {
 	})
 }
 
-func TestStructureDataWithLLM(t *testing.T) {
+func TestParsePDFWithClaude(t *testing.T) {
 	db, _, err := sqlmock.New()
 	assert.NoError(t, err)
 	defer db.Close()
 
-	extractedText := `
-Roof Replacement Estimate
-
-Item                    Qty    Unit   Unit Cost   Total
-Remove shingles         1900   SF     2.50       4750.00
-Install new shingles    1900   SF     4.00       7600.00
-Ridge caps              100    LF     8.00       800.00
-
-Total: $13,150.00
-`
+	pdfContent := []byte("%PDF-1.4 fake content")
 
 	t.Run("success", func(t *testing.T) {
-		mockLLM := &MockPerplexityClient{
-			ChatFunc: func(ctx context.Context, messages []llm.Message, temperature float64, maxTokens int) (*llm.ChatResponse, error) {
-				// Verify temperature is set correctly
-				assert.Equal(t, 0.1, temperature)
-
-				response := &llm.ChatResponse{
-					Choices: []struct {
-						Index   int `json:"index"`
-						Message struct {
-							Role    string `json:"role"`
-							Content string `json:"content"`
-						} `json:"message"`
-					}{
+		mockClient := &MockPDFParserClient{
+			ParsePDFFunc: func(ctx context.Context, pdf []byte, prompt string, maxTokens int) (string, error) {
+				assert.Equal(t, pdfContent, pdf)
+				return `{
+					"line_items": [
 						{
-							Message: struct {
-								Role    string `json:"role"`
-								Content string `json:"content"`
-							}{
-								Role: "assistant",
-								Content: `{
-									"line_items": [
-										{
-											"description": "Remove shingles",
-											"quantity": 1900,
-											"unit": "SF",
-											"unit_cost": 2.50,
-											"total": 4750.00,
-											"category": "Roofing"
-										},
-										{
-											"description": "Install new shingles",
-											"quantity": 1900,
-											"unit": "SF",
-											"unit_cost": 4.00,
-											"total": 7600.00,
-											"category": "Roofing"
-										}
-									],
-									"total": 12350.00
-								}`,
-							},
+							"description": "Remove shingles",
+							"quantity": 1900,
+							"unit": "SF",
+							"unit_cost": 2.50,
+							"total": 4750.00,
+							"category": "Roofing"
 						},
-					},
-				}
-				return response, nil
+						{
+							"description": "Install new shingles",
+							"quantity": 1900,
+							"unit": "SF",
+							"unit_cost": 4.00,
+							"total": 7600.00,
+							"category": "Roofing"
+						}
+					],
+					"total": 12350.00
+				}`, nil
 			},
 		}
 
 		service := &PDFParserService{
 			db:        db,
-			llmClient: LLMClient(mockLLM),
+			pdfClient: mockClient,
 		}
 
-		parsedData, err := service.structureDataWithLLM(context.Background(), extractedText)
+		parsedData, err := service.parsePDFWithClaude(context.Background(), pdfContent)
 		assert.NoError(t, err)
 		assert.NotNil(t, parsedData)
 		assert.Len(t, parsedData.LineItems, 2)
@@ -249,95 +218,54 @@ Total: $13,150.00
 	})
 
 	t.Run("LLM error", func(t *testing.T) {
-		mockLLM := &MockPerplexityClient{
-			ChatFunc: func(ctx context.Context, messages []llm.Message, temperature float64, maxTokens int) (*llm.ChatResponse, error) {
-				return nil, errors.New("LLM service unavailable")
+		mockClient := &MockPDFParserClient{
+			ParsePDFFunc: func(ctx context.Context, pdf []byte, prompt string, maxTokens int) (string, error) {
+				return "", errors.New("Claude service unavailable")
 			},
 		}
 
 		service := &PDFParserService{
 			db:        db,
-			llmClient: LLMClient(mockLLM),
+			pdfClient: mockClient,
 		}
 
-		parsedData, err := service.structureDataWithLLM(context.Background(), extractedText)
+		parsedData, err := service.parsePDFWithClaude(context.Background(), pdfContent)
 		assert.Error(t, err)
 		assert.Nil(t, parsedData)
 		assert.Contains(t, err.Error(), "LLM request failed")
 	})
 
 	t.Run("invalid JSON response", func(t *testing.T) {
-		mockLLM := &MockPerplexityClient{
-			ChatFunc: func(ctx context.Context, messages []llm.Message, temperature float64, maxTokens int) (*llm.ChatResponse, error) {
-				response := &llm.ChatResponse{
-					Choices: []struct {
-						Index   int `json:"index"`
-						Message struct {
-							Role    string `json:"role"`
-							Content string `json:"content"`
-						} `json:"message"`
-					}{
-						{
-							Message: struct {
-								Role    string `json:"role"`
-								Content string `json:"content"`
-							}{
-								Role:    "assistant",
-								Content: "This is not valid JSON",
-							},
-						},
-					},
-				}
-				return response, nil
+		mockClient := &MockPDFParserClient{
+			ParsePDFFunc: func(ctx context.Context, pdf []byte, prompt string, maxTokens int) (string, error) {
+				return "This is not valid JSON", nil
 			},
 		}
 
 		service := &PDFParserService{
 			db:        db,
-			llmClient: LLMClient(mockLLM),
+			pdfClient: mockClient,
 		}
 
-		parsedData, err := service.structureDataWithLLM(context.Background(), extractedText)
+		parsedData, err := service.parsePDFWithClaude(context.Background(), pdfContent)
 		assert.Error(t, err)
 		assert.Nil(t, parsedData)
 		assert.Contains(t, err.Error(), "failed to parse LLM response as JSON")
 	})
 
 	t.Run("no line items extracted", func(t *testing.T) {
-		mockLLM := &MockPerplexityClient{
-			ChatFunc: func(ctx context.Context, messages []llm.Message, temperature float64, maxTokens int) (*llm.ChatResponse, error) {
-				response := &llm.ChatResponse{
-					Choices: []struct {
-						Index   int `json:"index"`
-						Message struct {
-							Role    string `json:"role"`
-							Content string `json:"content"`
-						} `json:"message"`
-					}{
-						{
-							Message: struct {
-								Role    string `json:"role"`
-								Content string `json:"content"`
-							}{
-								Role: "assistant",
-								Content: `{
-									"line_items": [],
-									"total": 0
-								}`,
-							},
-						},
-					},
-				}
-				return response, nil
+		mockClient := &MockPDFParserClient{
+			ParsePDFFunc: func(ctx context.Context, pdf []byte, prompt string, maxTokens int) (string, error) {
+				return `{"line_items": [], "total": 0}`, nil
 			},
 		}
 
 		service := &PDFParserService{
 			db:        db,
-			llmClient: LLMClient(mockLLM),
+			pdfClient: mockClient,
 		}
 
-		parsedData, err := service.structureDataWithLLM(context.Background(), extractedText)
+		parsedData, err := service.parsePDFWithClaude(context.Background(), pdfContent)
 		assert.Error(t, err)
 		assert.Nil(t, parsedData)
 		assert.Contains(t, err.Error(), "no line items extracted")

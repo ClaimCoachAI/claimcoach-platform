@@ -65,10 +65,12 @@ No new API calls. No backend changes for this component.
 Renders when all of the following are true:
 
 - `hasAuditResult && comparisonData !== null`
-- `comparisonData.summary.total_delta >= 500` (meaningful underpayment threshold)
+- `comparisonData.summary.total_delta >= 10000` (attorneys get involved at $10k+)
 - `!legalEscalationDismissed`
 - `!showLegalEscalationForm`
 - The claim does not already have `legal_escalation_status` set (no repeat prompt if already escalated)
+
+**Rebuttal letter** is shown instead when delta is between $500 and $9,999.99. The two paths are mutually exclusive — never shown together.
 
 ### Visual Design
 
@@ -464,9 +466,17 @@ No ClaimCoach branding. Neutral, professional, direct.
 
 ---
 
-## Delta Threshold
+## Delta Thresholds — Escalation vs. Rebuttal
 
-`$500.00` — below this the legal action prompt does not appear. This eliminates noise on small discrepancies where legal action would not be economically rational. This value should be an environment variable (`LEGAL_ESCALATION_THRESHOLD_DOLLARS`) so it can be tuned without a deploy.
+Two mutually exclusive paths based on delta size:
+
+| Delta | Action shown |
+|-------|-------------|
+| < $500 | Neither — too small to act on |
+| $500 – $9,999.99 | **Rebuttal letter only** — attorneys don't get involved at this level; PM negotiates directly with the carrier |
+| ≥ $10,000 | **Legal action prompt only** — rebuttal letter is not shown; this is an attorney-level case |
+
+These are never shown simultaneously. The $10,000 threshold should be an environment variable (`LEGAL_ESCALATION_THRESHOLD_DOLLARS=10000`) so it can be tuned without a deploy.
 
 ---
 

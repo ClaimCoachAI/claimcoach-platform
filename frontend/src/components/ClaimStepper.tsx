@@ -1510,27 +1510,70 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
             {/* Audit results */}
             {hasAuditResult && comparisonData && (
               <div className="audit-results">
-                {/* Summary totals */}
-                <div className="audit-summary-grid">
-                  <div className="audit-summary-cell">
-                    <span className="audit-summary-label">Industry Estimate</span>
-                    <span className="audit-summary-value">
-                      ${(comparisonData.summary.total_industry || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                  <div className="audit-summary-cell">
-                    <span className="audit-summary-label">Carrier Estimate</span>
-                    <span className="audit-summary-value carrier-value">
-                      ${(comparisonData.summary.total_carrier || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                  <div className={`audit-summary-cell ${(comparisonData.summary.total_delta || 0) > 0 ? 'delta-positive' : ''}`}>
-                    <span className="audit-summary-label">Delta (Underpaid)</span>
-                    <span className="audit-summary-delta">
-                      ${Math.abs(comparisonData.summary.total_delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                </div>
+                {/* Summary totals — redesigned */}
+                {(() => {
+                  const industry = comparisonData.summary.total_industry || 0
+                  const carrier = comparisonData.summary.total_carrier || 0
+                  // raw delta: positive = industry > carrier = carrier underpaid
+                  //            negative = carrier > industry = carrier overpaid
+                  const rawDelta = comparisonData.summary.total_delta || 0
+                  const absDelta = Math.abs(rawDelta)
+                  const maxAmt = Math.max(industry, carrier, 0.01)
+                  const industryPct = Math.max(5, Math.round((industry / maxAmt) * 100))
+                  const carrierPct = Math.max(5, Math.round((carrier / maxAmt) * 100))
+                  // Only escalate when carrier genuinely underpaid (positive delta)
+                  const deltaLevel = rawDelta >= 10000 ? 'high' : rawDelta >= 500 ? 'medium' : 'low'
+                  const bannerLabel = rawDelta <= 0
+                    ? 'Carrier paid more than industry standard'
+                    : deltaLevel === 'low'
+                      ? 'Looks fair'
+                      : 'Potential underpayment'
+                  return (
+                    <div className="audit-summary-v2">
+                      <div className="audit-comparison-cols">
+                        <div className="audit-comp-col">
+                          <span className="audit-comp-eyebrow">Industry Standard</span>
+                          <span className="audit-comp-amount industry-amount">
+                            ${industry.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="audit-comp-desc">What fair repairs cost</span>
+                          <div className="audit-bar-track">
+                            <div className="audit-bar-fill industry-fill" style={{width: `${industryPct}%`}} />
+                          </div>
+                        </div>
+                        <div className="audit-comp-vs-col">
+                          <span className="audit-comp-vs">VS</span>
+                        </div>
+                        <div className="audit-comp-col">
+                          <span className="audit-comp-eyebrow">Carrier Paid</span>
+                          <span className="audit-comp-amount carrier-amount">
+                            ${carrier.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </span>
+                          <span className="audit-comp-desc">What was approved</span>
+                          <div className="audit-bar-track">
+                            <div className="audit-bar-fill carrier-fill" style={{width: `${carrierPct}%`}} />
+                          </div>
+                        </div>
+                      </div>
+                      <div className={`audit-delta-banner delta-${deltaLevel}`}>
+                        <div className="audit-delta-icon-col">
+                          {deltaLevel === 'low' ? '✓' : '⚠'}
+                        </div>
+                        <div className="audit-delta-body">
+                          <span className="audit-delta-eyebrow">{bannerLabel}</span>
+                          <span className="audit-delta-amount">
+                            ${absDelta.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </span>
+                          {deltaLevel !== 'low' && (
+                            <span className="audit-delta-context">
+                              Carrier paid less than industry standard on {comparisonData.discrepancies.length} line item{comparisonData.discrepancies.length === 1 ? '' : 's'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Discrepancies — collapsible summary row */}
                 {comparisonData.discrepancies.length > 0 ? (() => {
@@ -1592,6 +1635,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                     </div>
                     <button
                       type="button"
+                      className="audit-rebuttal-cta-btn"
                       onClick={() => generateRebuttalMutation.mutate(auditReport!.id)}
                       disabled={generateRebuttalMutation.isPending}
                     >
@@ -3113,55 +3157,143 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           gap: 18px;
         }
 
-        /* Summary grid */
-        .audit-summary-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr;
-          gap: 1px;
-          background: rgba(148, 163, 184, 0.15);
-          border-radius: 12px;
-          overflow: hidden;
-          border: 1px solid rgba(148, 163, 184, 0.15);
+        /* Summary v2 — comparison layout */
+        .audit-summary-v2 {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
         }
 
-        .audit-summary-cell {
+        .audit-comparison-cols {
+          display: grid;
+          grid-template-columns: 1fr 28px 1fr;
+          align-items: stretch;
+          background: white;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          border-radius: 12px;
+          overflow: hidden;
+        }
+
+        .audit-comp-col {
           display: flex;
           flex-direction: column;
           gap: 4px;
-          padding: 14px 16px;
-          background: white;
+          padding: 16px 18px 14px;
         }
 
-        .audit-summary-label {
-          font-size: 11px;
-          font-weight: 600;
+        .audit-comp-eyebrow {
+          font-size: 10px;
+          font-weight: 700;
           color: #94a3b8;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.07em;
         }
 
-        .audit-summary-value {
+        .audit-comp-amount {
           font-family: 'Work Sans', sans-serif;
-          font-size: 18px;
+          font-size: 20px;
           font-weight: 800;
-          color: #0f172a;
           letter-spacing: -0.02em;
+          line-height: 1;
+          margin-top: 2px;
         }
 
-        .carrier-value {
+        .industry-amount { color: #0D9488; }
+        .carrier-amount  { color: #334155; }
+
+        .audit-comp-desc {
+          font-size: 11px;
+          color: #94a3b8;
+          margin-top: 1px;
+        }
+
+        .audit-bar-track {
+          height: 3px;
+          background: #f1f5f9;
+          border-radius: 2px;
+          margin-top: 8px;
+          overflow: hidden;
+        }
+
+        .audit-bar-fill {
+          height: 100%;
+          border-radius: 2px;
+          transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .industry-fill { background: #14B8A6; }
+        .carrier-fill  { background: #94a3b8; }
+
+        .audit-comp-vs-col {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #f8fafc;
+          border-left: 1px solid rgba(148, 163, 184, 0.15);
+          border-right: 1px solid rgba(148, 163, 184, 0.15);
+        }
+
+        .audit-comp-vs {
+          font-size: 9px;
+          font-weight: 800;
+          color: #cbd5e1;
+          letter-spacing: 0.1em;
+        }
+
+        /* Delta banner */
+        .audit-delta-banner {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 16px 18px;
+          border-radius: 12px;
+          border: 1.5px solid;
+        }
+
+        .delta-low    { background: rgba(16, 185, 129, 0.04); border-color: rgba(16, 185, 129, 0.25); }
+        .delta-medium { background: rgba(13, 148, 136, 0.05); border-color: rgba(13, 148, 136, 0.3);  }
+        .delta-high   { background: rgba(15, 23, 42, 0.04);   border-color: rgba(15, 23, 42, 0.18);   }
+
+        .audit-delta-icon-col {
+          font-size: 16px;
+          line-height: 1;
+          flex-shrink: 0;
+          margin-top: 5px;
+        }
+
+        .audit-delta-body {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+        }
+
+        .audit-delta-eyebrow {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+
+        .delta-low    .audit-delta-eyebrow { color: #059669; }
+        .delta-medium .audit-delta-eyebrow { color: #0D9488; }
+        .delta-high   .audit-delta-eyebrow { color: #0F172A; }
+
+        .audit-delta-amount {
+          font-family: 'Work Sans', sans-serif;
+          font-size: 26px;
+          font-weight: 800;
+          letter-spacing: -0.03em;
+          line-height: 1.15;
+        }
+
+        .delta-low    .audit-delta-amount { color: #059669; }
+        .delta-medium .audit-delta-amount { color: #0D9488; }
+        .delta-high   .audit-delta-amount { color: #0F172A; }
+
+        .audit-delta-context {
+          font-size: 12px;
           color: #64748b;
-        }
-
-        .delta-positive .audit-summary-label {
-          color: #d97706;
-        }
-
-        .audit-summary-delta {
-          font-family: 'Work Sans', sans-serif;
-          font-size: 18px;
-          font-weight: 800;
-          color: #d97706;
-          letter-spacing: -0.02em;
+          margin-top: 3px;
         }
 
         /* Discrepancies */
@@ -3295,14 +3427,13 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
         /* Legal escalation prompt */
         .legal-escalation-prompt {
-          background: white;
-          border: 1px solid rgba(217, 119, 6, 0.3);
-          border-left: 3px solid #d97706;
-          border-radius: 10px;
-          padding: 18px 20px;
+          background: rgba(15, 23, 42, 0.03);
+          border: 1.5px solid rgba(15, 23, 42, 0.15);
+          border-radius: 12px;
+          padding: 20px;
           display: flex;
           flex-direction: column;
-          gap: 14px;
+          gap: 16px;
         }
         .legal-escalation-prompt-content {
           display: flex;
@@ -3312,13 +3443,14 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         .legal-escalation-prompt-title {
           font-size: 15px;
           font-weight: 700;
-          color: #0f172a;
+          color: #0F172A;
         }
         .legal-escalation-prompt-text {
           font-size: 13px;
-          color: #475569;
+          color: #334155;
           margin: 0;
           line-height: 1.5;
+          opacity: 0.8;
         }
         .legal-escalation-prompt-actions {
           display: flex;
@@ -3326,7 +3458,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           flex-wrap: wrap;
         }
         .legal-escalation-btn-primary {
-          background: #111827;
+          background: #0F172A;
           color: white;
           border: none;
           border-radius: 8px;
@@ -3334,9 +3466,10 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
+          letter-spacing: 0.01em;
         }
         .legal-escalation-btn-primary:hover {
-          background: #1f2937;
+          background: #1E293B;
         }
         .legal-escalation-btn-secondary {
           background: none;
@@ -3412,11 +3545,13 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         /* Rebuttal CTA */
         .audit-rebuttal-cta {
           display: flex;
-          flex-direction: column;
-          gap: 12px;
+          flex-direction: row;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
           padding: 18px 20px;
-          background: rgba(249, 250, 251, 0.8);
-          border: 1px solid rgba(148, 163, 184, 0.2);
+          background: rgba(13, 148, 136, 0.04);
+          border: 1.5px solid rgba(13, 148, 136, 0.25);
           border-radius: 12px;
         }
 
@@ -3424,15 +3559,40 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           display: block;
           font-size: 14px;
           font-weight: 700;
-          color: #0f172a;
+          color: #134e4a;
           margin-bottom: 4px;
         }
 
         .audit-rebuttal-cta-text {
-          font-size: 13px;
-          color: #64748b;
+          font-size: 12px;
+          color: #134e4a;
           line-height: 1.5;
           margin: 0;
+          opacity: 0.65;
+        }
+
+        .audit-rebuttal-cta-btn {
+          flex-shrink: 0;
+          align-self: center;
+          background: #0D9488;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 10px 18px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          font-family: 'DM Sans', sans-serif;
+        }
+
+        .audit-rebuttal-cta-btn:hover:not(:disabled) {
+          background: #0f766e;
+        }
+
+        .audit-rebuttal-cta-btn:disabled {
+          opacity: 0.6;
+          cursor: default;
         }
 
         /* Rebuttal letter display */

@@ -332,6 +332,11 @@ func (s *SendGridEmailService) SendLegalPartnerEmail(input SendLegalPartnerEmail
 	return nil
 }
 
+// SendPMConfirmationEmail sends a confirmation email to the PM after the legal package is dispatched.
+func (s *SendGridEmailService) SendPMConfirmationEmail(input SendPMConfirmationEmailInput) error {
+	return s.sendEmail(input.To, input.Subject, input.HTMLBody)
+}
+
 // sendEmail is a helper method that sends an email via SendGrid
 func (s *SendGridEmailService) sendEmail(to, subject, htmlBody string) error {
 	from := mail.NewEmail(s.fromName, s.fromEmail)

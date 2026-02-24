@@ -74,7 +74,7 @@ Always respond with valid JSON only, no additional text or explanations.`,
 		return "", fmt.Errorf("LLM returned no choices")
 	}
 
-	estimateJSON := response.Choices[0].Message.Content
+	estimateJSON := extractJSON(response.Choices[0].Message.Content)
 
 	// Validate that it's valid JSON
 	var validationCheck map[string]interface{}
@@ -244,7 +244,7 @@ Always respond with valid JSON only, no additional text or explanations.`,
 		return fmt.Errorf("LLM returned no choices")
 	}
 
-	comparisonJSON := response.Choices[0].Message.Content
+	comparisonJSON := extractJSON(response.Choices[0].Message.Content)
 
 	// 7. Parse LLM response (JSON with discrepancies, justifications)
 	var comparisonData map[string]interface{}
@@ -837,4 +837,27 @@ func (s *AuditService) logAPIUsage(ctx context.Context, orgID string, response *
 	}
 
 	return nil
+}
+
+// extractJSON strips markdown code fences and extracts the JSON object from an LLM response.
+func extractJSON(s string) string {
+	s = strings.TrimSpace(s)
+	// Strip opening ```json or ``` fence
+	if strings.HasPrefix(s, "```") {
+		if idx := strings.Index(s, "\n"); idx != -1 {
+			s = s[idx+1:]
+		}
+	}
+	// Strip closing ``` fence
+	if strings.HasSuffix(s, "```") {
+		s = s[:strings.LastIndex(s, "```")]
+	}
+	s = strings.TrimSpace(s)
+	// Extract first { ... } block as a fallback
+	if start := strings.Index(s, "{"); start >= 0 {
+		if end := strings.LastIndex(s, "}"); end > start {
+			return s[start : end+1]
+		}
+	}
+	return s
 }

@@ -518,7 +518,11 @@ func (s *LegalPackageService) sendPMConfirmation(
 		`<p>%s approved the legal escalation. A full claim package has been sent to %s at %s.</p>`,
 		req.OwnerName, legalPartnerName, legalPartnerEmail,
 	)
-	return s.emailService.(*SendGridEmailService).sendEmail(pmEmail, subject, body)
+	return s.emailService.SendPMConfirmationEmail(SendPMConfirmationEmailInput{
+		To:       pmEmail,
+		Subject:  subject,
+		HTMLBody: body,
+	})
 }
 
 // -------------------------------------------------------------------

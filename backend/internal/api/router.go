@@ -56,13 +56,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		return nil, err
 	}
 
-	// Initialize LLM client
-	llmClient := llm.NewPerplexityClient(
-		cfg.PerplexityAPIKey,
-		cfg.PerplexityModel,
-		cfg.PerplexityTimeout,
-		cfg.PerplexityMaxRetries,
-	)
+	// Initialize LLM client (Claude for all AI features)
+	llmClient := llm.NewClaudeClient(cfg.AnthropicAPIKey, cfg.AnthropicModel, 120)
 
 	// Initialize services needed for both public and protected routes
 	propertyService := services.NewPropertyService(db)
@@ -184,8 +179,9 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/documents/:id", documentHandler.GetDocument)
 
 		// Carrier Estimate routes
+		claudeClient := llm.NewClaudeClient(cfg.AnthropicAPIKey, cfg.AnthropicModel, 120)
 		carrierEstimateService := services.NewCarrierEstimateService(db, storageClient, claimService)
-		pdfParserService := services.NewPDFParserService(db, storageClient, llmClient, claimService)
+		pdfParserService := services.NewPDFParserService(db, storageClient, claudeClient, claimService)
 		carrierEstimateHandler := handlers.NewCarrierEstimateHandler(carrierEstimateService, pdfParserService)
 
 		api.POST("/claims/:id/carrier-estimate/upload-url", carrierEstimateHandler.RequestUploadURL)

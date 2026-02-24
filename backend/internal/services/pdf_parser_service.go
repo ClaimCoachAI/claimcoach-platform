@@ -10,11 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/claimcoach/backend/internal/llm"
 	"github.com/claimcoach/backend/internal/models"
 	"github.com/claimcoach/backend/internal/storage"
-	"github.com/ledongthuc/pdf"
 )
+
+// PDFParserClient defines the interface for parsing PDFs with an LLM
+type PDFParserClient interface {
+	ParsePDF(ctx context.Context, pdfContent []byte, prompt string, maxTokens int) (string, error)
+}
 
 // StorageClient interface for storage operations
 type StorageClient interface {
@@ -30,16 +33,16 @@ type ClaimGetter interface {
 type PDFParserService struct {
 	db          *sql.DB
 	storage     StorageClient
-	llmClient   LLMClient
+	pdfClient   PDFParserClient
 	claimGetter ClaimGetter
 }
 
 // NewPDFParserService creates a new PDF parser service
-func NewPDFParserService(db *sql.DB, storageClient *storage.SupabaseStorage, llmClient *llm.PerplexityClient, claimService *ClaimService) *PDFParserService {
+func NewPDFParserService(db *sql.DB, storageClient *storage.SupabaseStorage, pdfClient PDFParserClient, claimService *ClaimService) *PDFParserService {
 	return &PDFParserService{
 		db:          db,
 		storage:     storageClient,
-		llmClient:   llmClient,
+		pdfClient:   pdfClient,
 		claimGetter: claimService,
 	}
 }
@@ -87,20 +90,12 @@ func (s *PDFParserService) ParseCarrierEstimate(ctx context.Context, carrierEsti
 		return fmt.Errorf("failed to download PDF: %w", err)
 	}
 
-	// Extract text from PDF
-	extractedText, err := s.extractTextFromPDF(pdfContent)
+	// Parse PDF using Claude (extract and structure in one step)
+	parsedData, err := s.parsePDFWithClaude(ctx, pdfContent)
 	if err != nil {
-		parseError := fmt.Sprintf("Failed to extract text from PDF: %v", err)
+		parseError := fmt.Sprintf("Failed to parse PDF: %v", err)
 		s.updateParseStatus(ctx, carrierEstimateID, models.ParseStatusFailed, &parseError)
-		return fmt.Errorf("failed to extract text from PDF: %w", err)
-	}
-
-	// Use LLM to structure the data
-	parsedData, err := s.structureDataWithLLM(ctx, extractedText)
-	if err != nil {
-		parseError := fmt.Sprintf("Failed to structure data with LLM: %v", err)
-		s.updateParseStatus(ctx, carrierEstimateID, models.ParseStatusFailed, &parseError)
-		return fmt.Errorf("failed to structure data with LLM: %w", err)
+		return fmt.Errorf("failed to parse PDF: %w", err)
 	}
 
 	// Convert parsed data to JSON string
@@ -120,6 +115,56 @@ func (s *PDFParserService) ParseCarrierEstimate(ctx context.Context, carrierEsti
 	}
 
 	return nil
+}
+
+// parsePDFWithClaude sends the PDF directly to Claude for extraction and structuring
+func (s *PDFParserService) parsePDFWithClaude(ctx context.Context, pdfContent []byte) (*ParsedEstimateData, error) {
+	prompt := `Extract all line items from this carrier estimate PDF.
+
+Return a JSON object with this exact structure:
+{
+  "line_items": [
+    {
+      "description": "string",
+      "quantity": number,
+      "unit": "string",
+      "unit_cost": number,
+      "total": number,
+      "category": "string"
+    }
+  ],
+  "total": number
+}
+
+Rules:
+- Extract ALL line items, not just summaries
+- Use 0 for missing numeric values
+- Use empty string for missing text values
+- category should be the work type (e.g., Roofing, Siding, Exterior, Interior, etc.)
+- Return ONLY valid JSON, no additional text or explanation`
+
+	responseText, err := s.pdfClient.ParsePDF(ctx, pdfContent, prompt, 4000)
+	if err != nil {
+		return nil, fmt.Errorf("LLM request failed: %w", err)
+	}
+
+	// Extract JSON if there's surrounding text
+	jsonStart := strings.Index(responseText, "{")
+	jsonEnd := strings.LastIndex(responseText, "}")
+	if jsonStart >= 0 && jsonEnd > jsonStart {
+		responseText = responseText[jsonStart : jsonEnd+1]
+	}
+
+	var parsedData ParsedEstimateData
+	if err := json.Unmarshal([]byte(responseText), &parsedData); err != nil {
+		return nil, fmt.Errorf("failed to parse LLM response as JSON: %w (response: %s)", err, responseText)
+	}
+
+	if len(parsedData.LineItems) == 0 {
+		return nil, fmt.Errorf("no line items extracted from document")
+	}
+
+	return &parsedData, nil
 }
 
 // getCarrierEstimate retrieves a carrier estimate by ID
@@ -224,116 +269,4 @@ func (s *PDFParserService) downloadPDF(ctx context.Context, filePath string) ([]
 	}
 
 	return pdfContent, nil
-}
-
-// extractTextFromPDF extracts all text content from a PDF
-func (s *PDFParserService) extractTextFromPDF(pdfContent []byte) (string, error) {
-	// Create a bytes.Reader which implements io.ReaderAt
-	reader, err := pdf.NewReader(strings.NewReader(string(pdfContent)), int64(len(pdfContent)))
-	if err != nil {
-		return "", fmt.Errorf("failed to create PDF reader: %w", err)
-	}
-
-	var textBuilder strings.Builder
-	numPages := reader.NumPage()
-
-	// Extract text from each page
-	for pageNum := 1; pageNum <= numPages; pageNum++ {
-		page := reader.Page(pageNum)
-		if page.V.IsNull() {
-			continue
-		}
-
-		// Get text content from page
-		text, err := page.GetPlainText(nil)
-		if err != nil {
-			// Log error but continue with other pages
-			continue
-		}
-
-		textBuilder.WriteString(text)
-		textBuilder.WriteString("\n\n")
-	}
-
-	extractedText := textBuilder.String()
-	if len(strings.TrimSpace(extractedText)) == 0 {
-		return "", fmt.Errorf("no text content found in PDF")
-	}
-
-	return extractedText, nil
-}
-
-// structureDataWithLLM uses the LLM to extract structured line items from text
-func (s *PDFParserService) structureDataWithLLM(ctx context.Context, extractedText string) (*ParsedEstimateData, error) {
-	// Construct prompt for LLM
-	systemPrompt := `You are a data extraction assistant. Your task is to extract line items from a carrier estimate document.
-
-Extract the following information for each line item:
-- description: Description of the work or item
-- quantity: Numeric quantity
-- unit: Unit of measurement (e.g., SF, LF, EA)
-- unit_cost: Cost per unit
-- total: Total cost for the line item
-- category: Category of work (e.g., Roofing, Siding, Exterior, Interior, etc.)
-
-Return a JSON object with this exact structure:
-{
-  "line_items": [
-    {
-      "description": "string",
-      "quantity": number,
-      "unit": "string",
-      "unit_cost": number,
-      "total": number,
-      "category": "string"
-    }
-  ],
-  "total": number
-}
-
-Important:
-- Extract ALL line items, not just summaries
-- Use 0 for missing numeric values
-- Use empty string for missing text values
-- Calculate the total by summing all line item totals
-- Return ONLY valid JSON, no additional text or explanation`
-
-	userPrompt := fmt.Sprintf("Extract line items from this carrier estimate:\n\n%s", extractedText)
-
-	messages := []llm.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: userPrompt},
-	}
-
-	// Call LLM with low temperature for consistency
-	response, err := s.llmClient.Chat(ctx, messages, 0.1, 4000)
-	if err != nil {
-		return nil, fmt.Errorf("LLM request failed: %w", err)
-	}
-
-	if len(response.Choices) == 0 {
-		return nil, fmt.Errorf("no response from LLM")
-	}
-
-	// Parse JSON response
-	responseContent := response.Choices[0].Message.Content
-
-	// Try to extract JSON if there's extra text
-	jsonStart := strings.Index(responseContent, "{")
-	jsonEnd := strings.LastIndex(responseContent, "}")
-	if jsonStart >= 0 && jsonEnd > jsonStart {
-		responseContent = responseContent[jsonStart : jsonEnd+1]
-	}
-
-	var parsedData ParsedEstimateData
-	if err := json.Unmarshal([]byte(responseContent), &parsedData); err != nil {
-		return nil, fmt.Errorf("failed to parse LLM response as JSON: %w (response: %s)", err, responseContent)
-	}
-
-	// Validate that we got some data
-	if len(parsedData.LineItems) == 0 {
-		return nil, fmt.Errorf("no line items extracted from document")
-	}
-
-	return &parsedData, nil
 }

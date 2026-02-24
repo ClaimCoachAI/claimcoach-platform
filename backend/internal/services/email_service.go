@@ -15,6 +15,14 @@ type EmailService interface {
 	SendClaimCoachNotification(claim *models.Claim) error
 	SendOwnerApprovalEmail(input SendOwnerApprovalEmailInput) error
 	SendLegalPartnerEmail(input SendLegalPartnerEmailInput) error
+	SendPMConfirmationEmail(input SendPMConfirmationEmailInput) error
+}
+
+// SendPMConfirmationEmailInput contains data for the PM confirmation after legal package is sent.
+type SendPMConfirmationEmailInput struct {
+	To          string
+	Subject     string
+	HTMLBody    string
 }
 
 // SendMagicLinkEmailInput contains all data needed to send a magic link email
@@ -163,6 +171,11 @@ func (s *MockEmailService) SendOwnerApprovalEmail(input SendOwnerApprovalEmailIn
 func (s *MockEmailService) SendLegalPartnerEmail(input SendLegalPartnerEmailInput) error {
 	log.Printf("[MOCK EMAIL] Legal partner package to: %s | Subject: %s | ZIP bytes: %d",
 		input.To, input.Subject, len(input.ZIPBytes))
+	return nil
+}
+
+func (s *MockEmailService) SendPMConfirmationEmail(input SendPMConfirmationEmailInput) error {
+	log.Printf("[MOCK EMAIL] PM confirmation to: %s | Subject: %s", input.To, input.Subject)
 	return nil
 }
 

@@ -22,6 +22,10 @@ type Config struct {
 	PerplexityTimeout    int // seconds
 	PerplexityMaxRetries int
 
+	// Anthropic Claude API (for PDF parsing)
+	AnthropicAPIKey string
+	AnthropicModel  string
+
 	// SendGrid Email Service (optional - falls back to mock if not provided)
 	SendGridAPIKey    string
 	SendGridFromEmail string
@@ -46,6 +50,8 @@ func Load() (*Config, error) {
 		PerplexityModel:      getEnvOrDefault("PERPLEXITY_MODEL", "sonar-pro"),
 		PerplexityTimeout:    getEnvIntOrDefault("PERPLEXITY_TIMEOUT", 60),
 		PerplexityMaxRetries: getEnvIntOrDefault("PERPLEXITY_MAX_RETRIES", 3),
+		AnthropicAPIKey:      os.Getenv("ANTHROPIC_API_KEY"),
+		AnthropicModel:       getEnvOrDefault("ANTHROPIC_MODEL", "claude-opus-4-6"),
 		SendGridAPIKey:       os.Getenv("SENDGRID_API_KEY"),
 		SendGridFromEmail:    getEnvOrDefault("SENDGRID_FROM_EMAIL", "noreply@claimcoach.ai"),
 		SendGridFromName:     getEnvOrDefault("SENDGRID_FROM_NAME", "ClaimCoach AI"),
@@ -67,6 +73,9 @@ func Load() (*Config, error) {
 	// PERPLEXITY_API_KEY is optional for development - features requiring it will fail gracefully
 	if cfg.PerplexityAPIKey == "" {
 		log.Println("⚠️  PERPLEXITY_API_KEY not set - AI analysis features will be unavailable")
+	}
+	if cfg.AnthropicAPIKey == "" {
+		log.Println("⚠️  ANTHROPIC_API_KEY not set - PDF parsing will be unavailable")
 	}
 	if cfg.PerplexityTimeout <= 0 {
 		return nil, fmt.Errorf("PERPLEXITY_TIMEOUT must be positive, got %d", cfg.PerplexityTimeout)
