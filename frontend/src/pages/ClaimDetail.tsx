@@ -108,6 +108,15 @@ interface Rebuttal {
   updated_at: string
 }
 
+function formatDate(dateString?: string): string {
+  if (!dateString) return 'N/A'
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 interface AuditSectionWrapperProps {
   claimId: string
 }
@@ -148,10 +157,9 @@ interface ContractorSubmissionWrapperProps {
   claimId: string
   documents: Document[]
   onDownload: (documentId: string) => void
-  formatDate: (dateString?: string) => string
 }
 
-function ContractorSubmissionWrapper({ claimId, documents, onDownload, formatDate }: ContractorSubmissionWrapperProps) {
+function ContractorSubmissionWrapper({ claimId, documents, onDownload }: ContractorSubmissionWrapperProps) {
   const { data: scopeSheet, isLoading } = useQuery<ScopeSheet | null>({
     queryKey: ['scope-sheet', claimId],
     queryFn: async () => {
@@ -167,7 +175,16 @@ function ContractorSubmissionWrapper({ claimId, documents, onDownload, formatDat
     },
   })
 
-  if (isLoading || !scopeSheet || !scopeSheet.submitted_at) {
+  if (isLoading) {
+    return (
+      <div className="bg-white shadow rounded-lg p-6">
+        <div className="text-center text-gray-600">Loading...</div>
+      </div>
+    )
+  }
+
+  // Only show after contractor has submitted — drafts are invisible to the agent
+  if (!scopeSheet || !scopeSheet.submitted_at) {
     return null
   }
 
@@ -292,16 +309,6 @@ function AuditSection({ claimId, hasScopeSheet }: AuditSectionProps) {
       currency: 'USD',
       minimumFractionDigits: 2,
     }).format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
   }
 
   const copyToClipboard = (text: string) => {
@@ -743,16 +750,6 @@ function CarrierEstimateUpload({ claimId }: CarrierEstimateUploadProps) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { color: string; label: string }> = {
       pending: { color: 'bg-yellow-100 text-yellow-800', label: 'Pending' },
@@ -1170,15 +1167,6 @@ export default function ClaimDetail() {
       )
       setTimeout(() => setErrorMessage(''), 5000)
     }
-  }
-
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
   }
 
   const formatDateTime = (dateString?: string) => {
@@ -1776,12 +1764,11 @@ export default function ClaimDetail() {
             </div>
 
             {/* Contractor Submission - scope sheet + photos */}
-            {claim && documents && (
+            {claim && documents && !loadingDocuments && (
               <ContractorSubmissionWrapper
                 claimId={claim.id}
                 documents={documents}
                 onDownload={handleDocumentDownload}
-                formatDate={formatDate}
               />
             )}
 
