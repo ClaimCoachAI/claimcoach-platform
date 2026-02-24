@@ -12,6 +12,7 @@ import ClaimHome from './pages/ClaimHome'
 import Properties from './pages/Properties'
 import PropertyDetail from './pages/PropertyDetail'
 import ContractorUpload from './pages/ContractorUpload'
+import LegalApprovalPage from './pages/LegalApprovalPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,6 +55,7 @@ function App() {
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/upload/:token" element={<ContractorUpload />} />
+              <Route path="/legal-approval/:token" element={<LegalApprovalPage />} />
 
               {/* Protected routes */}
               <Route
