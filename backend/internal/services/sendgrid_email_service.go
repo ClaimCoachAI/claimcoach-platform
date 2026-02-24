@@ -199,7 +199,7 @@ func (s *SendGridEmailService) SendClaimCoachNotification(claim *models.Claim) e
 		description = *claim.Description
 	}
 
-	deductible := claim.Policy.DeductibleCalculated
+	deductible := claim.Policy.DeductibleValue
 
 	estimateTotal := 0.0
 	estimateDisplay := "Pending estimate"
