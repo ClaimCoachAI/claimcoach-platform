@@ -27,6 +27,10 @@ type Config struct {
 	SendGridFromEmail string
 	SendGridFromName  string
 	ClaimCoachEmail   string
+
+	// Legal escalation threshold — claims with delta >= this amount trigger legal prompt
+	// Configurable via LEGAL_ESCALATION_THRESHOLD_DOLLARS env var (default: 10000)
+	LegalEscalationThreshold float64
 }
 
 func Load() (*Config, error) {
@@ -45,7 +49,8 @@ func Load() (*Config, error) {
 		SendGridAPIKey:       os.Getenv("SENDGRID_API_KEY"),
 		SendGridFromEmail:    getEnvOrDefault("SENDGRID_FROM_EMAIL", "noreply@claimcoach.ai"),
 		SendGridFromName:     getEnvOrDefault("SENDGRID_FROM_NAME", "ClaimCoach AI"),
-		ClaimCoachEmail:      getEnvOrDefault("CLAIMCOACH_EMAIL", "claims@claimcoach.ai"),
+		ClaimCoachEmail:          getEnvOrDefault("CLAIMCOACH_EMAIL", "claims@claimcoach.ai"),
+		LegalEscalationThreshold: getEnvFloat64OrDefault("LEGAL_ESCALATION_THRESHOLD_DOLLARS", 10000),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -84,6 +89,15 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
 			return intValue
+		}
+	}
+	return defaultValue
+}
+
+func getEnvFloat64OrDefault(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			return f
 		}
 	}
 	return defaultValue
