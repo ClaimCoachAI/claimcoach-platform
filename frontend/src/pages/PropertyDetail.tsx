@@ -187,18 +187,22 @@ export default function PropertyDetail() {
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex space-x-1 glass-card-strong rounded-2xl p-1 w-full sm:w-fit" role="tablist" aria-label="Property sections">
+        {/* Tabs — sliding segmented control */}
+        <div className="relative flex glass-card-strong rounded-2xl p-1 w-full sm:w-fit" role="tablist" aria-label="Property sections">
+          {/* Sliding pill */}
+          <div
+            className="absolute top-1 bottom-1 w-1/2 bg-white rounded-xl shadow-sm transition-transform duration-200 ease-in-out"
+            style={{ transform: activeTab === 'policy' ? 'translateX(100%)' : 'translateX(0)' }}
+            aria-hidden="true"
+          />
           <button
             onClick={() => setActiveTab('claims')}
             role="tab"
             id="tab-claims"
             aria-selected={activeTab === 'claims'}
             aria-controls="panel-claims"
-            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-1 sm:flex-none ${
-              activeTab === 'claims'
-                ? 'bg-white shadow-sm text-navy'
-                : 'text-slate hover:text-navy'
+            className={`relative z-10 flex-1 px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors duration-200 ${
+              activeTab === 'claims' ? 'text-navy' : 'text-slate hover:text-navy'
             }`}
           >
             Claims
@@ -216,10 +220,8 @@ export default function PropertyDetail() {
             id="tab-policy"
             aria-selected={activeTab === 'policy'}
             aria-controls="panel-policy"
-            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-1 sm:flex-none ${
-              activeTab === 'policy'
-                ? 'bg-white shadow-sm text-navy'
-                : 'text-slate hover:text-navy'
+            className={`relative z-10 flex-1 px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors duration-200 ${
+              activeTab === 'policy' ? 'text-navy' : 'text-slate hover:text-navy'
             }`}
           >
             Policy & Details
