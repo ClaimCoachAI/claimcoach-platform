@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/claimcoach/backend/internal/models"
 	"github.com/sendgrid/sendgrid-go"
@@ -275,17 +274,7 @@ func (s *SendGridEmailService) SendClaimCoachNotification(claim *models.Claim) e
 		policyNumber,
 	)
 
-	recipients := strings.Split(s.claimCoachEmail, ",")
-	for _, recipient := range recipients {
-		r := strings.TrimSpace(recipient)
-		if r == "" {
-			continue
-		}
-		if err := s.sendEmail(r, subject, body); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.sendEmail(s.claimCoachEmail, subject, body)
 }
 
 // sendEmail is a helper method that sends an email via SendGrid
