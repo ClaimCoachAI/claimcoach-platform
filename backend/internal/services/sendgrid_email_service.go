@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/base64"
 	"fmt"
 
 	"github.com/claimcoach/backend/internal/models"
@@ -275,6 +276,60 @@ func (s *SendGridEmailService) SendClaimCoachNotification(claim *models.Claim) e
 	)
 
 	return s.sendEmail(s.claimCoachEmail, subject, body)
+}
+
+// SendOwnerApprovalEmail sends the homeowner a link to review and approve legal escalation.
+func (s *SendGridEmailService) SendOwnerApprovalEmail(input SendOwnerApprovalEmailInput) error {
+	subject := fmt.Sprintf("Action Required — Review Your Claim at %s", input.PropertyAddress)
+	htmlBody := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Review Your Claim</title></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f5f5f5; margin: 0; padding: 0;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: white; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+      <p>Hi %s,</p>
+      <p>Your property manager has reviewed the insurance claim for <strong>%s</strong> and found a potential underpayment by the carrier. They would like your approval to share the full claim file with a legal partner who can assess your options.</p>
+      <p>Please review the details and let us know your decision:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="%s" style="background: #111827; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold; font-size: 15px;">Review and Respond</a>
+      </div>
+      <p style="color: #6b7280; font-size: 13px;">This link expires on <strong>%s</strong>. If you have questions, please contact your property manager directly.</p>
+    </div>
+  </div>
+</body>
+</html>`,
+		input.OwnerName,
+		input.PropertyAddress,
+		input.ApprovalURL,
+		input.ExpiresAt.Format("Monday, January 2, 2006"),
+	)
+	return s.sendEmail(input.To, subject, htmlBody)
+}
+
+// SendLegalPartnerEmail sends the ZIP package to the legal partner via SendGrid attachment.
+func (s *SendGridEmailService) SendLegalPartnerEmail(input SendLegalPartnerEmailInput) error {
+	from := mail.NewEmail(s.fromName, s.fromEmail)
+	to := mail.NewEmail(input.PartnerName, input.To)
+
+	message := mail.NewSingleEmail(from, input.Subject, to, input.PlainBody, "")
+
+	// Attach the ZIP file
+	attachment := mail.NewAttachment()
+	attachment.SetContent(base64.StdEncoding.EncodeToString(input.ZIPBytes))
+	attachment.SetType("application/zip")
+	attachment.SetFilename(input.ZIPFilename)
+	attachment.SetDisposition("attachment")
+	message.AddAttachment(attachment)
+
+	client := sendgrid.NewSendClient(s.apiKey)
+	response, err := client.Send(message)
+	if err != nil {
+		return fmt.Errorf("send legal partner email: %w", err)
+	}
+	if response.StatusCode >= 400 {
+		return fmt.Errorf("sendgrid error %d: %s", response.StatusCode, response.Body)
+	}
+	return nil
 }
 
 // sendEmail is a helper method that sends an email via SendGrid

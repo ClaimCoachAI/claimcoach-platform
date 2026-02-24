@@ -13,6 +13,8 @@ type EmailService interface {
 	SendMagicLinkEmail(input SendMagicLinkEmailInput) error
 	SendMeetingNotification(input SendMeetingNotificationInput) error
 	SendClaimCoachNotification(claim *models.Claim) error
+	SendOwnerApprovalEmail(input SendOwnerApprovalEmailInput) error
+	SendLegalPartnerEmail(input SendLegalPartnerEmailInput) error
 }
 
 // SendMagicLinkEmailInput contains all data needed to send a magic link email
@@ -24,6 +26,25 @@ type SendMagicLinkEmailInput struct {
 	LossType        string
 	MagicLinkURL    string
 	ExpiresAt       time.Time
+}
+
+// SendOwnerApprovalEmailInput contains all data needed to send the homeowner approval request email.
+type SendOwnerApprovalEmailInput struct {
+	To              string
+	OwnerName       string
+	PropertyAddress string
+	ApprovalURL     string
+	ExpiresAt       time.Time
+}
+
+// SendLegalPartnerEmailInput contains all data needed to send the legal package email with attachment.
+type SendLegalPartnerEmailInput struct {
+	To          string
+	PartnerName string
+	Subject     string
+	PlainBody   string
+	ZIPBytes    []byte
+	ZIPFilename string
 }
 
 // SendMeetingNotificationInput contains all data needed to send a meeting notification email
@@ -130,6 +151,18 @@ func (s *MockEmailService) SendMeetingNotification(input SendMeetingNotification
 	log.Println("=======================================================")
 	log.Println("")
 
+	return nil
+}
+
+func (s *MockEmailService) SendOwnerApprovalEmail(input SendOwnerApprovalEmailInput) error {
+	log.Printf("[MOCK EMAIL] Owner approval to: %s | URL: %s | Expires: %s",
+		input.To, input.ApprovalURL, input.ExpiresAt.Format(time.RFC3339))
+	return nil
+}
+
+func (s *MockEmailService) SendLegalPartnerEmail(input SendLegalPartnerEmailInput) error {
+	log.Printf("[MOCK EMAIL] Legal partner package to: %s | Subject: %s | ZIP bytes: %d",
+		input.To, input.Subject, len(input.ZIPBytes))
 	return nil
 }
 
