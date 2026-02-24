@@ -8,6 +8,10 @@ interface PolicyCardProps {
   policy: Policy | null
   onSuccess: () => void
   onDelete: () => void
+  pdfUrl?: string | null
+  isUploadingPdf?: boolean
+  uploadPdfError?: unknown
+  onUploadPdf?: (file: File) => void
 }
 
 export default function PolicyCard({
@@ -15,6 +19,10 @@ export default function PolicyCard({
   policy,
   onSuccess,
   onDelete,
+  pdfUrl,
+  isUploadingPdf,
+  uploadPdfError,
+  onUploadPdf,
 }: PolicyCardProps) {
   const [isEditing, setIsEditing] = useState(false)
   const queryClient = useQueryClient()
@@ -224,6 +232,53 @@ export default function PolicyCard({
                 </svg>
               </button>
             </div>
+          </div>
+
+          {/* PDF Row */}
+          <div style={{ marginBottom: '20px', paddingBottom: '20px', borderBottom: '1px solid var(--color-sand-200)' }}>
+            <label className="policy-label">Policy Document</label>
+            {pdfUrl ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'white', border: '1px solid var(--color-sand-200)', borderRadius: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" style={{ color: '#ef4444' }}>
+                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                  </svg>
+                  <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--color-sand-900)' }}>Policy.pdf</span>
+                </div>
+                <a href={pdfUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '14px', color: 'var(--color-terracotta-600)', fontWeight: 500, textDecoration: 'none' }}>
+                  View →
+                </a>
+              </div>
+            ) : onUploadPdf ? (
+              <div>
+                {!!uploadPdfError && (
+                  <p style={{ fontSize: '12px', color: '#dc2626', marginBottom: '8px' }}>
+                    Failed to upload PDF
+                  </p>
+                )}
+                <label style={{ display: 'inline-block', cursor: isUploadingPdf ? 'not-allowed' : 'pointer', opacity: isUploadingPdf ? 0.5 : 1 }}>
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    style={{ display: 'none' }}
+                    disabled={isUploadingPdf}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file && onUploadPdf) {
+                        if (file.type !== 'application/pdf') { alert('Please select a PDF file'); return }
+                        if (file.size > 10 * 1024 * 1024) { alert('File size must be less than 10MB'); return }
+                        onUploadPdf(file)
+                      }
+                    }}
+                  />
+                  <span className="btn-cancel" style={{ fontSize: '13px', padding: '8px 16px' }}>
+                    {isUploadingPdf ? 'Uploading...' : 'Upload PDF'}
+                  </span>
+                </label>
+              </div>
+            ) : (
+              <p style={{ fontSize: '14px', color: 'var(--color-sand-500)' }}>No document uploaded</p>
+            )}
           </div>
 
           <div className="policy-grid">
