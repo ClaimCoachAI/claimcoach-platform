@@ -260,9 +260,6 @@ func (s *SendGridEmailService) SendClaimCoachNotification(claim *models.Claim) e
 			<li><strong>Policy Number:</strong> %s</li>
 		</ul>
 
-		<p style="margin-top: 24px;">
-			<a href="%s/claims/%s" style="background-color: #1e3a8a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">View Claim in Dashboard</a>
-		</p>
 	</div>
 	`,
 		claim.Property.LegalAddress,
@@ -275,8 +272,6 @@ func (s *SendGridEmailService) SendClaimCoachNotification(claim *models.Claim) e
 		amountAboveDeductible,
 		carrierName,
 		policyNumber,
-		s.appURL,
-		claim.ID,
 	)
 
 	return s.sendEmail(s.claimCoachEmail, subject, body)
