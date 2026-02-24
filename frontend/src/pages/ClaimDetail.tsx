@@ -8,7 +8,9 @@ import MeetingsSection from '../components/MeetingsSection'
 import PaymentsSection from '../components/PaymentsSection'
 import RCVDemandSection from '../components/RCVDemandSection'
 import MagicLinkHistory from '../components/MagicLinkHistory'
+import ScopeSheetSummary from '../components/ScopeSheetSummary'
 import { Claim, Policy } from '../types/claim'
+import type { ScopeSheet } from '../types/scopeSheet'
 
 interface Document {
   id: string
@@ -140,6 +142,74 @@ function AuditSectionWrapper({ claimId }: AuditSectionWrapperProps) {
   }
 
   return <AuditSection claimId={claimId} hasScopeSheet={true} />
+}
+
+interface ContractorSubmissionWrapperProps {
+  claimId: string
+  documents: Document[]
+  onDownload: (documentId: string) => void
+  formatDate: (dateString?: string) => string
+}
+
+function ContractorSubmissionWrapper({ claimId, documents, onDownload, formatDate }: ContractorSubmissionWrapperProps) {
+  const { data: scopeSheet, isLoading } = useQuery<ScopeSheet | null>({
+    queryKey: ['scope-sheet', claimId],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${claimId}/scope-sheet`)
+        return response.data.data
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          return null
+        }
+        throw error
+      }
+    },
+  })
+
+  if (isLoading || !scopeSheet || !scopeSheet.submitted_at) {
+    return null
+  }
+
+  const contractorPhotos = documents.filter(d => d.document_type === 'contractor_photo')
+
+  return (
+    <div className="bg-white shadow rounded-lg">
+      <div className="px-6 py-5 border-b border-gray-200">
+        <h3 className="text-lg font-medium text-gray-900">Contractor Submission</h3>
+      </div>
+      <div className="px-6 py-5 space-y-6">
+        <ScopeSheetSummary scopeSheet={scopeSheet} />
+
+        {/* Contractor Photos */}
+        <div>
+          <h4 className="text-sm font-medium text-gray-700 mb-3">
+            Photos ({contractorPhotos.length})
+          </h4>
+          {contractorPhotos.length > 0 ? (
+            <ul className="divide-y divide-gray-100">
+              {contractorPhotos.map(photo => (
+                <li key={photo.id} className="flex items-center justify-between py-2 text-sm">
+                  <span className="text-gray-900 truncate max-w-xs">{photo.file_name}</span>
+                  <div className="flex items-center gap-4 ml-4 shrink-0">
+                    <span className="text-gray-500">{formatDate(photo.uploaded_at)}</span>
+                    <button
+                      onClick={() => onDownload(photo.id)}
+                      className="text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Download
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-gray-500">No photos uploaded.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 interface AuditSectionProps {
@@ -1704,6 +1774,16 @@ export default function ClaimDetail() {
                 )}
               </div>
             </div>
+
+            {/* Contractor Submission - scope sheet + photos */}
+            {claim && documents && (
+              <ContractorSubmissionWrapper
+                claimId={claim.id}
+                documents={documents}
+                onDownload={handleDocumentDownload}
+                formatDate={formatDate}
+              />
+            )}
 
             {/* Magic Link History */}
             {claim && <MagicLinkHistory claimId={claim.id} />}
