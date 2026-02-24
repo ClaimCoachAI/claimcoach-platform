@@ -15,6 +15,7 @@ export default function PropertyDetail() {
   const queryClient = useQueryClient()
   const [isClaimModalOpen, setIsClaimModalOpen] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [activeTab, setActiveTab] = useState<'claims' | 'policy'>('claims')
   const { uploadPDF, isUploading, uploadError } = usePolicyPDFUpload(id || '')
 
   const {
@@ -186,124 +187,89 @@ export default function PropertyDetail() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Left Column - Property & Policy Info */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Property Details Card */}
-            <div className="glass-card rounded-2xl p-6 animate-scale-in">
-              <h3 className="text-lg font-display font-semibold text-navy mb-4">Property Details</h3>
+        {/* Tabs */}
+        <div className="flex space-x-1 glass-card-strong rounded-2xl p-1 w-fit">
+          <button
+            onClick={() => setActiveTab('claims')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              activeTab === 'claims'
+                ? 'bg-white shadow-sm text-navy'
+                : 'text-slate hover:text-navy'
+            }`}
+          >
+            Claims
+            {claims && claims.length > 0 && (
+              <span className={`ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
+                activeTab === 'claims' ? 'bg-teal text-white' : 'bg-slate/20 text-slate'
+              }`}>
+                {claims.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('policy')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              activeTab === 'policy'
+                ? 'bg-white shadow-sm text-navy'
+                : 'text-slate hover:text-navy'
+            }`}
+          >
+            Policy & Details
+          </button>
+        </div>
+
+        {/* Claims Tab */}
+        {activeTab === 'claims' && (
+          <div className="animate-fade-in">
+            {claims && claims.length > 0 ? (
               <div className="space-y-4">
+                {claims.map((claim) => (
+                  <ClaimCard key={claim.id} claim={claim} />
+                ))}
+              </div>
+            ) : (
+              <div className="glass-card rounded-2xl p-12 text-center">
+                <svg className="mx-auto h-16 w-16 text-slate/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h4 className="mt-4 text-lg font-display font-semibold text-navy">No claims yet</h4>
+                <p className="mt-2 text-sm text-slate">Use the button above to create your first claim</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Policy & Details Tab */}
+        {activeTab === 'policy' && (
+          <div className="animate-fade-in space-y-4">
+            {/* Property Details — compact inline row */}
+            <div className="glass-card rounded-2xl p-5">
+              <h3 className="text-sm font-semibold text-slate uppercase tracking-wide mb-3">Property Details</h3>
+              <div className="flex flex-wrap gap-6">
                 <div>
-                  <label className="block text-xs font-medium text-slate mb-1">Owner Entity</label>
+                  <label className="block text-xs font-medium text-slate mb-0.5">Owner Entity</label>
                   <p className="text-sm text-navy font-medium">{property.owner_entity_name}</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate mb-1">Created</label>
+                  <label className="block text-xs font-medium text-slate mb-0.5">Created</label>
                   <p className="text-sm text-navy">{formatDate(property.created_at)}</p>
                 </div>
               </div>
             </div>
 
-            {/* Insurance Policy Card */}
-            <div className="animate-scale-in delay-100">
-              {/* Policy PDF Upload/View */}
-              {policy && (
-                <div className="glass-card rounded-2xl p-6 mb-6">
-                  <label className="block text-xs font-medium text-slate mb-2">Policy Document</label>
-                  {policy.policy_pdf_url ? (
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-slate/5 border border-slate/10">
-                      <div className="flex items-center space-x-2">
-                        <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-                        </svg>
-                        <span className="text-sm text-navy font-medium">Policy.pdf</span>
-                      </div>
-                      <a
-                        href={policy.policy_pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-teal hover:text-teal-dark font-medium"
-                      >
-                        View →
-                      </a>
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-xl bg-slate/5 border border-slate/10">
-                      <p className="text-sm text-slate mb-3">Upload your insurance policy PDF</p>
-                      {uploadError && (
-                        <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg">
-                          <p className="text-xs text-red-700">
-                            {(uploadError as any)?.response?.data?.error || 'Failed to upload PDF'}
-                          </p>
-                        </div>
-                      )}
-                      <label className={`btn-secondary px-4 py-2 rounded-xl text-sm font-medium cursor-pointer inline-block ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                        <input
-                          type="file"
-                          accept=".pdf,application/pdf"
-                          className="hidden"
-                          disabled={isUploading}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0]
-                            if (file) {
-                              if (file.type !== 'application/pdf') {
-                                alert('Please select a PDF file')
-                                return
-                              }
-                              if (file.size > 10 * 1024 * 1024) {
-                                alert('File size must be less than 10MB')
-                                return
-                              }
-                              uploadPDF(file)
-                            }
-                          }}
-                        />
-                        {isUploading ? 'Uploading...' : 'Choose PDF File'}
-                      </label>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <PolicyCard
-                propertyId={property.id}
-                policy={policy || null}
-                onSuccess={() => refetchPolicy()}
-                onDelete={handleDeletePolicy}
-              />
-            </div>
+            {/* Insurance Policy (with PDF merged in) */}
+            <PolicyCard
+              propertyId={property.id}
+              policy={policy || null}
+              onSuccess={() => refetchPolicy()}
+              onDelete={handleDeletePolicy}
+              pdfUrl={policy?.policy_pdf_url}
+              isUploadingPdf={isUploading}
+              uploadPdfError={uploadError}
+              onUploadPdf={(file) => uploadPDF(file)}
+            />
           </div>
-
-          {/* Right Column - Claims History */}
-          <div className="lg:col-span-3">
-            <div className="glass-card rounded-2xl p-6 animate-scale-in delay-200">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-display font-semibold text-navy">
-                  Claims History
-                  {claims && claims.length > 0 && (
-                    <span className="ml-2 badge badge-teal">{claims.length}</span>
-                  )}
-                </h3>
-              </div>
-
-              {claims && claims.length > 0 ? (
-                <div className="space-y-4">
-                  {claims.map((claim) => (
-                    <ClaimCard key={claim.id} claim={claim} />
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <svg className="mx-auto h-16 w-16 text-slate/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <h4 className="mt-4 text-lg font-display font-semibold text-navy">No claims yet</h4>
-                  <p className="mt-2 text-sm text-slate">Create your first claim for this property using the button above</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
       <ReportIncidentModal
