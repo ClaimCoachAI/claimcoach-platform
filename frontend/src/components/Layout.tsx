@@ -38,18 +38,33 @@ export default function Layout({ children }: LayoutProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-18 py-4">
             {/* Logo */}
-            <Link to="/dashboard" className="flex items-center hover:opacity-80 transition-opacity">
+            <Link to="/claims" className="flex items-center hover:opacity-80 transition-opacity">
               <img src="/logo.png" alt="ClaimCoach" className="h-10" />
             </Link>
 
-            {/* Breadcrumb (Center) */}
-            {breadcrumb && (
-              <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2">
-                <div className="flex items-center space-x-2 text-sm">
-                  <span className="text-slate">{breadcrumb}</span>
-                </div>
-              </div>
-            )}
+            {/* Nav Links (Center) */}
+            <div className="hidden md:flex items-center space-x-1 absolute left-1/2 transform -translate-x-1/2">
+              <Link
+                to="/claims"
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  location.pathname === '/claims' || location.pathname.startsWith('/claims/')
+                    ? 'bg-white/50 text-navy'
+                    : 'text-slate hover:bg-white/30 hover:text-navy'
+                }`}
+              >
+                Claims
+              </Link>
+              <Link
+                to="/dashboard"
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  location.pathname === '/dashboard' || location.pathname.startsWith('/properties')
+                    ? 'bg-white/50 text-navy'
+                    : 'text-slate hover:bg-white/30 hover:text-navy'
+                }`}
+              >
+                Properties
+              </Link>
+            </div>
 
             {/* Right side actions */}
             <div className="flex items-center space-x-3">
