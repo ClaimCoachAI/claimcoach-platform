@@ -665,6 +665,7 @@ func (s *ClaimService) GetDB() *sql.DB {
 type UpdateClaimStepInput struct {
 	CurrentStep                *int      `json:"current_step"`
 	StepsCompleted             *[]int    `json:"steps_completed"`
+	Description                *string   `json:"description"`
 	ContractorEmail            *string   `json:"contractor_email"`
 	ContractorName             *string   `json:"contractor_name"`
 	ContractorEstimateTotal    *float64  `json:"contractor_estimate_total"`
@@ -697,6 +698,11 @@ func (s *ClaimService) UpdateClaimStep(claimID string, organizationID string, in
 		stepsJSON, _ := json.Marshal(*input.StepsCompleted)
 		query += fmt.Sprintf(", steps_completed = $%d", paramIndex)
 		args = append(args, stepsJSON)
+		paramIndex++
+	}
+	if input.Description != nil {
+		query += fmt.Sprintf(", description = $%d", paramIndex)
+		args = append(args, *input.Description)
 		paramIndex++
 	}
 	if input.ContractorEmail != nil {
