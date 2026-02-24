@@ -191,7 +191,7 @@ export default function PropertyDetail() {
         <div className="relative flex glass-card-strong rounded-2xl p-1 w-full sm:w-fit" role="tablist" aria-label="Property sections">
           {/* Sliding pill */}
           <div
-            className="absolute top-1 bottom-1 w-1/2 bg-white rounded-xl shadow-sm transition-transform duration-200 ease-in-out"
+            className="absolute top-1 bottom-1 w-1/2 bg-teal rounded-xl shadow-sm transition-transform duration-200 ease-in-out"
             style={{ transform: activeTab === 'policy' ? 'translateX(100%)' : 'translateX(0)' }}
             aria-hidden="true"
           />
@@ -202,13 +202,13 @@ export default function PropertyDetail() {
             aria-selected={activeTab === 'claims'}
             aria-controls="panel-claims"
             className={`relative z-10 flex-1 px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors duration-200 ${
-              activeTab === 'claims' ? 'text-navy' : 'text-slate hover:text-navy'
+              activeTab === 'claims' ? 'text-white' : 'text-slate hover:text-navy'
             }`}
           >
             Claims
             {claims && claims.length > 0 && (
               <span className={`ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
-                activeTab === 'claims' ? 'bg-teal text-white' : 'bg-slate/20 text-slate'
+                activeTab === 'claims' ? 'bg-white text-teal' : 'bg-slate/20 text-slate'
               }`}>
                 {claims.length}
               </span>
@@ -221,7 +221,7 @@ export default function PropertyDetail() {
             aria-selected={activeTab === 'policy'}
             aria-controls="panel-policy"
             className={`relative z-10 flex-1 px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors duration-200 ${
-              activeTab === 'policy' ? 'text-navy' : 'text-slate hover:text-navy'
+              activeTab === 'policy' ? 'text-white' : 'text-slate hover:text-navy'
             }`}
           >
             Policy & Details
