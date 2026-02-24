@@ -266,6 +266,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     adjuster_phone: claim.adjuster_phone || '',
     inspection_datetime: claim.inspection_datetime || '',
   })
+  const [isEditingAdjuster, setIsEditingAdjuster] = useState(!claim.insurance_claim_number)
 
   // Mutations
   const step2Mutation = useMutation({
@@ -375,12 +376,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         message: '✓ Insurance information saved',
         type: 'success',
       })
-      setFilingData({
-        insurance_claim_number: '',
-        adjuster_name: '',
-        adjuster_phone: '',
-        inspection_datetime: '',
-      })
+      setIsEditingAdjuster(false)
     },
   })
 
@@ -1153,75 +1149,139 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
       case 5:
         return (
           <form onSubmit={handleStep5Submit} className="step-content step-form">
-            <div className="claimcoach-notice">
-              <div className="claimcoach-notice-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M12 8v4m0 4h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+            {!isEditingAdjuster ? (
+              <div className="contractor-view-card">
+                <div className="contractor-view-fields">
+                  <div className="contractor-view-field">
+                    <span className="contractor-view-label">Insurance Claim Number</span>
+                    <span className="contractor-view-value">{filingData.insurance_claim_number}</span>
+                  </div>
+                  {filingData.adjuster_name && (
+                    <div className="contractor-view-field">
+                      <span className="contractor-view-label">Adjuster Name</span>
+                      <span className="contractor-view-value">{filingData.adjuster_name}</span>
+                    </div>
+                  )}
+                  {filingData.adjuster_phone && (
+                    <div className="contractor-view-field">
+                      <span className="contractor-view-label">Adjuster Phone</span>
+                      <span className="contractor-view-value">{filingData.adjuster_phone}</span>
+                    </div>
+                  )}
+                  {filingData.inspection_datetime && (
+                    <div className="contractor-view-field">
+                      <span className="contractor-view-label">Inspection Date & Time</span>
+                      <span className="contractor-view-value">
+                        {new Date(filingData.inspection_datetime).toLocaleString('en-US', {
+                          month: 'long', day: 'numeric', year: 'numeric',
+                          hour: 'numeric', minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="edit-contractor-btn"
+                  onClick={() => setIsEditingAdjuster(true)}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  Edit
+                </button>
               </div>
-              <div>
-                <strong className="claimcoach-notice-title">This info comes from the ClaimCoach team</strong>
-                <p className="claimcoach-notice-text">
-                  Once your carrier assigns an adjuster, ClaimCoach will notify you with the claim number,
-                  adjuster details, and inspection date. Enter those details here when you receive them.
-                </p>
-              </div>
-            </div>
-            <div className="form-field">
-              <label>
-                Insurance Claim Number <span className="required">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={filingData.insurance_claim_number}
-                onChange={(e) =>
-                  setFilingData({ ...filingData, insurance_claim_number: e.target.value })
-                }
-                placeholder="CLM-2024-12345"
-              />
-            </div>
-            <div className="form-grid">
-              <div className="form-field">
-                <label>Adjuster Name</label>
-                <input
-                  type="text"
-                  value={filingData.adjuster_name}
-                  onChange={(e) => setFilingData({ ...filingData, adjuster_name: e.target.value })}
-                  placeholder="John Smith"
-                />
-              </div>
-              <div className="form-field">
-                <label>Adjuster Phone</label>
-                <input
-                  type="tel"
-                  value={filingData.adjuster_phone}
-                  onChange={(e) =>
-                    setFilingData({ ...filingData, adjuster_phone: e.target.value })
-                  }
-                  placeholder="(555) 123-4567"
-                />
-              </div>
-            </div>
-            <div className="form-field">
-              <label>Inspection Date & Time</label>
-              <input
-                type="datetime-local"
-                value={filingData.inspection_datetime}
-                onChange={(e) =>
-                  setFilingData({ ...filingData, inspection_datetime: e.target.value })
-                }
-              />
-            </div>
-            {step5Mutation.isError && (
-              <div className="error">
-                {(step5Mutation.error as any)?.response?.data?.error || 'Failed to update'}
-              </div>
+            ) : (
+              <>
+                <div className="claimcoach-notice">
+                  <div className="claimcoach-notice-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M12 8v4m0 4h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <strong className="claimcoach-notice-title">This info comes from the ClaimCoach team</strong>
+                    <p className="claimcoach-notice-text">
+                      Once your carrier assigns an adjuster, ClaimCoach will notify you with the claim number,
+                      adjuster details, and inspection date. Enter those details here when you receive them.
+                    </p>
+                  </div>
+                </div>
+                <div className="form-field">
+                  <label>
+                    Insurance Claim Number <span className="required">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={filingData.insurance_claim_number}
+                    onChange={(e) =>
+                      setFilingData({ ...filingData, insurance_claim_number: e.target.value })
+                    }
+                    placeholder="CLM-2024-12345"
+                  />
+                </div>
+                <div className="form-grid">
+                  <div className="form-field">
+                    <label>Adjuster Name</label>
+                    <input
+                      type="text"
+                      value={filingData.adjuster_name}
+                      onChange={(e) => setFilingData({ ...filingData, adjuster_name: e.target.value })}
+                      placeholder="John Smith"
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label>Adjuster Phone</label>
+                    <input
+                      type="tel"
+                      value={filingData.adjuster_phone}
+                      onChange={(e) =>
+                        setFilingData({ ...filingData, adjuster_phone: e.target.value })
+                      }
+                      placeholder="(555) 123-4567"
+                    />
+                  </div>
+                </div>
+                <div className="form-field">
+                  <label>Inspection Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    value={filingData.inspection_datetime}
+                    onChange={(e) =>
+                      setFilingData({ ...filingData, inspection_datetime: e.target.value })
+                    }
+                  />
+                </div>
+                {step5Mutation.isError && (
+                  <div className="error">
+                    {(step5Mutation.error as any)?.response?.data?.error || 'Failed to update'}
+                  </div>
+                )}
+                {!!claim.insurance_claim_number && (
+                  <button
+                    type="button"
+                    className="cancel-edit-btn"
+                    onClick={() => {
+                      setIsEditingAdjuster(false)
+                      setFilingData({
+                        insurance_claim_number: claim.insurance_claim_number || '',
+                        adjuster_name: claim.adjuster_name || '',
+                        adjuster_phone: claim.adjuster_phone || '',
+                        inspection_datetime: claim.inspection_datetime || '',
+                      })
+                    }}
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button type="submit" disabled={step5Mutation.isPending}>
+                  {step5Mutation.isPending ? 'Saving...' : 'Complete This Step'}
+                </button>
+              </>
             )}
-            <button type="submit" disabled={step5Mutation.isPending}>
-              {step5Mutation.isPending ? 'Saving...' : 'Complete This Step'}
-            </button>
           </form>
         )
 
