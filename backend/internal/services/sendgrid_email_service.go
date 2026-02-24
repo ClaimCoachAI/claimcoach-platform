@@ -311,7 +311,7 @@ func (s *SendGridEmailService) SendLegalPartnerEmail(input SendLegalPartnerEmail
 	from := mail.NewEmail(s.fromName, s.fromEmail)
 	to := mail.NewEmail(input.PartnerName, input.To)
 
-	message := mail.NewSingleEmail(from, input.Subject, to, input.PlainBody, "")
+	message := mail.NewSingleEmail(from, input.Subject, to, input.PlainBody, input.HTMLBody)
 
 	// Attach the ZIP file
 	attachment := mail.NewAttachment()

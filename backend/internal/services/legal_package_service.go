@@ -457,20 +457,78 @@ func (s *LegalPackageService) processApprove(ctx context.Context, req models.Leg
 	if auditReport.TotalDelta != nil {
 		totalDelta = *auditReport.TotalDelta
 	}
+	industryEst := carrierEst + totalDelta
+	incidentDateStr := incidentDate.Format("January 2, 2006")
+
 	plainBody := fmt.Sprintf(
 		"Please find attached a claim file for review.\n\nProperty: %s\nLoss Type: %s\nIncident Date: %s\nCarrier Estimate: $%.2f\nIndustry Estimate: $%.2f\nUnderpayment: $%.2f\n\nThis package was submitted by the property owner for potential legal representation.\nThe attached ZIP contains a detailed estimate comparison and contractor site photos.",
-		propertyAddr, lossType,
-		incidentDate.Format("January 2, 2006"),
-		carrierEst,
-		carrierEst+totalDelta,
-		totalDelta,
+		propertyAddr, lossType, incidentDateStr, carrierEst, industryEst, totalDelta,
 	)
+
+	htmlBody := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Claim File</title></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; background: #f8fafc; margin: 0; padding: 0;">
+  <div style="max-width: 600px; margin: 32px auto; padding: 0 16px;">
+    <div style="background: white; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+
+      <!-- Header -->
+      <div style="background: #0f172a; padding: 28px 32px;">
+        <p style="margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #94a3b8; text-transform: uppercase;">Insurance Claim Review Request</p>
+        <h1 style="margin: 6px 0 0; font-size: 20px; font-weight: 700; color: white;">%s</h1>
+        <p style="margin: 4px 0 0; font-size: 13px; color: #94a3b8;">%s damage &nbsp;·&nbsp; Incident: %s</p>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 28px 32px;">
+        <p style="margin: 0 0 20px; font-size: 14px; color: #475569;">
+          The property owner has reviewed and approved sharing their claim file with you for a potential representation assessment. Please find the full package attached.
+        </p>
+
+        <!-- Financial summary -->
+        <table width="100%%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 24px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+          <tr style="background: #f1f5f9;">
+            <td style="padding: 10px 16px; font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em;">Industry Estimate</td>
+            <td style="padding: 10px 16px; font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em;">Carrier Paid</td>
+            <td style="padding: 10px 16px; font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em;">Potential Underpayment</td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 16px; font-size: 22px; font-weight: 800; color: #0d9488;">$%.2f</td>
+            <td style="padding: 12px 16px; font-size: 22px; font-weight: 800; color: #334155;">$%.2f</td>
+            <td style="padding: 12px 16px; font-size: 22px; font-weight: 800; color: #0f172a;">$%.2f</td>
+          </tr>
+        </table>
+
+        <!-- What's in the ZIP -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;">
+          <p style="margin: 0 0 8px; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Attached ZIP Contains</p>
+          <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #475569; line-height: 1.8;">
+            <li>Detailed line-item estimate comparison (PDF)</li>
+            <li>Contractor site photos</li>
+          </ul>
+        </div>
+
+        <p style="margin: 0; font-size: 13px; color: #94a3b8;">
+          This package was prepared by ClaimCoach AI and submitted by the property owner. If you have questions, please reply to this email.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="border-top: 1px solid #f1f5f9; padding: 16px 32px;">
+        <p style="margin: 0; font-size: 11px; color: #94a3b8;">Sent via ClaimCoach AI &nbsp;·&nbsp; This email was authorized by the property owner.</p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>`, propertyAddr, lossType, incidentDateStr, industryEst, carrierEst, totalDelta)
 
 	err = s.emailService.SendLegalPartnerEmail(SendLegalPartnerEmailInput{
 		To:          legalPartnerEmail,
 		PartnerName: legalPartnerName,
 		Subject:     subject,
 		PlainBody:   plainBody,
+		HTMLBody:    htmlBody,
 		ZIPBytes:    zipBytes,
 		ZIPFilename: fmt.Sprintf("claim-file-%s.zip", req.ClaimID[:8]),
 	})

@@ -51,6 +51,7 @@ type SendLegalPartnerEmailInput struct {
 	PartnerName string
 	Subject     string
 	PlainBody   string
+	HTMLBody    string
 	ZIPBytes    []byte
 	ZIPFilename string
 }
