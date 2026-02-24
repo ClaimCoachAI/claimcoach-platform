@@ -183,6 +183,25 @@ func (h *PolicyHandler) RequestPDFUploadURL(c *gin.Context) {
 	})
 }
 
+// GetPDFDownloadURL returns a signed download URL for the policy PDF
+// GET /api/properties/:id/policy/pdf/url
+func (h *PolicyHandler) GetPDFDownloadURL(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	propertyID := c.Param("id")
+
+	url, err := h.service.GetPDFDownloadURL(propertyID, user.OrganizationID)
+	if err != nil {
+		if err.Error() == "policy not found" || err.Error() == "no PDF uploaded for this policy" {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to generate download URL: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"url": url}})
+}
+
 // ConfirmPDFUpload confirms that a policy PDF has been uploaded
 // POST /api/properties/:id/policy/pdf/confirm
 func (h *PolicyHandler) ConfirmPDFUpload(c *gin.Context) {

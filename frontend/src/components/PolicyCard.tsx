@@ -245,9 +245,19 @@ export default function PolicyCard({
                   </svg>
                   <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--color-sand-900)' }}>Policy.pdf</span>
                 </div>
-                <a href={pdfUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '14px', color: 'var(--color-terracotta-600)', fontWeight: 500, textDecoration: 'none' }}>
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await api.get(`/api/properties/${propertyId}/policy/pdf/url`)
+                      window.open(res.data.data.url, '_blank', 'noopener,noreferrer')
+                    } catch {
+                      alert('Could not load PDF. Please try again.')
+                    }
+                  }}
+                  style={{ fontSize: '14px', color: 'var(--color-terracotta-600)', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                >
                   View →
-                </a>
+                </button>
               </div>
             ) : onUploadPdf ? (
               <div>

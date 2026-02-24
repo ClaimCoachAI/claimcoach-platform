@@ -153,6 +153,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.POST("/properties/:id/policy", policyHandler.Create)
 		api.GET("/properties/:id/policy", policyHandler.Get)
 		api.DELETE("/properties/:id/policy", policyHandler.Delete)
+		api.GET("/properties/:id/policy/pdf/url", policyHandler.GetPDFDownloadURL)
 		api.POST("/properties/:id/policy/pdf/upload-url", policyHandler.RequestPDFUploadURL)
 		api.POST("/properties/:id/policy/pdf/confirm", policyHandler.ConfirmPDFUpload)
 

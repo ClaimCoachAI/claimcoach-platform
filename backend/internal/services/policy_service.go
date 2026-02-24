@@ -333,3 +333,22 @@ func (s *PolicyService) ConfirmPDFUpload(propertyID string, organizationID strin
 
 	return policy, nil
 }
+
+// GetPDFDownloadURL generates a signed download URL for the policy PDF
+func (s *PolicyService) GetPDFDownloadURL(propertyID string, organizationID string) (string, error) {
+	policy, err := s.GetPolicy(propertyID, organizationID)
+	if err != nil {
+		return "", err
+	}
+
+	if policy.PolicyPdfUrl == nil || *policy.PolicyPdfUrl == "" {
+		return "", fmt.Errorf("no PDF uploaded for this policy")
+	}
+
+	url, err := s.storage.GenerateDownloadURL(*policy.PolicyPdfUrl)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate download URL: %w", err)
+	}
+
+	return url, nil
+}
