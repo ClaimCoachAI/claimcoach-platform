@@ -8,6 +8,7 @@ interface ReviewScreenProps {
   onSubmit: (finalNotes: string) => Promise<void>
   onBack: () => void
   saving: boolean
+  onDone?: () => void
 }
 
 function formatDimensions(dims: Record<string, number>): string {
@@ -26,6 +27,7 @@ export default function ReviewScreen({
   onSubmit,
   onBack,
   saving,
+  onDone,
 }: ReviewScreenProps) {
   const [notes, setNotes] = useState(initialNotes)
   const [submitted, setSubmitted] = useState(false)
@@ -33,6 +35,7 @@ export default function ReviewScreen({
   const handleSubmit = async () => {
     await onSubmit(notes)
     setSubmitted(true)
+    onDone?.()
   }
 
   if (submitted) {

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useWizardState } from './useWizardState'
 import WizardProgress from './WizardProgress'
 import Step1Welcome from './Step1Welcome'
@@ -36,12 +37,15 @@ function computeProgress(
     }
     case 'review':
       return { percent: 90, label: 'Review & Submit' }
+    case 'done':
+      return { percent: 100, label: 'Submitted!' }
     default:
       return { percent: 5, label: '' }
   }
 }
 
 export default function ContractorWizard({ token, validationResult }: ContractorWizardProps) {
+  const [isDone, setIsDone] = useState(false)
   const {
     wizardState,
     loading,
@@ -66,7 +70,7 @@ export default function ContractorWizard({ token, validationResult }: Contractor
   }
 
   const { percent, label } = computeProgress(
-    wizardState.phase,
+    isDone ? 'done' : wizardState.phase,
     wizardState.currentTourStep,
     wizardState.areas.length
   )
@@ -118,6 +122,7 @@ export default function ContractorWizard({ token, validationResult }: Contractor
             onSubmit={submit}
             onBack={goBackToTour}
             saving={saving}
+            onDone={() => setIsDone(true)}
           />
         )
     }
