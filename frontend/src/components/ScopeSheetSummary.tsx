@@ -76,8 +76,8 @@ export default function ScopeSheetSummary({ scopeSheet }: ScopeSheetSummaryProps
                     ))}
                   </div>
                 )}
-                {area.notes && (
-                  <p className="text-xs text-slate/70 pl-6 mt-1 italic">{area.notes}</p>
+                {area.notes !== '' && (
+                  <p className="text-xs text-slate/70 pl-6 mt-1 italic whitespace-pre-wrap">{area.notes}</p>
                 )}
               </div>
             )
