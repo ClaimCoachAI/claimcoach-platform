@@ -155,9 +155,9 @@ func createTestPolicy(t *testing.T, db *sql.DB, propertyID string, deductible fl
 	policyID := uuid.New().String()
 
 	_, err := db.Exec(`
-		INSERT INTO insurance_policies (id, property_id, carrier_name, policy_number, coverage_amount, deductible_type, deductible_percentage, deductible_flat, deductible_calculated, policy_start_date, policy_end_date, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-	`, policyID, propertyID, "Test Insurance", "POL-12345", 500000.0, "flat", nil, &deductible, deductible, time.Now(), time.Now().AddDate(1, 0, 0), time.Now(), time.Now())
+		INSERT INTO insurance_policies (id, property_id, carrier_name, policy_number, deductible_value, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, policyID, propertyID, "Test Insurance", "POL-12345", deductible, time.Now(), time.Now())
 	if err != nil {
 		t.Fatalf("Failed to create policy: %v", err)
 	}

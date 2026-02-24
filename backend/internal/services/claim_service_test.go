@@ -106,7 +106,7 @@ func createTestProperty(t *testing.T, db *sql.DB, orgID string) string {
 
 	propertyID := uuid.New().String()
 	query := `INSERT INTO properties (id, organization_id, nickname, legal_address, owner_entity_name, status, created_at, updated_at)
-	          VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`
+	          VALUES ($1, $2, $3, $4, NOW(), NOW())`
 	_, err := db.Exec(query, propertyID, orgID, "Test Property", "123 Test St", "Test Owner", "active_monitored")
 	if err != nil {
 		t.Fatalf("Failed to create test property: %v", err)
@@ -120,9 +120,9 @@ func createTestPolicy(t *testing.T, db *sql.DB, propertyID string, deductible fl
 	t.Helper()
 
 	policyID := uuid.New().String()
-	query := `INSERT INTO insurance_policies (id, property_id, carrier_name, deductible_type, deductible_value, deductible_calculated, created_at, updated_at)
-	          VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`
-	_, err := db.Exec(query, policyID, propertyID, "Test Insurance Co", "fixed", deductible, deductible)
+	query := `INSERT INTO insurance_policies (id, property_id, carrier_name, deductible_value, created_at, updated_at)
+	          VALUES ($1, $2, $3, $4, NOW(), NOW())`
+	_, err := db.Exec(query, policyID, propertyID, "Test Insurance Co", deductible)
 	if err != nil {
 		t.Fatalf("Failed to create test policy: %v", err)
 	}

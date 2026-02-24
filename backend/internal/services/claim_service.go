@@ -534,7 +534,7 @@ func (s *ClaimService) UpdateEstimate(
 			c.deductible_comparison_result, c.insurance_claim_number, c.inspection_datetime,
 			c.assigned_user_id, c.adjuster_name, c.adjuster_phone,
 			c.meeting_datetime, c.created_by_user_id, c.created_at, c.updated_at,
-			c.contractor_estimate_total, p.deductible_calculated
+			c.contractor_estimate_total, p.deductible_value
 		FROM claims c
 		JOIN insurance_policies p ON p.id = c.policy_id
 		WHERE c.id = $1
