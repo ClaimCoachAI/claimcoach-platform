@@ -805,18 +805,18 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                         aria-expanded={photosOpen}
                         aria-controls="photos-accordion-body"
                         onClick={() => setPhotosOpen(prev => !prev)}
-                        className="w-full flex items-center justify-between px-4 py-2.5 bg-white hover:bg-gray-50 transition-colors text-sm"
+                        className="photo-accordion-header"
                       >
-                        <span className="flex items-center gap-2 font-medium text-gray-700">
-                          <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#475569' }}>
+                          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#94a3b8', flexShrink: 0 }}>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                               d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                           Photos ({contractorPhotos.length})
                         </span>
                         <svg
-                          className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${photosOpen ? 'rotate-90' : ''}`}
-                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                          width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                          style={{ color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s ease', transform: photosOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
@@ -838,7 +838,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                                   type="button"
                                   onClick={() => handlePhotoDownload(photo.id)}
                                   title={`Download ${photo.file_name}`}
-                                  className="ml-4 shrink-0 p-1 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                                  className="photo-download-btn"
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -2279,6 +2279,47 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           opacity: 0.6;
           cursor: not-allowed;
           transform: none;
+        }
+
+        /* Photo accordion — override global button styles */
+        button.photo-accordion-header {
+          all: unset;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          padding: 10px 16px;
+          background: white;
+          cursor: pointer;
+          box-sizing: border-box;
+          border-radius: 0;
+          transition: background 0.15s ease;
+        }
+
+        button.photo-accordion-header:hover {
+          background: #f8fafc;
+          transform: none;
+          box-shadow: none;
+        }
+
+        button.photo-download-btn {
+          all: unset;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 4px;
+          border-radius: 6px;
+          color: #94a3b8;
+          cursor: pointer;
+          transition: color 0.15s ease, background 0.15s ease;
+          box-sizing: border-box;
+        }
+
+        button.photo-download-btn:hover {
+          color: #0d9488;
+          background: rgba(13, 148, 136, 0.08);
+          transform: none;
+          box-shadow: none;
         }
 
         button.final {
