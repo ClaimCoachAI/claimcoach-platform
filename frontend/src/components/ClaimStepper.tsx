@@ -301,7 +301,8 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
       await api.post(`/api/claims/${claim.id}/notify-claimcoach`)
       return data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      setStep4Description(data.description)
       setIsEditingDescription(false)
       setToast({
         message: '✓ Claim submitted to ClaimCoach team',
@@ -923,16 +924,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
               <button
                 type="button"
                 onClick={() => setIsEditingDescription(true)}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid #d1d5db',
-                  color: '#6b7280',
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  alignSelf: 'flex-start',
-                }}
+                className="edit-contractor-btn"
               >
                 Edit & Resend
               </button>
@@ -1039,16 +1031,11 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
               {isStep4Done && (
                 <button
                   type="button"
-                  onClick={() => setIsEditingDescription(false)}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid #d1d5db',
-                    color: '#6b7280',
-                    padding: '10px 20px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
+                  onClick={() => {
+                    setIsEditingDescription(false)
+                    setStep4Description(claim.description || '')
                   }}
+                  className="cancel-edit-btn"
                 >
                   Cancel
                 </button>
