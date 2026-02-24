@@ -188,10 +188,14 @@ export default function PropertyDetail() {
         </div>
 
         {/* Tabs */}
-        <div className="flex space-x-1 glass-card-strong rounded-2xl p-1 w-fit">
+        <div className="flex space-x-1 glass-card-strong rounded-2xl p-1 w-full sm:w-fit" role="tablist" aria-label="Property sections">
           <button
             onClick={() => setActiveTab('claims')}
-            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+            role="tab"
+            id="tab-claims"
+            aria-selected={activeTab === 'claims'}
+            aria-controls="panel-claims"
+            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-1 sm:flex-none ${
               activeTab === 'claims'
                 ? 'bg-white shadow-sm text-navy'
                 : 'text-slate hover:text-navy'
@@ -208,7 +212,11 @@ export default function PropertyDetail() {
           </button>
           <button
             onClick={() => setActiveTab('policy')}
-            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+            role="tab"
+            id="tab-policy"
+            aria-selected={activeTab === 'policy'}
+            aria-controls="panel-policy"
+            className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all flex-1 sm:flex-none ${
               activeTab === 'policy'
                 ? 'bg-white shadow-sm text-navy'
                 : 'text-slate hover:text-navy'
@@ -220,7 +228,7 @@ export default function PropertyDetail() {
 
         {/* Claims Tab */}
         {activeTab === 'claims' && (
-          <div className="animate-fade-in">
+          <div className="animate-fade-in" role="tabpanel" id="panel-claims" aria-labelledby="tab-claims">
             {claims && claims.length > 0 ? (
               <div className="space-y-4">
                 {claims.map((claim) => (
@@ -241,7 +249,7 @@ export default function PropertyDetail() {
 
         {/* Policy & Details Tab */}
         {activeTab === 'policy' && (
-          <div className="animate-fade-in space-y-4">
+          <div className="animate-fade-in space-y-4" role="tabpanel" id="panel-policy" aria-labelledby="tab-policy">
             {/* Property Details — compact inline row */}
             <div className="glass-card rounded-2xl p-5">
               <h3 className="text-sm font-semibold text-slate uppercase tracking-wide mb-3">Property Details</h3>
