@@ -57,6 +57,12 @@ type Claim struct {
 	InsuranceClaimNumber       *string    `json:"insurance_claim_number" db:"insurance_claim_number"`
 	InspectionDatetime         *time.Time `json:"inspection_datetime" db:"inspection_datetime"`
 
+	// Legal escalation fields (added in migration 000011)
+	LegalPartnerName      *string `json:"legal_partner_name,omitempty" db:"legal_partner_name"`
+	LegalPartnerEmail     *string `json:"legal_partner_email,omitempty" db:"legal_partner_email"`
+	OwnerEmail            *string `json:"owner_email,omitempty" db:"owner_email"`
+	LegalEscalationStatus *string `json:"legal_escalation_status,omitempty" db:"legal_escalation_status"`
+
 	// Existing fields
 	AssignedUserID  *string    `json:"assigned_user_id" db:"assigned_user_id"`
 	AdjusterName    *string    `json:"adjuster_name" db:"adjuster_name"`
