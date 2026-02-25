@@ -83,50 +83,85 @@ const formatCurrency = (n: number) =>
     maximumFractionDigits: 0,
   })
 
-// ─── ATTORNEY BRIEFING BUILDER ──────────────────────────────────────────────
+// ─── ATTORNEY BRIEFING BUILDER (Legal Referral One-Pager) ───────────────────
 
 function buildAttorneyBriefing(claim: import('../types/claim').Claim, pmBrain: import('../types/claim').PMBrainAnalysis | null): string {
   if (!pmBrain) return ''
-  const address = claim.property?.legal_address || 'the insured property'
-  const carrier = claim.policy?.carrier_name || 'the insurance carrier'
-  const policyNumber = claim.policy?.policy_number || 'N/A'
-  const claimNumber = claim.claim_number || 'N/A'
-  const incidentDate = new Date(claim.incident_date).toLocaleDateString('en-US', {
+
+  const address    = claim.property?.legal_address   || 'N/A'
+  const carrier    = claim.policy?.carrier_name      || 'N/A'
+  const policyNum  = claim.policy?.policy_number     || 'N/A'
+  const claimNum   = claim.claim_number              || 'N/A'
+  const lossDate   = new Date(claim.incident_date).toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
   })
-  const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const lossType   = claim.loss_type.charAt(0).toUpperCase() + claim.loss_type.slice(1)
+  const fc         = formatCurrency
 
-  let text = `INSURANCE CLAIM DISPUTE — ATTORNEY REFERRAL\n\n`
-  text += `Property: ${address}\n`
-  text += `Incident: ${claim.loss_type} damage on ${incidentDate}\n`
-  text += `Insurance Carrier: ${carrier}\n`
-  text += `Policy Number: ${policyNumber}\n`
-  text += `Claim Number: ${claimNumber}\n\n`
-  text += `FINANCIAL SUMMARY:\n`
-  text += `  Contractor Estimate:  $${fmt(pmBrain.total_contractor_estimate)}\n`
-  text += `  Carrier Offer:        $${fmt(pmBrain.total_carrier_estimate)}\n`
-  text += `  Underpayment Gap:     $${fmt(pmBrain.total_delta)}\n\n`
+  // ── Build the neutral Executive Summary from available data ──────────────
+  const topReasons = pmBrain.top_delta_drivers.slice(0, 2).map(d => d.line_item).join(' and ')
+  const hasDisputes = pmBrain.coverage_disputes.length > 0
+  let execSummary = `Carrier underpaid by ${fc(pmBrain.total_delta)}`
+  if (topReasons) execSummary += `, citing discrepancies in ${topReasons}`
+  if (hasDisputes) execSummary += `, with ${pmBrain.coverage_disputes.length} item(s) disputed or denied`
+  execSummary += `. Property owner has authorized engagement of legal counsel to pursue recovery of covered damages.`
 
+  const hr = '─'.repeat(60)
+
+  let t = `LEGAL REFERRAL ONE-PAGER\n`
+  t += `${hr}\n\n`
+
+  // ── Section 1: Claim Snapshot ────────────────────────────────────────────
+  t += `1. CLAIM SNAPSHOT\n`
+  t += `   Claim ID:        ${claimNum}\n`
+  t += `   Property:        ${address}\n`
+  t += `   Loss Type:       ${lossType}\n`
+  t += `   Loss Date:       ${lossDate}\n`
+  t += `   Carrier:         ${carrier}\n`
+  t += `   Policy Number:   ${policyNum}\n\n`
+
+  // ── Section 2: Executive Summary ─────────────────────────────────────────
+  t += `2. EXECUTIVE SUMMARY\n`
+  t += `   ${execSummary}\n\n`
+
+  // ── Section 3: Financial Summary ─────────────────────────────────────────
+  t += `3. FINANCIAL SUMMARY\n`
+  t += `   ClaimCoach Net Position (contractor estimate):  ${fc(pmBrain.total_contractor_estimate)}\n`
+  t += `   Carrier Net Position (carrier offer):           ${fc(pmBrain.total_carrier_estimate)}\n`
+  t += `   Delta (underpayment):                           ${fc(pmBrain.total_delta)}\n\n`
+
+  // ── Section 4: Key Dispute Issues & Drivers ──────────────────────────────
+  t += `4. KEY DISPUTE ISSUES & DRIVERS\n`
   if (pmBrain.top_delta_drivers.length > 0) {
-    text += `KEY PRICING DISPUTES:\n`
-    pmBrain.top_delta_drivers.slice(0, 3).forEach(d => {
-      text += `  • ${d.line_item}: carrier $${fmt(d.carrier_price)} vs. required $${fmt(d.contractor_price)} (gap $${fmt(d.delta)}) — ${d.reason}\n`
+    pmBrain.top_delta_drivers.forEach((d, i) => {
+      t += `   ${i + 1}. ${d.line_item}\n`
+      t += `      Dollar Impact: ${fc(d.delta)} (carrier ${fc(d.carrier_price)} vs. required ${fc(d.contractor_price)})\n`
+      t += `      Issue: ${d.reason}\n`
     })
-    text += '\n'
+  } else {
+    t += `   No individual line-item drivers identified.\n`
   }
-
   if (pmBrain.coverage_disputes.length > 0) {
-    text += `COVERAGE DISPUTES:\n`
+    t += `\n   Coverage Disputes:\n`
     pmBrain.coverage_disputes.forEach(cd => {
-      text += `  • ${cd.item} (${cd.status}): ${cd.contractor_position}\n`
+      t += `   • ${cd.item} [${cd.status.toUpperCase()}]: ${cd.contractor_position}\n`
     })
-    text += '\n'
   }
+  t += '\n'
 
-  text += `AUTHORIZATION:\n`
-  text += `The property owner has reviewed and approved engaging legal counsel to pursue this claim.\n\n`
-  text += `Please review the above and advise on next steps.`
-  return text
+  // ── Section 5: Requested Legal Outcome ───────────────────────────────────
+  t += `5. REQUESTED LEGAL OUTCOME\n`
+  t += `   Primary goal: Recover full covered damages and resolve claim.\n\n`
+
+  // ── Section 6: Attachments Index ─────────────────────────────────────────
+  t += `6. ATTACHMENTS INDEX\n`
+  t += `   Please attach the following to your email to counsel:\n`
+  t += `   [ ] Carrier Estimate (PDF)\n`
+  t += `   [ ] Carrier Position Letter (if available)\n`
+  t += `   [ ] ClaimCoach Estimate / Scope Sheet\n`
+  t += `   [ ] Policy Declarations Page\n`
+
+  return t
 }
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
