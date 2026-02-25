@@ -145,7 +145,7 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
       if (savedAuditReport.owner_pitch) setOwnerPitch(savedAuditReport.owner_pitch)
       setPhase('verdict')
     } catch { /* malformed JSON — stay on idle */ }
-  }, [savedAuditReport])
+  }, [savedAuditReport, phase])
 
   // Stop polling when parse completes or fails
   useEffect(() => {
@@ -264,10 +264,7 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
       setOwnerPitch(pitch)
       queryClient.invalidateQueries({ queryKey: ['audit-report', claim.id] })
     },
-    onError: (err: unknown) => {
-      const msg = (err as any)?.response?.data?.error || 'Failed to generate pitch. Please try again.'
-      setErrorMsg(msg)
-    },
+    onError: () => { /* handled by pitchMutation.isError inline */ },
   })
 
   // ── Complete step mutation ────────────────────────────────────────────────
@@ -1100,9 +1097,10 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
                     </span>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(ownerPitch)
-                        setPitchCopied(true)
-                        setTimeout(() => setPitchCopied(false), 2000)
+                        navigator.clipboard.writeText(ownerPitch).then(() => {
+                          setPitchCopied(true)
+                          setTimeout(() => setPitchCopied(false), 2000)
+                        }).catch(() => {/* clipboard denied — button stays as-is */})
                       }}
                       style={{
                         padding: '6px 14px',
