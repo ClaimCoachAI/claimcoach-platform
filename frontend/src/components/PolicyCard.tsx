@@ -29,65 +29,40 @@ export default function PolicyCard({
 
   const [formData, setFormData] = useState({
     carrier_name: policy?.carrier_name || '',
+    carrier_phone: policy?.carrier_phone || '',
+    carrier_email: policy?.carrier_email || '',
     policy_number: policy?.policy_number || '',
-    coverage_a_limit: policy?.coverage_a_limit?.toString() || '',
-    coverage_b_limit: policy?.coverage_b_limit?.toString() || '',
-    coverage_d_limit: policy?.coverage_d_limit?.toString() || '',
-    deductible_type: policy?.deductible_type || 'percentage',
     deductible_value: policy?.deductible_value?.toString() || '',
+    exclusions: policy?.exclusions || '',
     effective_date: policy?.effective_date || '',
     expiration_date: policy?.expiration_date || '',
   })
-
-  const [calculatedDeductible, setCalculatedDeductible] = useState<number | null>(null)
 
   // Reset form when policy changes
   useEffect(() => {
     if (policy) {
       setFormData({
         carrier_name: policy.carrier_name || '',
+        carrier_phone: policy.carrier_phone || '',
+        carrier_email: policy.carrier_email || '',
         policy_number: policy.policy_number || '',
-        coverage_a_limit: policy.coverage_a_limit?.toString() || '',
-        coverage_b_limit: policy.coverage_b_limit?.toString() || '',
-        coverage_d_limit: policy.coverage_d_limit?.toString() || '',
-        deductible_type: policy.deductible_type || 'percentage',
         deductible_value: policy.deductible_value?.toString() || '',
+        exclusions: policy.exclusions || '',
         effective_date: policy.effective_date || '',
         expiration_date: policy.expiration_date || '',
       })
     }
   }, [policy])
 
-  // Calculate deductible
-  useEffect(() => {
-    const coverageA = parseFloat(formData.coverage_a_limit)
-    const deductibleValue = parseFloat(formData.deductible_value)
-
-    if (!isNaN(coverageA) && !isNaN(deductibleValue) && coverageA > 0) {
-      if (formData.deductible_type === 'percentage') {
-        setCalculatedDeductible((coverageA * deductibleValue) / 100)
-      } else {
-        setCalculatedDeductible(deductibleValue)
-      }
-    } else {
-      setCalculatedDeductible(null)
-    }
-  }, [
-    formData.coverage_a_limit,
-    formData.deductible_value,
-    formData.deductible_type,
-  ])
-
   const mutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const payload = {
         carrier_name: data.carrier_name,
+        carrier_phone: data.carrier_phone || undefined,
+        carrier_email: data.carrier_email || undefined,
         policy_number: data.policy_number || undefined,
-        coverage_a_limit: data.coverage_a_limit ? parseFloat(data.coverage_a_limit) : undefined,
-        coverage_b_limit: data.coverage_b_limit ? parseFloat(data.coverage_b_limit) : undefined,
-        coverage_d_limit: data.coverage_d_limit ? parseFloat(data.coverage_d_limit) : undefined,
-        deductible_type: data.deductible_type || undefined,
         deductible_value: data.deductible_value ? parseFloat(data.deductible_value) : undefined,
+        exclusions: data.exclusions || undefined,
         effective_date: data.effective_date || undefined,
         expiration_date: data.expiration_date || undefined,
       }
@@ -120,12 +95,11 @@ export default function PolicyCard({
     if (policy) {
       setFormData({
         carrier_name: policy.carrier_name || '',
+        carrier_phone: policy.carrier_phone || '',
+        carrier_email: policy.carrier_email || '',
         policy_number: policy.policy_number || '',
-        coverage_a_limit: policy.coverage_a_limit?.toString() || '',
-        coverage_b_limit: policy.coverage_b_limit?.toString() || '',
-        coverage_d_limit: policy.coverage_d_limit?.toString() || '',
-        deductible_type: policy.deductible_type || 'percentage',
         deductible_value: policy.deductible_value?.toString() || '',
+        exclusions: policy.exclusions || '',
         effective_date: policy.effective_date || '',
         expiration_date: policy.expiration_date || '',
       })
@@ -149,14 +123,6 @@ export default function PolicyCard({
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     })}`
-  }
-
-  const calculateDisplayDeductible = () => {
-    if (!policy?.deductible_value || !policy?.coverage_a_limit) return null
-    if (policy.deductible_type === 'percentage') {
-      return (policy.coverage_a_limit * policy.deductible_value) / 100
-    }
-    return policy.deductible_value
   }
 
   const getErrorMessage = (error: any): string => {
@@ -295,6 +261,12 @@ export default function PolicyCard({
             <div className="policy-section">
               <label className="policy-label">Carrier</label>
               <p className="policy-value-large">{policy.carrier_name}</p>
+              {policy.carrier_phone && (
+                <p className="policy-value" style={{ fontSize: '14px', marginTop: '4px' }}>📞 {policy.carrier_phone}</p>
+              )}
+              {policy.carrier_email && (
+                <p className="policy-value" style={{ fontSize: '14px', marginTop: '2px' }}>✉️ {policy.carrier_email}</p>
+              )}
             </div>
 
             {policy.policy_number && (
@@ -304,51 +276,44 @@ export default function PolicyCard({
               </div>
             )}
 
-            <div className="policy-section-full">
-              <label className="policy-label">Coverage Limits</label>
-              <div className="coverage-grid">
-                <div className="coverage-item">
-                  <span className="coverage-type">Coverage A</span>
-                  <span className="coverage-amount">{formatCurrency(policy.coverage_a_limit)}</span>
-                </div>
-                <div className="coverage-item">
-                  <span className="coverage-type">Coverage B</span>
-                  <span className="coverage-amount">{formatCurrency(policy.coverage_b_limit)}</span>
-                </div>
-                <div className="coverage-item">
-                  <span className="coverage-type">Coverage D</span>
-                  <span className="coverage-amount">{formatCurrency(policy.coverage_d_limit)}</span>
-                </div>
-              </div>
+            <div className="policy-section">
+              <label className="policy-label">Start Date</label>
+              <p className="policy-value">{formatDate(policy.effective_date?.toString())}</p>
             </div>
 
-            {policy.deductible_type && policy.deductible_value && (
+            <div className="policy-section">
+              <label className="policy-label">End Date</label>
+              <p className="policy-value">{formatDate(policy.expiration_date?.toString())}</p>
+            </div>
+
+            {policy.deductible_value !== undefined && (
               <div className="policy-section-full">
                 <label className="policy-label">Deductible</label>
                 <div className="deductible-display">
-                  <span className="deductible-primary">
-                    {policy.deductible_type === 'percentage'
-                      ? `${policy.deductible_value}%`
-                      : formatCurrency(policy.deductible_value)}
-                  </span>
-                  {calculateDisplayDeductible() && (
-                    <span className="deductible-calculated">
-                      {formatCurrency(calculateDisplayDeductible()!)}
-                    </span>
-                  )}
+                  <span className="deductible-primary">{formatCurrency(policy.deductible_value)}</span>
                 </div>
               </div>
             )}
 
-            <div className="policy-section">
-              <label className="policy-label">Effective</label>
-              <p className="policy-value">{formatDate(policy.effective_date)}</p>
-            </div>
-
-            <div className="policy-section">
-              <label className="policy-label">Expiration</label>
-              <p className="policy-value">{formatDate(policy.expiration_date)}</p>
-            </div>
+            {policy.exclusions && (
+              <div className="policy-section-full">
+                <label className="policy-label">Exclusions</label>
+                <div style={{
+                  background: 'white',
+                  border: '1px solid var(--color-sand-200)',
+                  borderRadius: '12px',
+                  padding: '16px 20px',
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  fontSize: '14px',
+                  color: 'var(--color-sand-800)',
+                  lineHeight: '1.6',
+                }}>
+                  {policy.exclusions}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -368,168 +333,75 @@ export default function PolicyCard({
               <label htmlFor="carrier_name" className="form-label">
                 Insurance Carrier <span className="required">*</span>
               </label>
-              <input
-                type="text"
-                id="carrier_name"
-                name="carrier_name"
-                required
-                value={formData.carrier_name}
-                onChange={handleChange}
-                className="form-input"
-                placeholder="e.g., State Farm, Travelers"
-              />
+              <input type="text" id="carrier_name" name="carrier_name" required
+                value={formData.carrier_name} onChange={handleChange}
+                className="form-input" placeholder="e.g., State Farm, Travelers" />
             </div>
 
             <div className="form-group">
               <label htmlFor="policy_number" className="form-label">
-                Policy Number
+                Policy Number <span className="required">*</span>
               </label>
-              <input
-                type="text"
-                id="policy_number"
-                name="policy_number"
-                value={formData.policy_number}
-                onChange={handleChange}
-                className="form-input"
-                placeholder="Enter policy number"
-              />
+              <input type="text" id="policy_number" name="policy_number" required
+                value={formData.policy_number} onChange={handleChange}
+                className="form-input" placeholder="Enter policy number" />
             </div>
 
             <div className="form-group">
-              <label htmlFor="coverage_a_limit" className="form-label">
-                Coverage A Limit
-              </label>
-              <div className="form-input-group">
-                <span className="input-prefix">$</span>
-                <input
-                  type="number"
-                  id="coverage_a_limit"
-                  name="coverage_a_limit"
-                  value={formData.coverage_a_limit}
-                  onChange={handleChange}
-                  className="form-input with-prefix"
-                  placeholder="5000000"
-                />
-              </div>
+              <label htmlFor="carrier_phone" className="form-label">Carrier Phone</label>
+              <input type="tel" id="carrier_phone" name="carrier_phone"
+                value={formData.carrier_phone} onChange={handleChange}
+                className="form-input" placeholder="e.g., 555-123-4567" />
             </div>
 
             <div className="form-group">
-              <label htmlFor="coverage_b_limit" className="form-label">
-                Coverage B Limit
-              </label>
-              <div className="form-input-group">
-                <span className="input-prefix">$</span>
-                <input
-                  type="number"
-                  id="coverage_b_limit"
-                  name="coverage_b_limit"
-                  value={formData.coverage_b_limit}
-                  onChange={handleChange}
-                  className="form-input with-prefix"
-                  placeholder="150000"
-                />
-              </div>
+              <label htmlFor="carrier_email" className="form-label">Carrier Email</label>
+              <input type="email" id="carrier_email" name="carrier_email"
+                value={formData.carrier_email} onChange={handleChange}
+                className="form-input" placeholder="e.g., claims@carrier.com" />
             </div>
-
-            <div className="form-group">
-              <label htmlFor="coverage_d_limit" className="form-label">
-                Coverage D Limit
-              </label>
-              <div className="form-input-group">
-                <span className="input-prefix">$</span>
-                <input
-                  type="number"
-                  id="coverage_d_limit"
-                  name="coverage_d_limit"
-                  value={formData.coverage_d_limit}
-                  onChange={handleChange}
-                  className="form-input with-prefix"
-                  placeholder="450000"
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="deductible_type" className="form-label">
-                Deductible Type <span className="required">*</span>
-              </label>
-              <select
-                id="deductible_type"
-                name="deductible_type"
-                required
-                value={formData.deductible_type}
-                onChange={handleChange}
-                className="form-select"
-              >
-                <option value="percentage">Percentage</option>
-                <option value="fixed">Fixed Amount</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="deductible_value" className="form-label">
-                Deductible Value <span className="required">*</span>
-              </label>
-              <div className="form-input-group">
-                <span className="input-prefix">
-                  {formData.deductible_type === 'percentage' ? '%' : '$'}
-                </span>
-                <input
-                  type="number"
-                  id="deductible_value"
-                  name="deductible_value"
-                  required
-                  value={formData.deductible_value}
-                  onChange={handleChange}
-                  className="form-input with-prefix"
-                  placeholder={formData.deductible_type === 'percentage' ? '2' : '100000'}
-                  step={formData.deductible_type === 'percentage' ? '0.1' : '1'}
-                  min="0"
-                />
-              </div>
-            </div>
-
-            {calculatedDeductible !== null && (
-              <div className="form-group-full">
-                <div className="calculated-deductible">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-                  <div>
-                    <span className="calculated-label">Calculated Deductible</span>
-                    <span className="calculated-value">
-                      {formatCurrency(calculatedDeductible)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="form-group">
               <label htmlFor="effective_date" className="form-label">
-                Effective Date
+                Policy Start Date <span className="required">*</span>
               </label>
-              <input
-                type="date"
-                id="effective_date"
-                name="effective_date"
-                value={formData.effective_date}
-                onChange={handleChange}
-                className="form-input"
-              />
+              <input type="date" id="effective_date" name="effective_date" required
+                value={formData.effective_date} onChange={handleChange}
+                className="form-input" />
             </div>
 
             <div className="form-group">
               <label htmlFor="expiration_date" className="form-label">
-                Expiration Date
+                Policy End Date <span className="required">*</span>
               </label>
-              <input
-                type="date"
-                id="expiration_date"
-                name="expiration_date"
-                value={formData.expiration_date}
-                onChange={handleChange}
+              <input type="date" id="expiration_date" name="expiration_date" required
+                value={formData.expiration_date} onChange={handleChange}
+                className="form-input" />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="deductible_value" className="form-label">
+                Deductible <span className="required">*</span>
+              </label>
+              <div className="form-input-group">
+                <span className="input-prefix">$</span>
+                <input type="number" id="deductible_value" name="deductible_value" required
+                  value={formData.deductible_value} onChange={handleChange}
+                  className="form-input with-prefix" placeholder="10000" min="0" />
+              </div>
+            </div>
+
+            <div className="form-group-full">
+              <label htmlFor="exclusions" className="form-label">
+                Exclusions <span className="required">*</span>
+              </label>
+              <textarea id="exclusions" name="exclusions" required
+                value={formData.exclusions}
+                onChange={(e) => setFormData(prev => ({ ...prev, exclusions: e.target.value }))}
                 className="form-input"
+                placeholder="Enter policy exclusions..."
+                rows={6}
+                style={{ resize: 'vertical', fontFamily: 'inherit' }}
               />
             </div>
           </div>

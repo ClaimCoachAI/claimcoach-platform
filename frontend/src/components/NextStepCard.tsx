@@ -28,7 +28,7 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
     deductible: number
     worthFiling: boolean
   } | null>(null)
-  const deductible = claim.policy?.deductible_calculated || 0
+  const deductible = claim.policy?.deductible_value || 0
 
   useEffect(() => {
     if (stepNumber === 3 && estimateAmount) {

@@ -23,7 +23,7 @@ export default function Step3DeductibleModal({
     worthFiling: boolean
   } | null>(null)
 
-  const deductible = claim.policy?.deductible_calculated || 0
+  const deductible = claim.policy?.deductible_value || 0
 
   useEffect(() => {
     if (estimateAmount) {

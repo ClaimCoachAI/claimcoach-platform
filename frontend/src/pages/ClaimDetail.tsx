@@ -934,16 +934,16 @@ function DeductibleAnalysis({ claim, policy, onEstimateUpdated }: DeductibleAnal
 
   // Load existing estimate if it exists
   useEffect(() => {
-    if (claim.contractor_estimate_total && policy.deductible_calculated) {
-      const delta = claim.contractor_estimate_total - policy.deductible_calculated
+    if (claim.contractor_estimate_total && policy.deductible_value) {
+      const delta = claim.contractor_estimate_total - policy.deductible_value
       setComparison({
-        deductible: policy.deductible_calculated,
+        deductible: policy.deductible_value,
         estimate: claim.contractor_estimate_total,
         delta,
         recommendation: delta > 0 ? 'worth_filing' : 'not_worth_filing'
       })
     }
-  }, [claim.contractor_estimate_total, policy.deductible_calculated])
+  }, [claim.contractor_estimate_total, policy.deductible_value])
 
   return (
     <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -956,7 +956,7 @@ function DeductibleAnalysis({ claim, policy, onEstimateUpdated }: DeductibleAnal
             Policy Deductible
           </label>
           <div className="text-2xl font-bold text-gray-900">
-            {formatCurrency(policy.deductible_calculated || 0)}
+            {formatCurrency(policy.deductible_value || 0)}
           </div>
         </div>
 
@@ -1186,14 +1186,6 @@ export default function ClaimDetail() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`
-  }
-
-  const calculateDeductible = (policy: Policy) => {
-    if (!policy.deductible_value || !policy.coverage_a_limit) return null
-    if (policy.deductible_type === 'percentage') {
-      return (policy.coverage_a_limit * policy.deductible_value) / 100
-    }
-    return policy.deductible_value
   }
 
   const getLossTypeLabel = (lossType: string) => {
@@ -1966,51 +1958,13 @@ export default function ClaimDetail() {
                           </p>
                         </div>
                       )}
-                      {claim.policy.coverage_a_limit && (
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500">
-                            Coverage Limits
-                          </label>
-                          <div className="text-sm text-gray-900 space-y-1">
-                            <div className="flex justify-between">
-                              <span>Coverage A:</span>
-                              <span className="font-medium">
-                                {formatCurrency(claim.policy.coverage_a_limit)}
-                              </span>
-                            </div>
-                            {claim.policy.coverage_b_limit && (
-                              <div className="flex justify-between">
-                                <span>Coverage B:</span>
-                                <span className="font-medium">
-                                  {formatCurrency(claim.policy.coverage_b_limit)}
-                                </span>
-                              </div>
-                            )}
-                            {claim.policy.coverage_d_limit && (
-                              <div className="flex justify-between">
-                                <span>Coverage D:</span>
-                                <span className="font-medium">
-                                  {formatCurrency(claim.policy.coverage_d_limit)}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      {claim.policy.deductible_type && claim.policy.deductible_value && (
+                      {claim.policy.deductible_value !== undefined && (
                         <div>
                           <label className="block text-xs font-medium text-gray-500">
                             Deductible
                           </label>
                           <p className="text-sm text-gray-900">
-                            {claim.policy.deductible_type === 'percentage'
-                              ? `${claim.policy.deductible_value}%`
-                              : formatCurrency(claim.policy.deductible_value)}
-                            {calculateDeductible(claim.policy) && (
-                              <span className="text-gray-500 ml-1">
-                                ({formatCurrency(calculateDeductible(claim.policy)!)})
-                              </span>
-                            )}
+                            {formatCurrency(claim.policy.deductible_value)}
                           </p>
                         </div>
                       )}

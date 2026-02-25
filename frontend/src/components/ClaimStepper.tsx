@@ -213,7 +213,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     deductible: number
     worthFiling: boolean
   } | null>(null)
-  const deductible = claim.policy?.deductible_calculated || 0
+  const deductible = claim.policy?.deductible_value || 0
 
   const [step4Description, setStep4Description] = useState<string>(claim.description || '')
   const [isEditingDescription, setIsEditingDescription] = useState<boolean>(false)
@@ -1087,7 +1087,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                 <div className="review-item">
                   <span className="review-label">Your Deductible</span>
                   <span className="review-value">
-                    ${(claim.policy?.deductible_calculated || 0).toLocaleString('en-US', {
+                    ${(claim.policy?.deductible_value || 0).toLocaleString('en-US', {
                       minimumFractionDigits: 2,
                     })}
                   </span>

@@ -38,16 +38,16 @@ export interface Policy {
   id: string
   property_id: string
   carrier_name: string
-  policy_number?: string
-  coverage_a_limit?: number
-  coverage_b_limit?: number
-  coverage_d_limit?: number
-  deductible_type?: 'percentage' | 'fixed'
-  deductible_value?: number
-  deductible_calculated?: number
-  effective_date?: string
-  expiration_date?: string
-  policy_pdf_url?: string
+  carrier_phone?: string | null
+  carrier_email?: string | null
+  policy_number?: string | null
+  deductible_value: number
+  exclusions?: string | null
+  policy_pdf_url?: string | null
+  effective_date?: string | null
+  expiration_date?: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface Claim {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { Policy } from '../types/claim'
@@ -17,57 +17,24 @@ export default function AddPolicyForm({
   const queryClient = useQueryClient()
   const [formData, setFormData] = useState({
     carrier_name: existingPolicy?.carrier_name || '',
+    carrier_phone: existingPolicy?.carrier_phone || '',
+    carrier_email: existingPolicy?.carrier_email || '',
     policy_number: existingPolicy?.policy_number || '',
-    coverage_a_limit: existingPolicy?.coverage_a_limit?.toString() || '',
-    coverage_b_limit: existingPolicy?.coverage_b_limit?.toString() || '',
-    coverage_d_limit: existingPolicy?.coverage_d_limit?.toString() || '',
-    deductible_type: existingPolicy?.deductible_type || 'percentage',
     deductible_value: existingPolicy?.deductible_value?.toString() || '',
+    exclusions: existingPolicy?.exclusions || '',
     effective_date: existingPolicy?.effective_date || '',
     expiration_date: existingPolicy?.expiration_date || '',
   })
-
-  const [calculatedDeductible, setCalculatedDeductible] = useState<number | null>(
-    null
-  )
-
-  useEffect(() => {
-    const coverageA = parseFloat(formData.coverage_a_limit)
-    const deductibleValue = parseFloat(formData.deductible_value)
-
-    if (!isNaN(coverageA) && !isNaN(deductibleValue) && coverageA > 0) {
-      if (formData.deductible_type === 'percentage') {
-        setCalculatedDeductible((coverageA * deductibleValue) / 100)
-      } else {
-        setCalculatedDeductible(deductibleValue)
-      }
-    } else {
-      setCalculatedDeductible(null)
-    }
-  }, [
-    formData.coverage_a_limit,
-    formData.deductible_value,
-    formData.deductible_type,
-  ])
 
   const mutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const payload = {
         carrier_name: data.carrier_name,
+        carrier_phone: data.carrier_phone || undefined,
+        carrier_email: data.carrier_email || undefined,
         policy_number: data.policy_number || undefined,
-        coverage_a_limit: data.coverage_a_limit
-          ? parseFloat(data.coverage_a_limit)
-          : undefined,
-        coverage_b_limit: data.coverage_b_limit
-          ? parseFloat(data.coverage_b_limit)
-          : undefined,
-        coverage_d_limit: data.coverage_d_limit
-          ? parseFloat(data.coverage_d_limit)
-          : undefined,
-        deductible_type: data.deductible_type || undefined,
-        deductible_value: data.deductible_value
-          ? parseFloat(data.deductible_value)
-          : undefined,
+        deductible_value: data.deductible_value ? parseFloat(data.deductible_value) : undefined,
+        exclusions: data.exclusions || undefined,
         effective_date: data.effective_date || undefined,
         expiration_date: data.expiration_date || undefined,
       }
@@ -176,159 +143,42 @@ export default function AddPolicyForm({
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label
-            htmlFor="coverage_a_limit"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Coverage A Limit
-          </label>
-          <div className="mt-1 relative rounded-md shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="text-gray-500 sm:text-sm">$</span>
-            </div>
-            <input
-              type="number"
-              id="coverage_a_limit"
-              name="coverage_a_limit"
-              value={formData.coverage_a_limit}
-              onChange={handleChange}
-              className="block w-full pl-7 pr-3 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              placeholder="0"
-            />
+      <div>
+        <label htmlFor="deductible_value" className="block text-sm font-medium text-gray-700">
+          Deductible <span className="text-red-500">*</span>
+        </label>
+        <div className="mt-1 relative rounded-md shadow-sm">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <span className="text-gray-500 sm:text-sm">$</span>
           </div>
-        </div>
-
-        <div>
-          <label
-            htmlFor="coverage_b_limit"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Coverage B Limit
-          </label>
-          <div className="mt-1 relative rounded-md shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="text-gray-500 sm:text-sm">$</span>
-            </div>
-            <input
-              type="number"
-              id="coverage_b_limit"
-              name="coverage_b_limit"
-              value={formData.coverage_b_limit}
-              onChange={handleChange}
-              className="block w-full pl-7 pr-3 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              placeholder="0"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label
-            htmlFor="coverage_d_limit"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Coverage D Limit
-          </label>
-          <div className="mt-1 relative rounded-md shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="text-gray-500 sm:text-sm">$</span>
-            </div>
-            <input
-              type="number"
-              id="coverage_d_limit"
-              name="coverage_d_limit"
-              value={formData.coverage_d_limit}
-              onChange={handleChange}
-              className="block w-full pl-7 pr-3 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              placeholder="0"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label
-            htmlFor="deductible_type"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Deductible Type <span className="text-red-500">*</span>
-          </label>
-          <select
-            id="deductible_type"
-            name="deductible_type"
+          <input
+            type="number"
+            id="deductible_value"
+            name="deductible_value"
             required
-            value={formData.deductible_type}
+            value={formData.deductible_value}
             onChange={handleChange}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          >
-            <option value="percentage">Percentage</option>
-            <option value="fixed">Fixed Amount</option>
-          </select>
-        </div>
-
-        <div>
-          <label
-            htmlFor="deductible_value"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Deductible Value <span className="text-red-500">*</span>
-          </label>
-          <div className="mt-1 relative rounded-md shadow-sm">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="text-gray-500 sm:text-sm">
-                {formData.deductible_type === 'percentage' ? '%' : '$'}
-              </span>
-            </div>
-            <input
-              type="number"
-              id="deductible_value"
-              name="deductible_value"
-              required
-              value={formData.deductible_value}
-              onChange={handleChange}
-              className="block w-full pl-7 pr-3 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              placeholder="0"
-              step={formData.deductible_type === 'percentage' ? '0.1' : '1'}
-              min="0"
-            />
-          </div>
+            className="block w-full pl-7 pr-3 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            placeholder="10000"
+            min="0"
+          />
         </div>
       </div>
 
-      {calculatedDeductible !== null && (
-        <div className="rounded-md bg-blue-50 p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg
-                className="h-5 w-5 text-blue-400"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-blue-800">
-                Calculated Deductible
-              </h3>
-              <div className="mt-2 text-sm text-blue-700">
-                <p>
-                  ${calculatedDeductible.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <div>
+        <label htmlFor="exclusions" className="block text-sm font-medium text-gray-700">
+          Exclusions
+        </label>
+        <textarea
+          id="exclusions"
+          name="exclusions"
+          value={formData.exclusions}
+          onChange={(e) => setFormData(prev => ({ ...prev, exclusions: e.target.value }))}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          placeholder="Enter policy exclusions..."
+          rows={4}
+        />
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
