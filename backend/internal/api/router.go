@@ -95,11 +95,6 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	rcvDemandService := services.NewRCVDemandService(db, llmClient, claimService, paymentService)
 	rcvDemandHandler := handlers.NewRCVDemandHandler(rcvDemandService)
 
-	legalPackageService := services.NewLegalPackageService(
-		db, emailService, storageClient, claimService, auditService, cfg.FrontendURL,
-	)
-	legalPackageHandler := handlers.NewLegalPackageHandler(legalPackageService)
-
 	// Public routes
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -113,10 +108,6 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	mortgageBankService := services.NewMortgageBankService(db)
 	mortgageBankHandler := handlers.NewMortgageBankHandler(mortgageBankService)
 	r.GET("/api/mortgage-banks", mortgageBankHandler.GetAllBanks)
-
-	// Public legal approval endpoints (token-gated, no JWT required)
-	r.GET("/api/legal-approval/:token", legalPackageHandler.GetApprovalPage)
-	r.POST("/api/legal-approval/:token/respond", legalPackageHandler.RespondToApproval)
 
 	// Public magic link endpoints (no auth required)
 	r.GET("/api/magic-links/:token/validate", magicLinkHandler.ValidateToken)
@@ -203,6 +194,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/claims/:id/audit", auditHandler.GetAuditReport)
 		api.POST("/claims/:id/audit/:auditId/pm-brain", auditHandler.RunPMBrain)
 		api.POST("/claims/:id/audit/:auditId/dispute-letter", auditHandler.GenerateDisputeLetter)
+		api.POST("/claims/:id/audit/:auditId/owner-pitch", auditHandler.GenerateOwnerPitch)
 
 		// Meeting routes (Phase 7 - protected)
 		api.POST("/claims/:id/meetings", meetingHandler.CreateMeeting)
@@ -228,8 +220,6 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/rcv-demand/:id", rcvDemandHandler.GetRCVDemandLetter)
 		api.PATCH("/rcv-demand/:id/mark-sent", rcvDemandHandler.MarkAsSent)
 
-		// Legal package route (protected)
-		api.POST("/claims/:id/legal-escalation", legalPackageHandler.InitiateEscalation)
 	}
 
 	return r, nil
