@@ -83,6 +83,52 @@ const formatCurrency = (n: number) =>
     maximumFractionDigits: 0,
   })
 
+// ─── ATTORNEY BRIEFING BUILDER ──────────────────────────────────────────────
+
+function buildAttorneyBriefing(claim: import('../types/claim').Claim, pmBrain: import('../types/claim').PMBrainAnalysis | null): string {
+  if (!pmBrain) return ''
+  const address = claim.property?.legal_address || 'the insured property'
+  const carrier = claim.policy?.carrier_name || 'the insurance carrier'
+  const policyNumber = claim.policy?.policy_number || 'N/A'
+  const claimNumber = claim.claim_number || 'N/A'
+  const incidentDate = new Date(claim.incident_date).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric',
+  })
+  const fmt = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  let text = `INSURANCE CLAIM DISPUTE — ATTORNEY REFERRAL\n\n`
+  text += `Property: ${address}\n`
+  text += `Incident: ${claim.loss_type} damage on ${incidentDate}\n`
+  text += `Insurance Carrier: ${carrier}\n`
+  text += `Policy Number: ${policyNumber}\n`
+  text += `Claim Number: ${claimNumber}\n\n`
+  text += `FINANCIAL SUMMARY:\n`
+  text += `  Contractor Estimate:  $${fmt(pmBrain.total_contractor_estimate)}\n`
+  text += `  Carrier Offer:        $${fmt(pmBrain.total_carrier_estimate)}\n`
+  text += `  Underpayment Gap:     $${fmt(pmBrain.total_delta)}\n\n`
+
+  if (pmBrain.top_delta_drivers.length > 0) {
+    text += `KEY PRICING DISPUTES:\n`
+    pmBrain.top_delta_drivers.slice(0, 3).forEach(d => {
+      text += `  • ${d.line_item}: carrier $${fmt(d.carrier_price)} vs. required $${fmt(d.contractor_price)} (gap $${fmt(d.delta)}) — ${d.reason}\n`
+    })
+    text += '\n'
+  }
+
+  if (pmBrain.coverage_disputes.length > 0) {
+    text += `COVERAGE DISPUTES:\n`
+    pmBrain.coverage_disputes.forEach(cd => {
+      text += `  • ${cd.item} (${cd.status}): ${cd.contractor_position}\n`
+    })
+    text += '\n'
+  }
+
+  text += `AUTHORIZATION:\n`
+  text += `The property owner has reviewed and approved engaging legal counsel to pursue this claim.\n\n`
+  text += `Please review the above and advise on next steps.`
+  return text
+}
+
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
 
 export default function Step6AdjudicationEngine({ claim }: Props) {
@@ -103,6 +149,9 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
   const [ownerPitch, setOwnerPitch] = useState<string | null>(null)
   const [pitchCopied, setPitchCopied] = useState(false)
   const [pitchAcknowledged, setPitchAcknowledged] = useState(false)
+  const [ownerApproved, setOwnerApproved] = useState(false)
+  const [lawyerBriefingCopied, setLawyerBriefingCopied] = useState(false)
+  const [attorneyContacted, setAttorneyContacted] = useState(false)
 
   const step6Done = claim.steps_completed?.includes(6) ?? false
 
@@ -1164,8 +1213,136 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
                   ✓ I Have Sent This to the Property Owner
                 </button>
               </div>
+            ) : !ownerApproved ? (
+              /* Phase 3: Owner notified — waiting for their approval */
+              <div
+                style={{
+                  padding: '20px 24px',
+                  background: '#f0fdf4',
+                  borderRadius: 10,
+                  border: '1px solid #bbf7d0',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ fontSize: 28, marginBottom: 8 }}>📬</div>
+                <div style={{ fontWeight: 700, color: '#166534', fontSize: 16, marginBottom: 4 }}>
+                  Owner notified. Waiting for their response.
+                </div>
+                <div style={{ color: '#15803d', fontSize: 13, marginBottom: 20 }}>
+                  Once the owner approves, come back here to forward the case to your attorney.
+                </div>
+                <button
+                  onClick={() => setOwnerApproved(true)}
+                  style={{
+                    width: '100%',
+                    padding: '14px 24px',
+                    background: '#1e293b',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: 15,
+                  }}
+                >
+                  ✓ Owner Has Approved — Proceed to Attorney Contact
+                </button>
+              </div>
+            ) : !attorneyContacted ? (
+              /* Phase 4: Attorney briefing — copy and send to lawyer */
+              <div>
+                <div
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    marginBottom: 16,
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '12px 18px',
+                      background: '#f8fafc',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: '#0f172a', fontSize: 14 }}>
+                      ⚖️ Attorney Briefing
+                    </span>
+                    <button
+                      onClick={() => {
+                        const briefing = buildAttorneyBriefing(claim, pmBrain)
+                        navigator.clipboard.writeText(briefing).then(() => {
+                          setLawyerBriefingCopied(true)
+                          setTimeout(() => setLawyerBriefingCopied(false), 2000)
+                        }).catch(() => {/* clipboard denied */})
+                      }}
+                      style={{
+                        padding: '6px 14px',
+                        background: lawyerBriefingCopied ? '#0d9488' : '#fff',
+                        color: lawyerBriefingCopied ? '#fff' : '#334155',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {lawyerBriefingCopied ? '✓ Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: '18px 20px',
+                      fontFamily: 'Georgia, serif',
+                      fontSize: 13,
+                      lineHeight: 1.7,
+                      color: '#0f172a',
+                      whiteSpace: 'pre-wrap',
+                      maxHeight: 380,
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {buildAttorneyBriefing(claim, pmBrain)}
+                  </pre>
+                </div>
+                <div
+                  style={{
+                    padding: '14px 18px',
+                    background: '#fef9c3',
+                    border: '1px solid #fde68a',
+                    borderRadius: 8,
+                    marginBottom: 12,
+                    fontSize: 13,
+                    color: '#713f12',
+                  }}
+                >
+                  Copy this briefing and paste it into an email to your attorney.
+                  Once you've sent it, click the button below.
+                </div>
+                <button
+                  onClick={() => setAttorneyContacted(true)}
+                  style={{
+                    width: '100%',
+                    padding: '14px 24px',
+                    background: '#1e293b',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: 15,
+                  }}
+                >
+                  ✓ I Have Sent This to My Attorney
+                </button>
+              </div>
             ) : (
-              /* Phase 3: Acknowledged — complete step */
+              /* Phase 5: All contacts made — complete step */
               <div
                 style={{
                   padding: '20px 24px',
@@ -1177,10 +1354,10 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
               >
                 <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
                 <div style={{ fontWeight: 700, color: '#166534', fontSize: 16, marginBottom: 4 }}>
-                  Owner notified. You've done your part.
+                  Owner and attorney notified. You've done your part.
                 </div>
                 <div style={{ color: '#15803d', fontSize: 13, marginBottom: 20 }}>
-                  The legal review process can now begin.
+                  Your attorney will review the case and advise on next steps.
                 </div>
                 {completeMutation.isError && (
                   <div style={{ padding: '8px 12px', background: '#fef2f2', borderRadius: 6, marginBottom: 12 }}>
