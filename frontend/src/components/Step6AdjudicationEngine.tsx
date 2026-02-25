@@ -264,7 +264,7 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
       setOwnerPitch(pitch)
       queryClient.invalidateQueries({ queryKey: ['audit-report', claim.id] })
     },
-    onError: () => { /* handled by pitchMutation.isError inline */ },
+    onError: (err: unknown) => { console.error('[pitchMutation] error:', err) },
   })
 
   // ── Complete step mutation ────────────────────────────────────────────────
@@ -1048,7 +1048,7 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
                 {pitchMutation.isError && (
                   <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginBottom: 12 }}>
                     <span style={{ color: '#991b1b', fontSize: 13 }}>
-                      {(pitchMutation.error as any)?.response?.data?.error || 'Failed to generate pitch. Please try again.'}
+                      {(pitchMutation.error as any)?.response?.data?.error || (pitchMutation.error as any)?.message || 'Failed to generate pitch. Please try again.'}
                     </span>
                   </div>
                 )}
