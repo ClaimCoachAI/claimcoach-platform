@@ -201,7 +201,7 @@ func (s *AuditService) GetAuditReportByClaimID(ctx context.Context, claimID, org
 		       ar.generated_estimate, ar.comparison_data, ar.total_contractor_estimate,
 		       ar.total_carrier_estimate, ar.total_delta, ar.status, ar.error_message,
 		       ar.created_by_user_id, ar.created_at, ar.updated_at, ar.viability_analysis,
-		       ar.pm_brain_analysis, ar.dispute_letter
+		       ar.pm_brain_analysis, ar.dispute_letter, ar.owner_pitch
 		FROM audit_reports ar
 		INNER JOIN claims c ON ar.claim_id = c.id
 		INNER JOIN properties p ON c.property_id = p.id
@@ -229,6 +229,7 @@ func (s *AuditService) GetAuditReportByClaimID(ctx context.Context, claimID, org
 		&report.ViabilityAnalysis,
 		&report.PMBrainAnalysis,
 		&report.DisputeLetter,
+		&report.OwnerPitch,
 	)
 
 	if err == sql.ErrNoRows {
@@ -248,7 +249,7 @@ func (s *AuditService) getAuditReportWithOwnershipCheck(ctx context.Context, aud
 		       ar.generated_estimate, ar.comparison_data, ar.total_contractor_estimate,
 		       ar.total_carrier_estimate, ar.total_delta, ar.status, ar.error_message,
 		       ar.created_by_user_id, ar.created_at, ar.updated_at, ar.viability_analysis,
-		       ar.pm_brain_analysis, ar.dispute_letter
+		       ar.pm_brain_analysis, ar.dispute_letter, ar.owner_pitch
 		FROM audit_reports ar
 		INNER JOIN claims c ON ar.claim_id = c.id
 		INNER JOIN properties p ON c.property_id = p.id
@@ -274,6 +275,7 @@ func (s *AuditService) getAuditReportWithOwnershipCheck(ctx context.Context, aud
 		&report.ViabilityAnalysis,
 		&report.PMBrainAnalysis,
 		&report.DisputeLetter,
+		&report.OwnerPitch,
 	)
 
 	if err == sql.ErrNoRows {

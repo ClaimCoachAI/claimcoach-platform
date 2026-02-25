@@ -12,6 +12,7 @@ type AuditReport struct {
 	ViabilityAnalysis       *string    `json:"viability_analysis" db:"viability_analysis"`      // JSON string
 	PMBrainAnalysis         *string    `json:"pm_brain_analysis" db:"pm_brain_analysis"`        // JSON string
 	DisputeLetter           *string    `json:"dispute_letter" db:"dispute_letter"`              // plain text
+	OwnerPitch              *string    `json:"owner_pitch" db:"owner_pitch"`
 	TotalContractorEstimate *float64   `json:"total_contractor_estimate" db:"total_contractor_estimate"`
 	TotalCarrierEstimate    *float64   `json:"total_carrier_estimate" db:"total_carrier_estimate"`
 	TotalDelta              *float64   `json:"total_delta" db:"total_delta"`
