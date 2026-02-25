@@ -337,11 +337,11 @@ export default function PolicyCard({
 
             <div className="form-group">
               <label htmlFor="policy_number" className="form-label">
-                Policy Number
+                Policy Number <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <input type="text" id="policy_number" name="policy_number"
                 value={formData.policy_number} onChange={handleChange}
-                className="form-input" placeholder="Enter policy number" />
+                className="form-input" placeholder="Enter policy number" required />
             </div>
 
             <div className="form-group">

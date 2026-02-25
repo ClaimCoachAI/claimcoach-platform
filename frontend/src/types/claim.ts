@@ -40,7 +40,7 @@ export interface Policy {
   carrier_name: string
   carrier_phone?: string | null
   carrier_email?: string | null
-  policy_number?: string | null
+  policy_number: string
   deductible_value: number
   exclusions?: string | null
   policy_pdf_url?: string | null
