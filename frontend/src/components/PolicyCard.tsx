@@ -118,7 +118,7 @@ export default function PolicyCard({
 
   const formatCurrency = (amount?: number | string) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount
-    if (!num) return 'N/A'
+    if (num === undefined || num === null || isNaN(num as number)) return 'N/A'
     return `$${num.toLocaleString('en-US', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
@@ -133,9 +133,6 @@ export default function PolicyCard({
     if (backendError.includes('DeductibleValue')) {
       if (backendError.includes('required')) return 'Deductible Value is required'
       if (backendError.includes('min')) return 'Deductible Value must be 0 or greater'
-    }
-    if (backendError.includes('DeductibleType')) {
-      return 'Deductible Type is required'
     }
     if (backendError.includes('CarrierName')) {
       return 'Insurance Carrier is required'
@@ -278,12 +275,12 @@ export default function PolicyCard({
 
             <div className="policy-section">
               <label className="policy-label">Start Date</label>
-              <p className="policy-value">{formatDate(policy.effective_date?.toString())}</p>
+              <p className="policy-value">{formatDate(policy.effective_date ?? undefined)}</p>
             </div>
 
             <div className="policy-section">
               <label className="policy-label">End Date</label>
-              <p className="policy-value">{formatDate(policy.expiration_date?.toString())}</p>
+              <p className="policy-value">{formatDate(policy.expiration_date ?? undefined)}</p>
             </div>
 
             {policy.deductible_value !== undefined && (
@@ -340,9 +337,9 @@ export default function PolicyCard({
 
             <div className="form-group">
               <label htmlFor="policy_number" className="form-label">
-                Policy Number <span className="required">*</span>
+                Policy Number
               </label>
-              <input type="text" id="policy_number" name="policy_number" required
+              <input type="text" id="policy_number" name="policy_number"
                 value={formData.policy_number} onChange={handleChange}
                 className="form-input" placeholder="Enter policy number" />
             </div>
@@ -393,9 +390,9 @@ export default function PolicyCard({
 
             <div className="form-group-full">
               <label htmlFor="exclusions" className="form-label">
-                Exclusions <span className="required">*</span>
+                Exclusions
               </label>
-              <textarea id="exclusions" name="exclusions" required
+              <textarea id="exclusions" name="exclusions"
                 value={formData.exclusions}
                 onChange={(e) => setFormData(prev => ({ ...prev, exclusions: e.target.value }))}
                 className="form-input"
@@ -697,38 +694,6 @@ const policyCardStyles = `
     margin: 0;
   }
 
-  .coverage-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    background: white;
-    border: 1px solid var(--color-sand-200);
-    border-radius: 12px;
-    padding: 20px;
-  }
-
-  .coverage-item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .coverage-type {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-sand-600);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .coverage-amount {
-    font-family: 'Fraunces', serif;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--color-sand-900);
-    letter-spacing: -0.01em;
-  }
-
   .deductible-display {
     display: flex;
     align-items: baseline;
@@ -745,12 +710,6 @@ const policyCardStyles = `
     font-weight: 700;
     color: var(--color-terracotta-600);
     letter-spacing: -0.01em;
-  }
-
-  .deductible-calculated {
-    font-size: 16px;
-    color: var(--color-sand-600);
-    font-weight: 500;
   }
 
   /* Edit Mode Styles */
@@ -782,8 +741,7 @@ const policyCardStyles = `
     color: var(--color-terracotta-600);
   }
 
-  .form-input,
-  .form-select {
+  .form-input {
     width: 100%;
     padding: 12px 16px;
     background: white;
@@ -795,8 +753,7 @@ const policyCardStyles = `
     transition: all 0.2s ease;
   }
 
-  .form-input:focus,
-  .form-select:focus {
+  .form-input:focus {
     outline: none;
     border-color: var(--color-terracotta-400);
     box-shadow: 0 0 0 3px rgba(232, 104, 64, 0.1);
@@ -823,36 +780,6 @@ const policyCardStyles = `
 
   .form-input.with-prefix {
     padding-left: 38px;
-  }
-
-  .calculated-deductible {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: linear-gradient(135deg, var(--color-sage-50), var(--color-sand-50));
-    border: 1px solid var(--color-sage-200);
-    border-radius: 12px;
-    padding: 16px 20px;
-    color: var(--color-sage-700);
-  }
-
-  .calculated-deductible svg {
-    flex-shrink: 0;
-  }
-
-  .calculated-label {
-    font-size: 13px;
-    font-weight: 600;
-    display: block;
-    margin-bottom: 2px;
-  }
-
-  .calculated-value {
-    font-family: 'Fraunces', serif;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--color-sage-800);
-    display: block;
   }
 
   .alert {
@@ -951,8 +878,7 @@ const policyCardStyles = `
 
   @media (max-width: 768px) {
     .policy-grid,
-    .policy-form-grid,
-    .coverage-grid {
+    .policy-form-grid {
       grid-template-columns: 1fr;
     }
 

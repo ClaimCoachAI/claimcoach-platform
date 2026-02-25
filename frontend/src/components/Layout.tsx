@@ -17,20 +17,6 @@ export default function Layout({ children }: LayoutProps) {
     navigate('/login')
   }
 
-  const getBreadcrumb = () => {
-    const path = location.pathname
-
-    if (path === '/dashboard') return null
-    if (path === '/properties') return 'Properties'
-    if (path === '/claims') return 'Claims'
-    if (path.startsWith('/properties/')) return 'Properties > Property Details'
-    if (path.startsWith('/claims/')) return 'Claims > Claim Details'
-
-    return null
-  }
-
-  const breadcrumb = getBreadcrumb()
-
   return (
     <div className="min-h-screen">
       {/* Glass Navigation Bar */}
