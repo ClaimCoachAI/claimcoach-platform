@@ -17,6 +17,7 @@ type AuditServiceInterface interface {
 	AnalyzeClaimViability(ctx context.Context, claimID, orgID string) (*services.ViabilityAnalysis, error)
 	RunPMBrainAnalysis(ctx context.Context, auditReportID, userID, orgID string) (*services.PMBrainAnalysis, error)
 	GenerateDisputeLetter(ctx context.Context, auditReportID, userID, orgID string) (string, error)
+	GenerateOwnerPitch(ctx context.Context, auditReportID, userID, orgID string) (string, error)
 }
 
 type AuditHandler struct {
@@ -143,6 +144,29 @@ func (h *AuditHandler) GenerateDisputeLetter(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"letter": letter}})
+}
+
+// GenerateOwnerPitch generates a plain-English escalation pitch email for the building owner.
+// POST /api/claims/:id/audit/:auditId/owner-pitch
+func (h *AuditHandler) GenerateOwnerPitch(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	auditReportID := c.Param("auditId")
+
+	pitch, err := h.service.GenerateOwnerPitch(c.Request.Context(), auditReportID, user.ID, user.OrganizationID)
+	if err != nil {
+		if strings.Contains(err.Error(), "audit report not found") {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Audit report not found"})
+			return
+		}
+		if strings.Contains(err.Error(), "must be run first") || strings.Contains(err.Error(), "only available when") {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to generate owner pitch: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"pitch": pitch}})
 }
 
 // AnalyzeClaimViability runs the PM Decision Engine on a claim.

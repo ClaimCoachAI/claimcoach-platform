@@ -702,6 +702,134 @@ Return ONLY the letter text, no preamble or explanation.`)
 	return letterText, nil
 }
 
+// GenerateOwnerPitch writes a plain-English email the PM can send to their building
+// owner requesting authorization to escalate to legal. Only valid when pm_brain_analysis
+// status is LEGAL_REVIEW.
+func (s *AuditService) GenerateOwnerPitch(ctx context.Context, auditReportID, userID, orgID string) (string, error) {
+	// 1. Fetch audit report with ownership check
+	report, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
+	if err != nil {
+		return "", err
+	}
+	if report.PMBrainAnalysis == nil {
+		return "", fmt.Errorf("PM Brain analysis must be run first")
+	}
+
+	// 2. Parse PM Brain analysis
+	var analysis PMBrainAnalysis
+	if err := json.Unmarshal([]byte(*report.PMBrainAnalysis), &analysis); err != nil {
+		return "", fmt.Errorf("invalid PM Brain analysis data")
+	}
+	if analysis.Status != "LEGAL_REVIEW" {
+		return "", fmt.Errorf("owner pitch only available when status is LEGAL_REVIEW")
+	}
+
+	// 3. Fetch claim context (address, carrier, dates, deductible)
+	var address, carrierName, lossType string
+	var policyNumber, claimNumber *string
+	var incidentDate time.Time
+	var deductible float64
+	err = s.db.QueryRowContext(ctx, `
+		SELECT
+			p.legal_address,
+			ip.carrier_name,
+			ip.policy_number,
+			c.claim_number,
+			c.incident_date,
+			ip.deductible_value,
+			c.loss_type
+		FROM claims c
+		INNER JOIN properties p ON c.property_id = p.id
+		INNER JOIN insurance_policies ip ON c.policy_id = ip.id
+		WHERE c.id = $1
+	`, report.ClaimID).Scan(
+		&address, &carrierName, &policyNumber, &claimNumber, &incidentDate, &deductible, &lossType,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch claim context: %w", err)
+	}
+
+	// 4. Build prompt
+	var b strings.Builder
+	b.WriteString("You are drafting an email for a professional Property Manager to send to their building owner regarding an insurance claim dispute.\n\n")
+	b.WriteString("CLAIM CONTEXT:\n")
+	b.WriteString(fmt.Sprintf("- Property Address: %s\n", address))
+	b.WriteString(fmt.Sprintf("- Loss Type: %s on %s\n", lossType, incidentDate.Format("January 2, 2006")))
+	b.WriteString(fmt.Sprintf("- Insurance Carrier: %s\n", carrierName))
+	b.WriteString(fmt.Sprintf("- Policy Deductible: $%.2f\n\n", deductible))
+	b.WriteString("PM BRAIN ANALYSIS:\n")
+	b.WriteString(fmt.Sprintf("- Contractor Estimate: $%.2f\n", analysis.TotalContractorEstimate))
+	b.WriteString(fmt.Sprintf("- Carrier Offer: $%.2f\n", analysis.TotalCarrierEstimate))
+	b.WriteString(fmt.Sprintf("- Gap (Underpayment): $%.2f\n\n", analysis.TotalDelta))
+
+	if len(analysis.TopDeltaDrivers) > 0 {
+		b.WriteString("TOP DELTA DRIVERS:\n")
+		for _, d := range analysis.TopDeltaDrivers {
+			b.WriteString(fmt.Sprintf("- %s: carrier paid $%.2f vs contractor $%.2f (gap: $%.2f) — %s\n",
+				d.LineItem, d.CarrierPrice, d.ContractorPrice, d.Delta, d.Reason))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(analysis.CoverageDisputes) > 0 {
+		b.WriteString("COVERAGE DISPUTES:\n")
+		for _, cd := range analysis.CoverageDisputes {
+			b.WriteString(fmt.Sprintf("- %s (%s): %s\n", cd.Item, cd.Status, cd.ContractorPosition))
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`Write a professional email FROM the Property Manager TO the building owner.
+
+Requirements:
+- Open by stating the carrier has made their final offer on the claim
+- Explain the dollar gap in plain English — why this amount is unacceptable
+- Cite 2-3 specific line items or coverage disputes showing why the carrier's offer is unreasonable
+- Recommend they authorize engaging a public adjuster or real estate attorney
+- Close by asking the owner to reply with their approval to proceed
+- Tone: competent, direct, professional — like a trusted advisor, NOT a lawyer
+- Length: 3-4 short paragraphs, no filler phrases
+- Do NOT include a subject line or "Subject:" prefix
+- Do NOT use placeholder text like "[Your Name]" — write as "your property manager"
+- Return ONLY the email body text, no preamble or explanation`)
+
+	// 5. Call LLM
+	messages := []llm.Message{
+		{
+			Role:    "system",
+			Content: "You are a professional property manager writing a clear, persuasive email to a building owner about an insurance dispute. Write in first person as the property manager. Return only the email body, no markdown, no preamble.",
+		},
+		{
+			Role:    "user",
+			Content: b.String(),
+		},
+	}
+
+	response, err := s.llmClient.Chat(ctx, messages, 0.4, 1500)
+	if err != nil {
+		return "", fmt.Errorf("LLM API call failed: %w", err)
+	}
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	pitchText := response.Choices[0].Message.Content
+
+	// 6. Save to DB
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE audit_reports SET owner_pitch = $1, updated_at = NOW() WHERE id = $2`,
+		pitchText, auditReportID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to save owner pitch: %w", err)
+	}
+
+	// 7. Log API usage
+	_ = s.logAPIUsage(ctx, orgID, response)
+
+	return pitchText, nil
+}
+
 // ViabilityAnalysis is the structured result returned by the PM Decision Engine.
 type ViabilityAnalysis struct {
 	Recommendation       string   `json:"recommendation"`
