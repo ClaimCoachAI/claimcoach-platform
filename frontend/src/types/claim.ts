@@ -119,10 +119,4 @@ export interface Claim {
 
   created_at: string
   updated_at: string
-
-  // Legal escalation (added in migration 000011)
-  legal_partner_name?: string
-  legal_partner_email?: string
-  owner_email?: string
-  legal_escalation_status?: 'pending_approval' | 'approved' | 'declined' | 'sent_to_lawyer'
 }

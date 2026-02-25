@@ -4,9 +4,9 @@ import api from '../lib/api'
 import {
   runPMBrainAnalysis,
   generateDisputeLetter,
+  generateOwnerPitch,
   generateIndustryEstimate,
   getAuditReport,
-  sendLegalEscalation,
   updateClaimStep,
   parseCarrierEstimate,
 } from '../lib/api'
@@ -99,16 +99,10 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
   const [analysisStep, setAnalysisStep] = useState(0)
   const [isPolling, setIsPolling] = useState(false)
 
-  // Legal escalation
-  const [legalPartnerName, setLegalPartnerName] = useState('')
-  const [legalPartnerEmail, setLegalPartnerEmail] = useState('')
-  const [ownerName, setOwnerName] = useState(
-    claim.property?.owner_entity_name || ''
-  )
-  const [ownerEmail, setOwnerEmail] = useState('')
-  const [legalSubmitted, setLegalSubmitted] = useState<{
-    partnerName: string
-  } | null>(null)
+  // Owner pitch (LEGAL_REVIEW)
+  const [ownerPitch, setOwnerPitch] = useState<string | null>(null)
+  const [pitchCopied, setPitchCopied] = useState(false)
+  const [pitchAcknowledged, setPitchAcknowledged] = useState(false)
 
   const step6Done = claim.steps_completed?.includes(6) ?? false
 
@@ -148,6 +142,7 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
       setPmBrain(saved)
       setAuditReportId(savedAuditReport.id)
       if (savedAuditReport.dispute_letter) setDisputeLetter(savedAuditReport.dispute_letter)
+      if (savedAuditReport.owner_pitch) setOwnerPitch(savedAuditReport.owner_pitch)
       setPhase('verdict')
     } catch { /* malformed JSON — stay on idle */ }
   }, [savedAuditReport])
@@ -258,16 +253,21 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
     },
   })
 
-  // ── Legal escalation mutation ─────────────────────────────────────────────
-  const legalMutation = useMutation({
-    mutationFn: () =>
-      sendLegalEscalation(claim.id, {
-        legal_partner_name: legalPartnerName,
-        legal_partner_email: legalPartnerEmail,
-        owner_name: ownerName,
-        owner_email: ownerEmail,
-      }),
-    onSuccess: () => setLegalSubmitted({ partnerName: legalPartnerName }),
+  // ── Owner pitch mutation (LEGAL_REVIEW) ───────────────────────────────────
+  const pitchMutation = useMutation({
+    mutationFn: async () => {
+      const reportId = auditReportId || savedAuditReport?.id
+      if (!reportId) throw new Error('No audit report found')
+      return generateOwnerPitch(claim.id, reportId)
+    },
+    onSuccess: (pitch) => {
+      setOwnerPitch(pitch)
+      queryClient.invalidateQueries({ queryKey: ['audit-report', claim.id] })
+    },
+    onError: (err: unknown) => {
+      const msg = (err as any)?.response?.data?.error || 'Failed to generate pitch. Please try again.'
+      setErrorMsg(msg)
+    },
   })
 
   // ── Complete step mutation ────────────────────────────────────────────────
@@ -1042,10 +1042,131 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
           </div>
         )}
 
-        {/* ── LEGAL_REVIEW: escalation form ─────────────────────────────── */}
+        {/* ── LEGAL_REVIEW: owner escalation pitch ────────────────────────── */}
         {pmBrain.status === 'LEGAL_REVIEW' && !step6Done && (
           <div>
-            {legalSubmitted ? (
+            {!ownerPitch ? (
+              /* Phase 1: Generate pitch */
+              <div>
+                {pitchMutation.isError && (
+                  <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, marginBottom: 12 }}>
+                    <span style={{ color: '#991b1b', fontSize: 13 }}>
+                      {(pitchMutation.error as any)?.response?.data?.error || 'Failed to generate pitch. Please try again.'}
+                    </span>
+                  </div>
+                )}
+                <button
+                  onClick={() => pitchMutation.mutate()}
+                  disabled={pitchMutation.isPending}
+                  style={{
+                    width: '100%',
+                    padding: '14px 24px',
+                    background: '#dc2626',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    cursor: pitchMutation.isPending ? 'not-allowed' : 'pointer',
+                    fontSize: 15,
+                    opacity: pitchMutation.isPending ? 0.7 : 1,
+                  }}
+                >
+                  {pitchMutation.isPending ? 'Generating…' : '📋 Generate Escalation Pitch'}
+                </button>
+              </div>
+            ) : !pitchAcknowledged ? (
+              /* Phase 2: Show pitch + copy + confirm */
+              <div>
+                <div
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    marginBottom: 16,
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '12px 18px',
+                      background: '#f8fafc',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: '#0f172a', fontSize: 14 }}>
+                      📋 Owner Escalation Pitch
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(ownerPitch)
+                        setPitchCopied(true)
+                        setTimeout(() => setPitchCopied(false), 2000)
+                      }}
+                      style={{
+                        padding: '6px 14px',
+                        background: pitchCopied ? '#0d9488' : '#fff',
+                        color: pitchCopied ? '#fff' : '#334155',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {pitchCopied ? '✓ Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: '18px 20px',
+                      fontFamily: 'Georgia, serif',
+                      fontSize: 13,
+                      lineHeight: 1.7,
+                      color: '#0f172a',
+                      whiteSpace: 'pre-wrap',
+                      maxHeight: 420,
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {ownerPitch}
+                  </pre>
+                </div>
+                <div
+                  style={{
+                    padding: '14px 18px',
+                    background: '#fef9c3',
+                    border: '1px solid #fde68a',
+                    borderRadius: 8,
+                    marginBottom: 12,
+                    fontSize: 13,
+                    color: '#713f12',
+                  }}
+                >
+                  Copy this pitch and paste it into your email client to send to your property owner.
+                  Once you've sent it, click the button below.
+                </div>
+                <button
+                  onClick={() => setPitchAcknowledged(true)}
+                  style={{
+                    width: '100%',
+                    padding: '14px 24px',
+                    background: '#1e293b',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    fontSize: 15,
+                  }}
+                >
+                  ✓ I Have Sent This to the Property Owner
+                </button>
+              </div>
+            ) : (
+              /* Phase 3: Acknowledged — complete step */
               <div
                 style={{
                   padding: '20px 24px',
@@ -1056,136 +1177,34 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
                 }}
               >
                 <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
-                <div
-                  style={{
-                    fontWeight: 700,
-                    color: '#166534',
-                    fontSize: 16,
-                    marginBottom: 4,
-                  }}
-                >
-                  Legal review request sent
+                <div style={{ fontWeight: 700, color: '#166534', fontSize: 16, marginBottom: 4 }}>
+                  Owner notified. You've done your part.
                 </div>
-                <div style={{ color: '#4ade80', fontSize: 13 }}>
-                  Sent to {legalSubmitted.partnerName}
+                <div style={{ color: '#15803d', fontSize: 13, marginBottom: 20 }}>
+                  The legal review process can now begin.
                 </div>
-              </div>
-            ) : (
-              <div
-                style={{
-                  padding: '20px 24px',
-                  background: '#fef2f2',
-                  borderRadius: 10,
-                  border: '1px solid #fecaca',
-                }}
-              >
-                <div
-                  style={{
-                    fontWeight: 700,
-                    color: '#991b1b',
-                    fontSize: 16,
-                    marginBottom: 16,
-                  }}
-                >
-                  ⚖️ Send for Legal Review
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: 12,
-                    marginBottom: 16,
-                  }}
-                >
-                  {[
-                    {
-                      label: 'Legal Partner Name',
-                      value: legalPartnerName,
-                      setter: setLegalPartnerName,
-                      type: 'text',
-                      placeholder: 'Sarah Chen',
-                    },
-                    {
-                      label: 'Legal Partner Email',
-                      value: legalPartnerEmail,
-                      setter: setLegalPartnerEmail,
-                      type: 'email',
-                      placeholder: 'schen@firm.com',
-                    },
-                    {
-                      label: 'Property Owner Name',
-                      value: ownerName,
-                      setter: setOwnerName,
-                      type: 'text',
-                      placeholder: '',
-                    },
-                    {
-                      label: 'Property Owner Email',
-                      value: ownerEmail,
-                      setter: setOwnerEmail,
-                      type: 'email',
-                      placeholder: 'owner@example.com',
-                    },
-                  ].map(({ label, value, setter, type, placeholder }) => (
-                    <div key={label}>
-                      <label
-                        style={{
-                          display: 'block',
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: '#334155',
-                          marginBottom: 4,
-                        }}
-                      >
-                        {label}
-                      </label>
-                      <input
-                        type={type}
-                        value={value}
-                        placeholder={placeholder}
-                        onChange={(e) => setter(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 6,
-                          fontSize: 14,
-                          color: '#0f172a',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
+                {completeMutation.isError && (
+                  <div style={{ padding: '8px 12px', background: '#fef2f2', borderRadius: 6, marginBottom: 12 }}>
+                    <span style={{ color: '#991b1b', fontSize: 13 }}>Failed to advance. Please try again.</span>
+                  </div>
+                )}
                 <button
-                  onClick={() => legalMutation.mutate()}
-                  disabled={
-                    legalMutation.isPending ||
-                    !legalPartnerName ||
-                    !legalPartnerEmail
-                  }
+                  onClick={() => completeMutation.mutate()}
+                  disabled={completeMutation.isPending}
                   style={{
                     width: '100%',
-                    padding: '12px 24px',
-                    background: '#dc2626',
+                    padding: '14px 24px',
+                    background: '#16a34a',
                     color: '#fff',
                     border: 'none',
                     borderRadius: 8,
                     fontWeight: 700,
-                    cursor:
-                      legalMutation.isPending ||
-                      !legalPartnerName ||
-                      !legalPartnerEmail
-                        ? 'not-allowed'
-                        : 'pointer',
+                    cursor: completeMutation.isPending ? 'not-allowed' : 'pointer',
                     fontSize: 15,
-                    opacity:
-                      !legalPartnerName || !legalPartnerEmail ? 0.5 : 1,
+                    opacity: completeMutation.isPending ? 0.7 : 1,
                   }}
                 >
-                  {legalMutation.isPending
-                    ? 'Sending…'
-                    : 'Send Approval Request →'}
+                  {completeMutation.isPending ? 'Saving…' : 'Step Complete — Continue to Payments →'}
                 </button>
               </div>
             )}
@@ -1250,8 +1269,7 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
         {/* ── Complete step button ──────────────────────────────────────── */}
         {!step6Done &&
           (pmBrain.status === 'CLOSE' ||
-            disputeLetter ||
-            legalSubmitted) && (
+            disputeLetter) && (
             <button
               onClick={() => completeMutation.mutate()}
               disabled={completeMutation.isPending}

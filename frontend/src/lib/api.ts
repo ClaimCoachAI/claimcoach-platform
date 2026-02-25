@@ -110,14 +110,9 @@ export const parseCarrierEstimate = async (claimId: string, estimateId: string) 
   return response.data
 }
 
-export const sendLegalEscalation = async (claimId: string, data: {
-  legal_partner_name: string
-  legal_partner_email: string
-  owner_name: string
-  owner_email: string
-}) => {
-  const response = await api.post(`/api/claims/${claimId}/legal-escalation`, data)
-  return response.data
+export const generateOwnerPitch = async (claimId: string, auditId: string) => {
+  const response = await api.post(`/api/claims/${claimId}/audit/${auditId}/owner-pitch`)
+  return response.data.data.pitch as string
 }
 
 export const updateClaimStep = async (claimId: string, data: {
