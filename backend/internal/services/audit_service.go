@@ -726,15 +726,12 @@ func (s *AuditService) GenerateOwnerPitch(ctx context.Context, auditReportID, us
 
 	// 3. Fetch claim context (address, carrier, dates, deductible)
 	var address, carrierName, lossType string
-	var policyNumber, claimNumber *string
 	var incidentDate time.Time
 	var deductible float64
 	err = s.db.QueryRowContext(ctx, `
 		SELECT
 			p.legal_address,
 			ip.carrier_name,
-			ip.policy_number,
-			c.claim_number,
 			c.incident_date,
 			ip.deductible_value,
 			c.loss_type
@@ -743,7 +740,7 @@ func (s *AuditService) GenerateOwnerPitch(ctx context.Context, auditReportID, us
 		INNER JOIN insurance_policies ip ON c.policy_id = ip.id
 		WHERE c.id = $1
 	`, report.ClaimID).Scan(
-		&address, &carrierName, &policyNumber, &claimNumber, &incidentDate, &deductible, &lossType,
+		&address, &carrierName, &incidentDate, &deductible, &lossType,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch claim context: %w", err)
