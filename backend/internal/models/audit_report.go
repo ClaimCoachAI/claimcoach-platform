@@ -7,8 +7,11 @@ type AuditReport struct {
 	ClaimID                 string     `json:"claim_id" db:"claim_id"`
 	ScopeSheetID            string     `json:"scope_sheet_id" db:"scope_sheet_id"`
 	CarrierEstimateID       *string    `json:"carrier_estimate_id" db:"carrier_estimate_id"`
-	GeneratedEstimate       *string    `json:"generated_estimate" db:"generated_estimate"` // JSON string
-	ComparisonData          *string    `json:"comparison_data" db:"comparison_data"`       // JSON string
+	GeneratedEstimate       *string    `json:"generated_estimate" db:"generated_estimate"`    // JSON string
+	ComparisonData          *string    `json:"comparison_data" db:"comparison_data"`          // JSON string
+	ViabilityAnalysis       *string    `json:"viability_analysis" db:"viability_analysis"`      // JSON string
+	PMBrainAnalysis         *string    `json:"pm_brain_analysis" db:"pm_brain_analysis"`        // JSON string
+	DisputeLetter           *string    `json:"dispute_letter" db:"dispute_letter"`              // plain text
 	TotalContractorEstimate *float64   `json:"total_contractor_estimate" db:"total_contractor_estimate"`
 	TotalCarrierEstimate    *float64   `json:"total_carrier_estimate" db:"total_carrier_estimate"`
 	TotalDelta              *float64   `json:"total_delta" db:"total_delta"`

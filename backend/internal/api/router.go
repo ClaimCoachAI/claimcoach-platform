@@ -199,10 +199,10 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 		// Audit routes (protected - requires auth)
 		api.POST("/claims/:id/audit/generate", auditHandler.GenerateIndustryEstimate)
+		api.POST("/claims/:id/audit/viability", auditHandler.AnalyzeClaimViability)
 		api.GET("/claims/:id/audit", auditHandler.GetAuditReport)
-		api.POST("/claims/:id/audit/:auditId/compare", auditHandler.CompareEstimates)
-		api.POST("/claims/:id/audit/:auditId/rebuttal", auditHandler.GenerateRebuttal)
-		api.GET("/rebuttals/:id", auditHandler.GetRebuttal)
+		api.POST("/claims/:id/audit/:auditId/pm-brain", auditHandler.RunPMBrain)
+		api.POST("/claims/:id/audit/:auditId/dispute-letter", auditHandler.GenerateDisputeLetter)
 
 		// Meeting routes (Phase 7 - protected)
 		api.POST("/claims/:id/meetings", meetingHandler.CreateMeeting)

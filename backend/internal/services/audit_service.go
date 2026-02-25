@@ -54,7 +54,7 @@ func (s *AuditService) GenerateIndustryEstimate(ctx context.Context, claimID, us
 		{
 			Role: "system",
 			Content: `You are an expert construction estimator specializing in insurance claims.
-Your task is to produce accurate, industry-standard repair estimates in Xactimate-style format.
+Your task is to produce accurate, industry-standard repair estimates.
 Always respond with valid JSON only, no additional text or explanations.`,
 		},
 		{
@@ -63,8 +63,8 @@ Always respond with valid JSON only, no additional text or explanations.`,
 		},
 	}
 
-	// 4. Call the LLM API
-	response, err := s.llmClient.Chat(ctx, messages, 0.2, 2000)
+	// 4. Call the LLM API — use high token limit since estimate JSON can be large
+	response, err := s.llmClient.Chat(ctx, messages, 0.2, 8000)
 	if err != nil {
 		return "", fmt.Errorf("LLM API call failed: %w", err)
 	}
@@ -79,7 +79,7 @@ Always respond with valid JSON only, no additional text or explanations.`,
 	// Validate that it's valid JSON
 	var validationCheck map[string]interface{}
 	if err := json.Unmarshal([]byte(estimateJSON), &validationCheck); err != nil {
-		return "", fmt.Errorf("invalid JSON response from LLM: %w", err)
+		return "", fmt.Errorf("the AI returned a malformed estimate — please try again: %w", err)
 	}
 
 	// 6. Create audit report record
@@ -103,7 +103,7 @@ func (s *AuditService) buildEstimatePrompt(scope *models.ScopeSheet) string {
 	var builder strings.Builder
 
 	builder.WriteString("Based on the following scope sheet data and current industry pricing, ")
-	builder.WriteString("produce a detailed Xactimate-style estimate in JSON format.\n\n")
+	builder.WriteString("produce a detailed repair estimate in JSON format.\n\n")
 	builder.WriteString("SCOPE SHEET DATA:\n")
 
 	for _, area := range scope.Areas {
@@ -194,172 +194,14 @@ func (s *AuditService) saveAuditReport(ctx context.Context, claimID, scopeSheetI
 	return returnedID, nil
 }
 
-// CompareEstimates compares industry estimate with carrier estimate using AI
-func (s *AuditService) CompareEstimates(ctx context.Context, auditReportID string, userID string, orgID string) error {
-	// 1. Get audit report by ID and verify ownership via claim -> property -> org
-	auditReport, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
-	if err != nil {
-		return err
-	}
-
-	// 2. Verify industry estimate exists
-	if auditReport.GeneratedEstimate == nil || *auditReport.GeneratedEstimate == "" {
-		return fmt.Errorf("industry estimate not generated yet")
-	}
-
-	// 3. Get carrier estimate from carrier_estimate (via claim_id)
-	carrierEstimate, err := s.getCarrierEstimate(ctx, auditReport.ClaimID)
-	if err != nil {
-		return err
-	}
-
-	// 4. Verify carrier estimate is parsed
-	if carrierEstimate.ParsedData == nil || *carrierEstimate.ParsedData == "" {
-		return fmt.Errorf("carrier estimate not parsed yet")
-	}
-
-	// 5. Build comparison prompt with both estimates
-	prompt := s.buildComparisonPrompt(*auditReport.GeneratedEstimate, *carrierEstimate.ParsedData)
-
-	// 6. Call LLM to generate comparison analysis
-	messages := []llm.Message{
-		{
-			Role: "system",
-			Content: `You are an expert insurance claim auditor.
-Your task is to compare industry-standard estimates with carrier estimates and identify discrepancies.
-Always respond with valid JSON only, no additional text or explanations.`,
-		},
-		{
-			Role:    "user",
-			Content: prompt,
-		},
-	}
-
-	response, err := s.llmClient.Chat(ctx, messages, 0.2, 3000)
-	if err != nil {
-		return fmt.Errorf("LLM API call failed: %w", err)
-	}
-
-	if len(response.Choices) == 0 {
-		return fmt.Errorf("LLM returned no choices")
-	}
-
-	comparisonJSON := extractJSON(response.Choices[0].Message.Content)
-
-	// 7. Parse LLM response (JSON with discrepancies, justifications)
-	var comparisonData map[string]interface{}
-	if err := json.Unmarshal([]byte(comparisonJSON), &comparisonData); err != nil {
-		return fmt.Errorf("invalid JSON response from LLM: %w", err)
-	}
-
-	// 8. Calculate totals from the comparison response
-	totals, err := s.extractTotals(comparisonData)
-	if err != nil {
-		return fmt.Errorf("failed to extract totals: %w", err)
-	}
-
-	// 9. Update audit_report with comparison_data and totals
-	err = s.updateAuditReportWithComparison(
-		ctx,
-		auditReportID,
-		comparisonJSON,
-		totals.industryTotal,
-		totals.carrierTotal,
-		totals.delta,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to update audit report: %w", err)
-	}
-
-	// 10. Log API usage
-	err = s.logAPIUsage(ctx, orgID, response)
-	if err != nil {
-		// Log the error but don't fail the request
-		log.Printf("Warning: failed to log API usage: %v", err)
-	}
-
-	return nil
-}
-
-// buildComparisonPrompt creates a prompt for comparing industry and carrier estimates
-func (s *AuditService) buildComparisonPrompt(industryEstimate, carrierEstimate string) string {
-	var builder strings.Builder
-
-	builder.WriteString("Compare these two estimates and identify discrepancies:\n\n")
-	builder.WriteString("INDUSTRY ESTIMATE (from contractor scope):\n")
-	builder.WriteString(industryEstimate)
-	builder.WriteString("\n\n")
-	builder.WriteString("CARRIER ESTIMATE (from insurance company):\n")
-	builder.WriteString(carrierEstimate)
-	builder.WriteString("\n\n")
-	builder.WriteString("For each discrepancy, provide:\n")
-	builder.WriteString("- Item description\n")
-	builder.WriteString("- Industry price vs Carrier price\n")
-	builder.WriteString("- Delta amount\n")
-	builder.WriteString("- Justification (why industry price is correct)\n\n")
-	builder.WriteString("Return JSON:\n")
-	builder.WriteString("{\n")
-	builder.WriteString("  \"discrepancies\": [\n")
-	builder.WriteString("    {\n")
-	builder.WriteString("      \"item\": \"description\",\n")
-	builder.WriteString("      \"industry_price\": X.XX,\n")
-	builder.WriteString("      \"carrier_price\": X.XX,\n")
-	builder.WriteString("      \"delta\": X.XX,\n")
-	builder.WriteString("      \"justification\": \"detailed explanation\"\n")
-	builder.WriteString("    }\n")
-	builder.WriteString("  ],\n")
-	builder.WriteString("  \"summary\": {\n")
-	builder.WriteString("    \"total_industry\": X.XX,\n")
-	builder.WriteString("    \"total_carrier\": X.XX,\n")
-	builder.WriteString("    \"total_delta\": X.XX\n")
-	builder.WriteString("  }\n")
-	builder.WriteString("}\n")
-
-	return builder.String()
-}
-
-type comparisonTotals struct {
-	industryTotal float64
-	carrierTotal  float64
-	delta         float64
-}
-
-// extractTotals extracts the total amounts from the comparison data
-func (s *AuditService) extractTotals(data map[string]interface{}) (*comparisonTotals, error) {
-	summary, ok := data["summary"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("missing or invalid summary field")
-	}
-
-	industryTotal, ok := summary["total_industry"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("missing or invalid total_industry field")
-	}
-
-	carrierTotal, ok := summary["total_carrier"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("missing or invalid total_carrier field")
-	}
-
-	delta, ok := summary["total_delta"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("missing or invalid total_delta field")
-	}
-
-	return &comparisonTotals{
-		industryTotal: industryTotal,
-		carrierTotal:  carrierTotal,
-		delta:         delta,
-	}, nil
-}
-
 // GetAuditReportByClaimID retrieves the audit report for a claim with ownership verification
 func (s *AuditService) GetAuditReportByClaimID(ctx context.Context, claimID, orgID string) (*models.AuditReport, error) {
 	query := `
 		SELECT ar.id, ar.claim_id, ar.scope_sheet_id, ar.carrier_estimate_id,
 		       ar.generated_estimate, ar.comparison_data, ar.total_contractor_estimate,
 		       ar.total_carrier_estimate, ar.total_delta, ar.status, ar.error_message,
-		       ar.created_by_user_id, ar.created_at, ar.updated_at
+		       ar.created_by_user_id, ar.created_at, ar.updated_at, ar.viability_analysis,
+		       ar.pm_brain_analysis, ar.dispute_letter
 		FROM audit_reports ar
 		INNER JOIN claims c ON ar.claim_id = c.id
 		INNER JOIN properties p ON c.property_id = p.id
@@ -384,6 +226,9 @@ func (s *AuditService) GetAuditReportByClaimID(ctx context.Context, claimID, org
 		&report.CreatedByUserID,
 		&report.CreatedAt,
 		&report.UpdatedAt,
+		&report.ViabilityAnalysis,
+		&report.PMBrainAnalysis,
+		&report.DisputeLetter,
 	)
 
 	if err == sql.ErrNoRows {
@@ -402,7 +247,8 @@ func (s *AuditService) getAuditReportWithOwnershipCheck(ctx context.Context, aud
 		SELECT ar.id, ar.claim_id, ar.scope_sheet_id, ar.carrier_estimate_id,
 		       ar.generated_estimate, ar.comparison_data, ar.total_contractor_estimate,
 		       ar.total_carrier_estimate, ar.total_delta, ar.status, ar.error_message,
-		       ar.created_by_user_id, ar.created_at, ar.updated_at
+		       ar.created_by_user_id, ar.created_at, ar.updated_at, ar.viability_analysis,
+		       ar.pm_brain_analysis, ar.dispute_letter
 		FROM audit_reports ar
 		INNER JOIN claims c ON ar.claim_id = c.id
 		INNER JOIN properties p ON c.property_id = p.id
@@ -425,6 +271,9 @@ func (s *AuditService) getAuditReportWithOwnershipCheck(ctx context.Context, aud
 		&report.CreatedByUserID,
 		&report.CreatedAt,
 		&report.UpdatedAt,
+		&report.ViabilityAnalysis,
+		&report.PMBrainAnalysis,
+		&report.DisputeLetter,
 	)
 
 	if err == sql.ErrNoRows {
@@ -474,329 +323,6 @@ func (s *AuditService) getCarrierEstimate(ctx context.Context, claimID string) (
 	return &estimate, nil
 }
 
-// updateAuditReportWithComparison updates the audit report with comparison results
-func (s *AuditService) updateAuditReportWithComparison(
-	ctx context.Context,
-	reportID string,
-	comparisonJSON string,
-	industryTotal float64,
-	carrierTotal float64,
-	delta float64,
-) error {
-	query := `
-		UPDATE audit_reports
-		SET comparison_data = $1,
-		    total_contractor_estimate = $2,
-		    total_carrier_estimate = $3,
-		    total_delta = $4,
-		    status = $5,
-		    updated_at = $6
-		WHERE id = $7
-	`
-
-	now := time.Now()
-
-	_, err := s.db.ExecContext(
-		ctx,
-		query,
-		comparisonJSON,
-		industryTotal,
-		carrierTotal,
-		delta,
-		models.AuditStatusCompleted,
-		now,
-		reportID,
-	)
-
-	if err != nil {
-		return fmt.Errorf("failed to update audit report: %w", err)
-	}
-
-	return nil
-}
-
-// GenerateRebuttal generates a professional rebuttal letter based on comparison data
-func (s *AuditService) GenerateRebuttal(ctx context.Context, auditReportID string, userID string, orgID string) (string, error) {
-	// 1. Get audit report by ID and verify ownership
-	auditReport, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
-	if err != nil {
-		return "", err
-	}
-
-	// 2. Validate comparison_data exists
-	if auditReport.ComparisonData == nil || *auditReport.ComparisonData == "" {
-		return "", fmt.Errorf("comparison data not available")
-	}
-
-	// 3. Parse comparison data
-	var comparisonData map[string]interface{}
-	if err := json.Unmarshal([]byte(*auditReport.ComparisonData), &comparisonData); err != nil {
-		return "", fmt.Errorf("failed to parse comparison data: %w", err)
-	}
-
-	// 4. Get property and policy info for context
-	propertyInfo, policyInfo, claimInfo, err := s.getClaimContext(ctx, auditReport.ClaimID)
-	if err != nil {
-		return "", fmt.Errorf("failed to get claim context: %w", err)
-	}
-
-	// 5. Build rebuttal prompt with comparison data
-	prompt := s.buildRebuttalPrompt(propertyInfo, policyInfo, claimInfo, comparisonData, auditReport)
-
-	// 6. Call LLM to generate professional letter
-	messages := []llm.Message{
-		{
-			Role: "system",
-			Content: `You are a professional insurance claim specialist writing formal rebuttal letters.
-Your task is to create well-structured, professional business letters that present discrepancies
-between carrier estimates and industry-standard pricing with clear justification.
-The tone should be professional, factual, and respectful.`,
-		},
-		{
-			Role:    "user",
-			Content: prompt,
-		},
-	}
-
-	response, err := s.llmClient.Chat(ctx, messages, 0.3, 2000)
-	if err != nil {
-		return "", fmt.Errorf("LLM API call failed: %w", err)
-	}
-
-	if len(response.Choices) == 0 {
-		return "", fmt.Errorf("LLM returned no choices")
-	}
-
-	rebuttalContent := response.Choices[0].Message.Content
-
-	// 7. Save to rebuttals table
-	rebuttalID, err := s.saveRebuttal(ctx, auditReportID, rebuttalContent)
-	if err != nil {
-		return "", fmt.Errorf("failed to save rebuttal: %w", err)
-	}
-
-	// 8. Set audit_report status to "completed" if not already
-	if auditReport.Status != models.AuditStatusCompleted {
-		err = s.updateAuditReportStatus(ctx, auditReportID, models.AuditStatusCompleted)
-		if err != nil {
-			// Log but don't fail - the rebuttal was created successfully
-			log.Printf("Warning: failed to update audit report status: %v", err)
-		}
-	}
-
-	// 9. Log API usage
-	err = s.logAPIUsage(ctx, orgID, response)
-	if err != nil {
-		// Log the error but don't fail the request
-		log.Printf("Warning: failed to log API usage: %v", err)
-	}
-
-	return rebuttalID, nil
-}
-
-// getClaimContext retrieves property, policy, and claim information for the rebuttal letter
-func (s *AuditService) getClaimContext(ctx context.Context, claimID string) (propertyInfo map[string]interface{}, policyInfo map[string]interface{}, claimInfo map[string]interface{}, err error) {
-	query := `
-		SELECT
-			p.legal_address,
-			pol.policy_number,
-			pol.carrier_name,
-			c.claim_number,
-			c.incident_date
-		FROM claims c
-		INNER JOIN properties p ON c.property_id = p.id
-		INNER JOIN policies pol ON c.policy_id = pol.id
-		WHERE c.id = $1
-	`
-
-	var address, carrierName string
-	var policyNumber, claimNumber *string
-	var incidentDate time.Time
-
-	err = s.db.QueryRowContext(ctx, query, claimID).Scan(
-		&address,
-		&policyNumber,
-		&carrierName,
-		&claimNumber,
-		&incidentDate,
-	)
-
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to get claim context: %w", err)
-	}
-
-	propertyInfo = map[string]interface{}{
-		"address": address,
-	}
-
-	policyInfo = map[string]interface{}{
-		"policy_number": policyNumber,
-		"carrier_name":  carrierName,
-	}
-
-	claimInfo = map[string]interface{}{
-		"claim_number":  claimNumber,
-		"incident_date": incidentDate.Format("January 2, 2006"),
-	}
-
-	return propertyInfo, policyInfo, claimInfo, nil
-}
-
-// buildRebuttalPrompt creates a prompt for generating a rebuttal letter
-func (s *AuditService) buildRebuttalPrompt(propertyInfo, policyInfo, claimInfo map[string]interface{}, comparisonData map[string]interface{}, auditReport *models.AuditReport) string {
-	var builder strings.Builder
-
-	builder.WriteString("Generate a professional rebuttal letter for a property insurance claim.\n\n")
-
-	// Property details
-	builder.WriteString("PROPERTY DETAILS:\n")
-	builder.WriteString(fmt.Sprintf("- Address: %v\n", propertyInfo["address"]))
-	if policyNumber, ok := policyInfo["policy_number"].(*string); ok && policyNumber != nil {
-		builder.WriteString(fmt.Sprintf("- Policy Number: %s\n", *policyNumber))
-	}
-	builder.WriteString(fmt.Sprintf("- Carrier: %v\n", policyInfo["carrier_name"]))
-	if claimNumber, ok := claimInfo["claim_number"].(*string); ok && claimNumber != nil {
-		builder.WriteString(fmt.Sprintf("- Claim Number: %s\n", *claimNumber))
-	}
-	builder.WriteString(fmt.Sprintf("- Incident Date: %v\n", claimInfo["incident_date"]))
-	builder.WriteString("\n")
-
-	// Comparison summary
-	builder.WriteString("COMPARISON SUMMARY:\n")
-	if summary, ok := comparisonData["summary"].(map[string]interface{}); ok {
-		if industryTotal, ok := summary["total_industry"].(float64); ok {
-			builder.WriteString(fmt.Sprintf("- Industry Standard Total: $%.2f\n", industryTotal))
-		}
-		if carrierTotal, ok := summary["total_carrier"].(float64); ok {
-			builder.WriteString(fmt.Sprintf("- Carrier Estimate Total: $%.2f\n", carrierTotal))
-		}
-		if delta, ok := summary["total_delta"].(float64); ok {
-			builder.WriteString(fmt.Sprintf("- Delta: $%.2f\n", delta))
-		}
-	} else if auditReport.TotalContractorEstimate != nil && auditReport.TotalCarrierEstimate != nil {
-		builder.WriteString(fmt.Sprintf("- Industry Standard Total: $%.2f\n", *auditReport.TotalContractorEstimate))
-		builder.WriteString(fmt.Sprintf("- Carrier Estimate Total: $%.2f\n", *auditReport.TotalCarrierEstimate))
-		if auditReport.TotalDelta != nil {
-			builder.WriteString(fmt.Sprintf("- Delta: $%.2f\n", *auditReport.TotalDelta))
-		}
-	}
-	builder.WriteString("\n")
-
-	// Discrepancies
-	builder.WriteString("DISCREPANCIES:\n")
-	if discrepancies, ok := comparisonData["discrepancies"].([]interface{}); ok {
-		for i, d := range discrepancies {
-			if disc, ok := d.(map[string]interface{}); ok {
-				builder.WriteString(fmt.Sprintf("\n%d. Item: %v\n", i+1, disc["item"]))
-				builder.WriteString(fmt.Sprintf("   Industry Price: $%.2f\n", disc["industry_price"]))
-				builder.WriteString(fmt.Sprintf("   Carrier Price: $%.2f\n", disc["carrier_price"]))
-				builder.WriteString(fmt.Sprintf("   Delta: $%.2f\n", disc["delta"]))
-				builder.WriteString(fmt.Sprintf("   Justification: %v\n", disc["justification"]))
-			}
-		}
-	}
-	builder.WriteString("\n")
-
-	// Instructions for the letter
-	builder.WriteString("Create a formal business letter addressed to the insurance adjuster that:\n")
-	builder.WriteString("1. References the claim professionally with property address and claim number\n")
-	builder.WriteString("2. States the purpose clearly (requesting reconsideration of the estimate)\n")
-	builder.WriteString("3. Presents each discrepancy with industry justification\n")
-	builder.WriteString("4. Maintains a professional and respectful tone throughout\n")
-	builder.WriteString("5. Includes specific line items and pricing differences\n")
-	builder.WriteString("6. Requests a meeting or further discussion\n")
-	builder.WriteString("7. Thanks them for their consideration\n\n")
-
-	builder.WriteString("Format as a complete business letter with:\n")
-	builder.WriteString("- Date (use today's date)\n")
-	builder.WriteString("- Salutation (To: Insurance Adjuster)\n")
-	builder.WriteString("- Subject line with claim reference\n")
-	builder.WriteString("- Body paragraphs\n")
-	builder.WriteString("- Professional closing\n\n")
-
-	builder.WriteString("Do not include placeholder addresses, signatures, or company names in the signature block.\n")
-	builder.WriteString("Write the letter ready to be reviewed and signed by the property manager.\n")
-
-	return builder.String()
-}
-
-// saveRebuttal saves the generated rebuttal to the database
-func (s *AuditService) saveRebuttal(ctx context.Context, auditReportID, content string) (string, error) {
-	rebuttalID := uuid.New().String()
-	now := time.Now()
-
-	query := `
-		INSERT INTO rebuttals (
-			id, audit_report_id, content, created_at, updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id
-	`
-
-	var returnedID string
-	err := s.db.QueryRowContext(
-		ctx,
-		query,
-		rebuttalID,
-		auditReportID,
-		content,
-		now,
-		now,
-	).Scan(&returnedID)
-
-	if err != nil {
-		return "", fmt.Errorf("failed to insert rebuttal: %w", err)
-	}
-
-	return returnedID, nil
-}
-
-// updateAuditReportStatus updates the status of an audit report
-func (s *AuditService) updateAuditReportStatus(ctx context.Context, reportID, status string) error {
-	query := `
-		UPDATE audit_reports
-		SET status = $1, updated_at = $2
-		WHERE id = $3
-	`
-
-	_, err := s.db.ExecContext(ctx, query, status, time.Now(), reportID)
-	if err != nil {
-		return fmt.Errorf("failed to update audit report status: %w", err)
-	}
-
-	return nil
-}
-
-// GetRebuttal retrieves a rebuttal by ID with ownership verification
-func (s *AuditService) GetRebuttal(ctx context.Context, rebuttalID string, orgID string) (*models.Rebuttal, error) {
-	query := `
-		SELECT r.id, r.audit_report_id, r.content, r.created_at, r.updated_at
-		FROM rebuttals r
-		INNER JOIN audit_reports ar ON r.audit_report_id = ar.id
-		INNER JOIN claims c ON ar.claim_id = c.id
-		INNER JOIN properties p ON c.property_id = p.id
-		WHERE r.id = $1 AND p.organization_id = $2
-	`
-
-	var rebuttal models.Rebuttal
-	err := s.db.QueryRowContext(ctx, query, rebuttalID, orgID).Scan(
-		&rebuttal.ID,
-		&rebuttal.AuditReportID,
-		&rebuttal.Content,
-		&rebuttal.CreatedAt,
-		&rebuttal.UpdatedAt,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("rebuttal not found")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get rebuttal: %w", err)
-	}
-
-	return &rebuttal, nil
-}
-
 // logAPIUsage records API usage metrics for billing and monitoring
 func (s *AuditService) logAPIUsage(ctx context.Context, orgID string, response *llm.ChatResponse) error {
 	// Calculate estimated cost
@@ -837,6 +363,528 @@ func (s *AuditService) logAPIUsage(ctx context.Context, orgID string, response *
 	}
 
 	return nil
+}
+
+// ─── PM BRAIN TYPES ─────────────────────────────────────────────────────────
+
+// PMBrainDeltaDriver represents a line item with a pricing gap between estimates.
+type PMBrainDeltaDriver struct {
+	LineItem        string  `json:"line_item"`
+	ContractorPrice float64 `json:"contractor_price"`
+	CarrierPrice    float64 `json:"carrier_price"`
+	Delta           float64 `json:"delta"`
+	Reason          string  `json:"reason"`
+}
+
+// PMBrainCoverageDispute represents an item the carrier denied or partially paid.
+type PMBrainCoverageDispute struct {
+	Item               string `json:"item"`
+	Status             string `json:"status"` // "denied" | "partial"
+	ContractorPosition string `json:"contractor_position"`
+}
+
+// PMBrainAnalysis is the structured verdict returned by the PM Brain Strategy Engine.
+type PMBrainAnalysis struct {
+	Status                  string                   `json:"status"` // CLOSE | DISPUTE_OFFER | LEGAL_REVIEW | NEED_DOCS
+	PlainEnglishSummary     string                   `json:"plain_english_summary"`
+	TotalContractorEstimate float64                  `json:"total_contractor_estimate"`
+	TotalCarrierEstimate    float64                  `json:"total_carrier_estimate"`
+	TotalDelta              float64                  `json:"total_delta"`
+	TopDeltaDrivers         []PMBrainDeltaDriver     `json:"top_delta_drivers"`
+	CoverageDisputes        []PMBrainCoverageDispute `json:"coverage_disputes"`
+	RequiredNextSteps       []string                 `json:"required_next_steps"`
+	LegalThresholdMet       bool                     `json:"legal_threshold_met"`
+}
+
+// RunPMBrainAnalysis runs the Post-Adjudication Strategy Engine on an audit report,
+// comparing the generated estimate against the carrier's offer with full policy context.
+func (s *AuditService) RunPMBrainAnalysis(ctx context.Context, auditReportID, userID, orgID string) (*PMBrainAnalysis, error) {
+	// 1. Fetch audit report (verifies org ownership)
+	report, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if report.GeneratedEstimate == nil || *report.GeneratedEstimate == "" {
+		return nil, fmt.Errorf("industry estimate not generated yet")
+	}
+
+	// 2. Fetch carrier estimate parsed data
+	carrierEstimate, err := s.getCarrierEstimate(ctx, report.ClaimID)
+	if err != nil {
+		return nil, fmt.Errorf("carrier estimate not found — please upload and parse it first")
+	}
+	if carrierEstimate.ParsedData == nil || *carrierEstimate.ParsedData == "" {
+		return nil, fmt.Errorf("carrier estimate not parsed yet")
+	}
+
+	// 3. Fetch policy snapshot (carrier name, policy number, deductible, exclusions)
+	type policySnapshot struct {
+		address       string
+		policyNumber  *string
+		carrierName   string
+		claimNumber   *string
+		incidentDate  time.Time
+		deductible    float64
+		exclusions    string
+		lossType      string
+	}
+	var snap policySnapshot
+	snapQuery := `
+		SELECT
+			p.legal_address,
+			ip.policy_number,
+			ip.carrier_name,
+			c.claim_number,
+			c.incident_date,
+			ip.deductible_value,
+			COALESCE(ip.exclusions, ''),
+			c.loss_type
+		FROM claims c
+		INNER JOIN properties p ON c.property_id = p.id
+		INNER JOIN insurance_policies ip ON c.policy_id = ip.id
+		WHERE c.id = $1
+	`
+	err = s.db.QueryRowContext(ctx, snapQuery, report.ClaimID).Scan(
+		&snap.address,
+		&snap.policyNumber,
+		&snap.carrierName,
+		&snap.claimNumber,
+		&snap.incidentDate,
+		&snap.deductible,
+		&snap.exclusions,
+		&snap.lossType,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch policy context: %w", err)
+	}
+
+	// 4. Build prompt and call LLM
+	prompt := s.buildPMBrainPrompt(*report.GeneratedEstimate, *carrierEstimate.ParsedData, snap.policyNumber, snap.carrierName, snap.claimNumber, snap.incidentDate, snap.deductible, snap.exclusions, snap.lossType)
+
+	messages := []llm.Message{
+		{
+			Role: "system",
+			Content: `You are an expert insurance claim analyst for a property management company.
+Your job is to compare a contractor's industry-standard estimate with a carrier's insurance offer
+and recommend the best course of action for the property manager.
+Always respond with valid JSON only, no markdown, no additional text.`,
+		},
+		{
+			Role:    "user",
+			Content: prompt,
+		},
+	}
+
+	response, err := s.llmClient.Chat(ctx, messages, 0.2, 4096)
+	if err != nil {
+		return nil, fmt.Errorf("LLM API call failed: %w", err)
+	}
+	if len(response.Choices) == 0 {
+		return nil, fmt.Errorf("LLM returned no choices")
+	}
+
+	// 5. Parse and validate JSON response
+	content := extractJSON(response.Choices[0].Message.Content)
+	var analysis PMBrainAnalysis
+	if err := json.Unmarshal([]byte(content), &analysis); err != nil {
+		return nil, fmt.Errorf("the AI returned a malformed analysis — please try again")
+	}
+	validStatuses := map[string]bool{"CLOSE": true, "DISPUTE_OFFER": true, "LEGAL_REVIEW": true, "NEED_DOCS": true}
+	if !validStatuses[analysis.Status] {
+		return nil, fmt.Errorf("the AI returned an invalid status '%s' — please try again", analysis.Status)
+	}
+
+	// 6. Save to DB
+	analysisJSON, _ := json.Marshal(analysis)
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE audit_reports SET pm_brain_analysis = $1, updated_at = NOW() WHERE id = $2`,
+		string(analysisJSON), auditReportID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save PM Brain analysis: %w", err)
+	}
+
+	// 7. Log API usage
+	_ = s.logAPIUsage(ctx, orgID, response)
+
+	return &analysis, nil
+}
+
+// buildPMBrainPrompt constructs the full PM Brain prompt with all three data sources.
+func (s *AuditService) buildPMBrainPrompt(
+	generatedEstimate, carrierParsedData string,
+	policyNumber *string, carrierName string,
+	claimNumber *string, incidentDate time.Time,
+	deductible float64, exclusions, lossType string,
+) string {
+	var b strings.Builder
+
+	b.WriteString("You are analyzing an insurance claim for a property management company.\n\n")
+
+	b.WriteString("POLICY SNAPSHOT:\n")
+	b.WriteString(fmt.Sprintf("- Carrier: %s\n", carrierName))
+	if policyNumber != nil {
+		b.WriteString(fmt.Sprintf("- Policy Number: %s\n", *policyNumber))
+	}
+	if claimNumber != nil {
+		b.WriteString(fmt.Sprintf("- Claim Number: %s\n", *claimNumber))
+	}
+	b.WriteString(fmt.Sprintf("- Loss Type: %s\n", lossType))
+	b.WriteString(fmt.Sprintf("- Incident Date: %s\n", incidentDate.Format("January 2, 2006")))
+	b.WriteString(fmt.Sprintf("- Deductible: $%.2f\n", deductible))
+	if exclusions != "" {
+		b.WriteString(fmt.Sprintf("- Policy Exclusions: %s\n", exclusions))
+	} else {
+		b.WriteString("- Policy Exclusions: None listed\n")
+	}
+	b.WriteString("\n")
+
+	b.WriteString("CLAIMCOACH ESTIMATE (industry-standard, from contractor scope sheet):\n")
+	b.WriteString(generatedEstimate)
+	b.WriteString("\n\n")
+
+	b.WriteString("CARRIER'S OFFER (extracted from their PDF):\n")
+	b.WriteString(carrierParsedData)
+	b.WriteString("\n\n")
+
+	b.WriteString(`Analyze both estimates and return a JSON object with this EXACT schema:
+{
+  "status": "CLOSE" | "DISPUTE_OFFER" | "LEGAL_REVIEW" | "NEED_DOCS",
+  "plain_english_summary": "<2-3 sentences explaining the situation in plain English for a non-expert property manager>",
+  "total_contractor_estimate": <number>,
+  "total_carrier_estimate": <number>,
+  "total_delta": <contractor_total minus carrier_total>,
+  "top_delta_drivers": [
+    {
+      "line_item": "<item name>",
+      "contractor_price": <number>,
+      "carrier_price": <number>,
+      "delta": <contractor_price minus carrier_price>,
+      "reason": "<why this gap exists>"
+    }
+  ],
+  "coverage_disputes": [
+    {
+      "item": "<item name>",
+      "status": "denied" | "partial",
+      "contractor_position": "<what the contractor says should be covered>"
+    }
+  ],
+  "required_next_steps": ["<actionable step 1>", "<actionable step 2>"],
+  "legal_threshold_met": <true | false>
+}
+
+STATUS SELECTION RULES (apply exactly):
+- CLOSE: Carrier paid within 10%% of contractor estimate OR carrier paid more. No action needed.
+- DISPUTE_OFFER: Carrier underpaid by more than 10%% but the gap is less than $15,000. Send a dispute letter combining missing scope items and underpriced line items.
+- LEGAL_REVIEW: Gap is $15,000 or more, OR carrier explicitly denied coverage for major items. Escalate.
+- NEED_DOCS: The carrier PDF data is empty, garbled, or clearly not a line-item estimate. Cannot analyze.
+
+Include the top 3-5 delta drivers sorted by dollar gap descending.
+If no coverage items were denied, return an empty array for coverage_disputes.
+Return ONLY the JSON object, no markdown, no explanation.`)
+
+	return b.String()
+}
+
+// GenerateDisputeLetter writes a formal Dispute/Supplement Request Letter using the PM Brain analysis.
+// Only valid when pm_brain_analysis status is DISPUTE_OFFER.
+func (s *AuditService) GenerateDisputeLetter(ctx context.Context, auditReportID, userID, orgID string) (string, error) {
+	// 1. Fetch audit report
+	report, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
+	if err != nil {
+		return "", err
+	}
+	if report.PMBrainAnalysis == nil {
+		return "", fmt.Errorf("PM Brain analysis must be run first")
+	}
+
+	// 2. Parse PM Brain analysis
+	var analysis PMBrainAnalysis
+	if err := json.Unmarshal([]byte(*report.PMBrainAnalysis), &analysis); err != nil {
+		return "", fmt.Errorf("invalid PM Brain analysis data")
+	}
+	if analysis.Status != "DISPUTE_OFFER" {
+		return "", fmt.Errorf("dispute letter only available when status is DISPUTE_OFFER")
+	}
+
+	// 3. Fetch claim context for letter header
+	var address, carrierName string
+	var policyNumber, claimNumber *string
+	var incidentDate time.Time
+	contextQuery := `
+		SELECT
+			p.legal_address,
+			ip.carrier_name,
+			ip.policy_number,
+			c.claim_number,
+			c.incident_date
+		FROM claims c
+		INNER JOIN properties p ON c.property_id = p.id
+		INNER JOIN insurance_policies ip ON c.policy_id = ip.id
+		WHERE c.id = $1
+	`
+	err = s.db.QueryRowContext(ctx, contextQuery, report.ClaimID).Scan(
+		&address, &carrierName, &policyNumber, &claimNumber, &incidentDate,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch claim context: %w", err)
+	}
+
+	// 4. Build letter prompt
+	analysisJSON, _ := json.Marshal(analysis)
+	var b strings.Builder
+	b.WriteString("Write a formal Dispute / Supplement Request Letter for an insurance claim.\n\n")
+	b.WriteString("CLAIM DETAILS:\n")
+	b.WriteString(fmt.Sprintf("- Property Address: %s\n", address))
+	b.WriteString(fmt.Sprintf("- Insurance Carrier: %s\n", carrierName))
+	if policyNumber != nil {
+		b.WriteString(fmt.Sprintf("- Policy Number: %s\n", *policyNumber))
+	}
+	if claimNumber != nil {
+		b.WriteString(fmt.Sprintf("- Claim Number: %s\n", *claimNumber))
+	}
+	b.WriteString(fmt.Sprintf("- Incident Date: %s\n", incidentDate.Format("January 2, 2006")))
+	b.WriteString(fmt.Sprintf("- Today's Date: %s\n\n", time.Now().Format("January 2, 2006")))
+	b.WriteString("PM BRAIN ANALYSIS (use this data for the letter):\n")
+	b.WriteString(string(analysisJSON))
+	b.WriteString("\n\n")
+	b.WriteString(`Write a professional business letter that:
+1. Opens with a formal salutation to the insurance carrier's claims department
+2. References the claim number and policy number in the subject line
+3. States clearly that the property manager is disputing the carrier's estimate
+4. For each top_delta_driver: explains the pricing gap with justification
+5. For any coverage_disputes (denied/partial): argues why those items should be covered with supporting reasoning
+6. States the total additional funds requested (total_delta)
+7. Lists the required_next_steps as a formal request to the carrier
+8. Closes professionally, requesting a written response within 10 business days
+9. Uses plain English — no jargon. Firm but professional and respectful tone.
+
+Format as plain text (no markdown). Include today's date at the top.
+Return ONLY the letter text, no preamble or explanation.`)
+
+	// 5. Call LLM
+	messages := []llm.Message{
+		{
+			Role:    "system",
+			Content: "You are a professional insurance claim specialist. Write formal, persuasive dispute letters. Return only the letter text, no markdown, no preamble.",
+		},
+		{
+			Role:    "user",
+			Content: b.String(),
+		},
+	}
+
+	response, err := s.llmClient.Chat(ctx, messages, 0.3, 2048)
+	if err != nil {
+		return "", fmt.Errorf("LLM API call failed: %w", err)
+	}
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	letterText := response.Choices[0].Message.Content
+
+	// 6. Save to DB
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE audit_reports SET dispute_letter = $1, updated_at = NOW() WHERE id = $2`,
+		letterText, auditReportID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to save dispute letter: %w", err)
+	}
+
+	// 7. Log API usage
+	_ = s.logAPIUsage(ctx, orgID, response)
+
+	return letterText, nil
+}
+
+// ViabilityAnalysis is the structured result returned by the PM Decision Engine.
+type ViabilityAnalysis struct {
+	Recommendation       string   `json:"recommendation"`
+	NetEstimatedRecovery float64  `json:"net_estimated_recovery"`
+	CoverageScore        int      `json:"coverage_score"`
+	EconomicsScore       int      `json:"economics_score"`
+	TopRisks             []string `json:"top_risks"`
+	RequiredNextSteps    []string `json:"required_next_steps"`
+	PlainEnglishSummary  string   `json:"plain_english_summary"`
+}
+
+// viabilityInputs holds the raw claim + policy facts fed into the Decision Engine.
+type viabilityInputs struct {
+	auditReportID   string
+	lossType        string
+	incidentDate    time.Time
+	totalRCV        float64
+	deductibleValue float64
+	exclusions      string
+}
+
+// AnalyzeClaimViability runs the PM Decision Engine to produce a 3-tier recommendation
+// on whether the claim is worth pursuing, based on economics and coverage risk scoring.
+func (s *AuditService) AnalyzeClaimViability(ctx context.Context, claimID, orgID string) (*ViabilityAnalysis, error) {
+	// 1. Gather inputs
+	inputs, err := s.fetchViabilityInputs(ctx, claimID, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Build the PM Brain prompt
+	userPrompt := s.buildViabilityPrompt(inputs)
+
+	// 3. Call the LLM — low temperature for deterministic scoring
+	messages := []llm.Message{
+		{
+			Role: "system",
+			Content: `You are an expert Public Adjuster and Property Manager with deep knowledge of insurance claim viability assessment.
+Your task is to evaluate claim facts using exact scoring rules and output a structured JSON analysis.
+Always respond with valid JSON only, no additional text or explanations.`,
+		},
+		{
+			Role:    "user",
+			Content: userPrompt,
+		},
+	}
+
+	response, err := s.llmClient.Chat(ctx, messages, 0.1, 1000)
+	if err != nil {
+		return nil, fmt.Errorf("LLM API call failed: %w", err)
+	}
+
+	if len(response.Choices) == 0 {
+		return nil, fmt.Errorf("LLM returned no choices")
+	}
+
+	// 4. Parse the structured analysis
+	analysisJSON := extractJSON(response.Choices[0].Message.Content)
+	var analysis ViabilityAnalysis
+	if err := json.Unmarshal([]byte(analysisJSON), &analysis); err != nil {
+		return nil, fmt.Errorf("invalid JSON response from LLM: %w", err)
+	}
+
+	// 5. Persist the result so it survives page reloads
+	_, _ = s.db.ExecContext(ctx,
+		`UPDATE audit_reports SET viability_analysis = $1, updated_at = NOW() WHERE id = $2`,
+		analysisJSON, inputs.auditReportID,
+	)
+
+	return &analysis, nil
+}
+
+// fetchViabilityInputs gathers all data needed for the Decision Engine in two focused queries.
+func (s *AuditService) fetchViabilityInputs(ctx context.Context, claimID, orgID string) (*viabilityInputs, error) {
+	// Query claim facts and policy data, verifying org ownership via the property chain.
+	claimQuery := `
+		SELECT c.loss_type, c.incident_date, ip.deductible_value, COALESCE(ip.exclusions, '')
+		FROM claims c
+		INNER JOIN insurance_policies ip ON c.policy_id = ip.id
+		INNER JOIN properties p ON c.property_id = p.id
+		WHERE c.id = $1 AND p.organization_id = $2
+	`
+
+	var inputs viabilityInputs
+	err := s.db.QueryRowContext(ctx, claimQuery, claimID, orgID).Scan(
+		&inputs.lossType,
+		&inputs.incidentDate,
+		&inputs.deductibleValue,
+		&inputs.exclusions,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("claim not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch claim data: %w", err)
+	}
+
+	// Fetch the audit report ID and total RCV from the most recent generated estimate.
+	estimateQuery := `
+		SELECT id, generated_estimate
+		FROM audit_reports
+		WHERE claim_id = $1 AND generated_estimate IS NOT NULL
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	var estimateJSON string
+	err = s.db.QueryRowContext(ctx, estimateQuery, claimID).Scan(&inputs.auditReportID, &estimateJSON)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("no generated estimate found for claim %s — run industry estimate first", claimID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch estimate: %w", err)
+	}
+
+	// Extract the `total` field from the estimate JSON blob.
+	var estimateData map[string]interface{}
+	if err := json.Unmarshal([]byte(estimateJSON), &estimateData); err != nil {
+		return nil, fmt.Errorf("failed to parse estimate data: %w", err)
+	}
+	totalRCV, ok := estimateData["total"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("estimate is missing required 'total' field")
+	}
+	inputs.totalRCV = totalRCV
+
+	return &inputs, nil
+}
+
+// buildViabilityPrompt constructs the PM Brain prompt with claim inputs and explicit scoring rules.
+func (s *AuditService) buildViabilityPrompt(inputs *viabilityInputs) string {
+	var b strings.Builder
+
+	b.WriteString("Evaluate the following insurance claim and return a viability analysis.\n\n")
+
+	b.WriteString("CLAIM FACTS:\n")
+	b.WriteString(fmt.Sprintf("- Loss Type: %s\n", inputs.lossType))
+	b.WriteString(fmt.Sprintf("- Loss Date: %s\n", inputs.incidentDate.Format("January 2, 2006")))
+	b.WriteString(fmt.Sprintf("- Estimated RCV (Replacement Cost Value): $%.2f\n", inputs.totalRCV))
+	b.WriteString("\n")
+
+	b.WriteString("POLICY DETAILS:\n")
+	b.WriteString(fmt.Sprintf("- Deductible: $%.2f\n", inputs.deductibleValue))
+	if inputs.exclusions != "" {
+		b.WriteString(fmt.Sprintf("- Policy Exclusions: %s\n", inputs.exclusions))
+	} else {
+		b.WriteString("- Policy Exclusions: None listed\n")
+	}
+	b.WriteString("\n")
+
+	b.WriteString("SCORING RULES — apply these exactly:\n\n")
+
+	b.WriteString("A. ECONOMICS SCORE (0-100):\n")
+	b.WriteString("Calculate: net_recovery = Estimated RCV - Deductible\n")
+	b.WriteString("Assign score based on net_recovery:\n")
+	b.WriteString("  - net_recovery < $2,500             → Score: 15\n")
+	b.WriteString("  - $2,500 ≤ net_recovery ≤ $7,500   → Score: 35\n")
+	b.WriteString("  - $7,500 < net_recovery ≤ $20,000  → Score: 60\n")
+	b.WriteString("  - net_recovery > $20,000            → Score: 85\n\n")
+
+	b.WriteString("B. COVERAGE RISK SCORE (0-100):\n")
+	b.WriteString("Start at 100. Apply deductions based on your analysis:\n")
+	b.WriteString("  - If the Policy Exclusions EXPLICITLY exclude the Loss Type (e.g., loss is 'Water', exclusions say 'Flood'): Subtract 60\n")
+	b.WriteString("  - If the Loss Type is ambiguous or unclear relative to coverage: Subtract 20\n")
+	b.WriteString("  - If the Loss Type is Water (risk of repeated seepage clause): Subtract 30\n")
+	b.WriteString("  Note: Multiple deductions may apply. Minimum score is 0.\n\n")
+
+	b.WriteString("C. RECOMMENDATION — choose exactly one:\n")
+	b.WriteString("  - PURSUE:                 Coverage Score >= 70 AND Economics Score >= 50\n")
+	b.WriteString("  - PURSUE_WITH_CONDITIONS: Coverage Score 40-69 OR Economics Score 30-49\n")
+	b.WriteString("  - DO_NOT_PURSUE:          Coverage Score < 40 OR Economics Score < 30 OR net_recovery <= 0\n\n")
+
+	b.WriteString("RESPONSE FORMAT:\n")
+	b.WriteString("Return ONLY this JSON object, no other text:\n")
+	b.WriteString("{\n")
+	b.WriteString("  \"recommendation\": \"PURSUE | PURSUE_WITH_CONDITIONS | DO_NOT_PURSUE\",\n")
+	b.WriteString("  \"net_estimated_recovery\": <number>,\n")
+	b.WriteString("  \"coverage_score\": <integer 0-100>,\n")
+	b.WriteString("  \"economics_score\": <integer 0-100>,\n")
+	b.WriteString("  \"top_risks\": [\"<risk 1>\", \"<risk 2>\"],\n")
+	b.WriteString("  \"required_next_steps\": [\"<step 1 if conditions apply>\"],\n")
+	b.WriteString("  \"plain_english_summary\": \"<1-2 sentence plain English summary>\"\n")
+	b.WriteString("}\n")
+
+	return b.String()
 }
 
 // extractJSON strips markdown code fences and extracts the JSON object from an LLM response.

@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/claimcoach/backend/internal/models"
+	"github.com/claimcoach/backend/internal/services"
 	"github.com/gin-gonic/gin"
 )
 
@@ -12,9 +14,9 @@ import (
 type AuditServiceInterface interface {
 	GenerateIndustryEstimate(ctx context.Context, claimID, userID, orgID string) (string, error)
 	GetAuditReportByClaimID(ctx context.Context, claimID, orgID string) (*models.AuditReport, error)
-	CompareEstimates(ctx context.Context, auditReportID string, userID string, orgID string) error
-	GenerateRebuttal(ctx context.Context, auditReportID string, userID string, orgID string) (string, error)
-	GetRebuttal(ctx context.Context, rebuttalID string, orgID string) (*models.Rebuttal, error)
+	AnalyzeClaimViability(ctx context.Context, claimID, orgID string) (*services.ViabilityAnalysis, error)
+	RunPMBrainAnalysis(ctx context.Context, auditReportID, userID, orgID string) (*services.PMBrainAnalysis, error)
+	GenerateDisputeLetter(ctx context.Context, auditReportID, userID, orgID string) (string, error)
 }
 
 type AuditHandler struct {
@@ -97,133 +99,85 @@ func (h *AuditHandler) GetAuditReport(c *gin.Context) {
 	})
 }
 
-// CompareEstimates compares industry estimate with carrier estimate
-// POST /api/claims/:id/audit/:auditId/compare
-func (h *AuditHandler) CompareEstimates(c *gin.Context) {
+// RunPMBrain runs the Post-Adjudication Strategy Engine on an audit report.
+// POST /api/claims/:id/audit/:auditId/pm-brain
+func (h *AuditHandler) RunPMBrain(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
 	auditReportID := c.Param("auditId")
 
-	err := h.service.CompareEstimates(c.Request.Context(), auditReportID, user.ID, user.OrganizationID)
+	analysis, err := h.service.RunPMBrainAnalysis(c.Request.Context(), auditReportID, user.ID, user.OrganizationID)
 	if err != nil {
-		// Handle specific errors
-		if err.Error() == "audit report not found" {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"error":   "Audit report not found",
-			})
+		if strings.Contains(err.Error(), "audit report not found") {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Audit report not found"})
 			return
 		}
-		if err.Error() == "industry estimate not generated yet" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"error":   "Industry estimate not generated yet",
-			})
+		if strings.Contains(err.Error(), "not generated yet") || strings.Contains(err.Error(), "not parsed yet") || strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
-		if err.Error() == "carrier estimate not found" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"error":   "Carrier estimate not uploaded yet",
-			})
-			return
-		}
-		if err.Error() == "carrier estimate not parsed yet" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"error":   "Carrier estimate not parsed yet",
-			})
-			return
-		}
-
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error":   "Failed to compare estimates: " + err.Error(),
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to run PM Brain analysis: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Estimates compared successfully",
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": analysis})
 }
 
-// GenerateRebuttal generates a professional rebuttal letter
-// POST /api/claims/:id/audit/:auditId/rebuttal
-func (h *AuditHandler) GenerateRebuttal(c *gin.Context) {
+// GenerateDisputeLetter generates the formal dispute letter on demand.
+// POST /api/claims/:id/audit/:auditId/dispute-letter
+func (h *AuditHandler) GenerateDisputeLetter(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
 	auditReportID := c.Param("auditId")
 
-	rebuttalID, err := h.service.GenerateRebuttal(c.Request.Context(), auditReportID, user.ID, user.OrganizationID)
+	letter, err := h.service.GenerateDisputeLetter(c.Request.Context(), auditReportID, user.ID, user.OrganizationID)
 	if err != nil {
-		// Handle specific errors
-		if err.Error() == "audit report not found" {
+		if strings.Contains(err.Error(), "audit report not found") {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Audit report not found"})
+			return
+		}
+		if strings.Contains(err.Error(), "must be run first") || strings.Contains(err.Error(), "only available when") {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to generate dispute letter: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"letter": letter}})
+}
+
+// AnalyzeClaimViability runs the PM Decision Engine on a claim.
+// POST /api/claims/:id/audit/viability
+func (h *AuditHandler) AnalyzeClaimViability(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	claimID := c.Param("id")
+
+	analysis, err := h.service.AnalyzeClaimViability(c.Request.Context(), claimID, user.OrganizationID)
+	if err != nil {
+		if strings.Contains(err.Error(), "claim not found") {
 			c.JSON(http.StatusNotFound, gin.H{
 				"success": false,
-				"error":   "Audit report not found",
+				"error":   "Claim not found",
 			})
 			return
 		}
-		if err.Error() == "comparison data not available" {
+		if strings.Contains(err.Error(), "no generated estimate found") {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
-				"error":   "Comparison must be run before generating rebuttal",
+				"error":   "No estimate found. Generate the ClaimCoach estimate first.",
 			})
 			return
 		}
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error":   "Failed to generate rebuttal: " + err.Error(),
-		})
-		return
-	}
-
-	// Get the rebuttal content to return in response
-	rebuttal, err := h.service.GetRebuttal(c.Request.Context(), rebuttalID, user.OrganizationID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error":   "Failed to retrieve rebuttal content: " + err.Error(),
+			"error":   "Failed to analyze claim viability: " + err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data": gin.H{
-			"rebuttal_id": rebuttal.ID,
-			"content":     rebuttal.Content,
-			"created_at":  rebuttal.CreatedAt,
-		},
+		"data":    analysis,
 	})
 }
 
-// GetRebuttal retrieves a rebuttal by ID
-// GET /api/rebuttals/:id
-func (h *AuditHandler) GetRebuttal(c *gin.Context) {
-	user := c.MustGet("user").(models.User)
-	rebuttalID := c.Param("id")
-
-	rebuttal, err := h.service.GetRebuttal(c.Request.Context(), rebuttalID, user.OrganizationID)
-	if err != nil {
-		if err.Error() == "rebuttal not found" {
-			c.JSON(http.StatusNotFound, gin.H{
-				"success": false,
-				"error":   "Rebuttal not found",
-			})
-			return
-		}
-
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error":   "Failed to retrieve rebuttal: " + err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    rebuttal,
-	})
-}
