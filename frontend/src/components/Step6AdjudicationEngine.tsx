@@ -136,7 +136,8 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
   // Restore persisted analysis on mount
   useEffect(() => {
     if (!savedAuditReport?.pm_brain_analysis) return
-    if (phase !== 'idle') return
+    // Also restore when phase is 'ready' (race: carrierEstimates may resolve before savedAuditReport)
+    if (phase !== 'idle' && phase !== 'ready') return
     try {
       const saved: PMBrainAnalysis = JSON.parse(savedAuditReport.pm_brain_analysis)
       setPmBrain(saved)
@@ -1202,7 +1203,7 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
                     opacity: completeMutation.isPending ? 0.7 : 1,
                   }}
                 >
-                  {completeMutation.isPending ? 'Saving…' : 'Step Complete — Continue to Payments →'}
+                  {completeMutation.isPending ? 'Saving…' : 'Step 6 Complete →'}
                 </button>
               </div>
             )}
