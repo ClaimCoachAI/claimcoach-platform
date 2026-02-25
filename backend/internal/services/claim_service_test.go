@@ -151,7 +151,7 @@ func TestUpdateEstimate_Success(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	service := NewClaimService(db, nil)
+	service := NewClaimService(db, nil, nil)
 
 	// Create test org, user, property, policy, claim
 	orgID := createTestOrg(t, db)
@@ -180,7 +180,7 @@ func TestUpdateEstimate_NotWorthFiling(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	service := NewClaimService(db, nil)
+	service := NewClaimService(db, nil, nil)
 
 	// Create test data with $10k deductible
 	orgID := createTestOrg(t, db)
@@ -207,7 +207,7 @@ func TestUpdateEstimate_UnauthorizedOrg(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	service := NewClaimService(db, nil)
+	service := NewClaimService(db, nil, nil)
 
 	// Create claim for org1
 	org1ID := createTestOrg(t, db)

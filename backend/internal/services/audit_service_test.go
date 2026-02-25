@@ -41,17 +41,19 @@ func TestGenerateIndustryEstimate_Success(t *testing.T) {
 
 	// Create scope sheet
 	scopeService := NewScopeSheetService(db)
-	roofType := "asphalt_shingles"
-	roofSquareFootage := 2000
-	roofPitch := "6/12"
-	fasciaLF := 150
-
 	input := CreateScopeSheetInput{
-		RoofType:          &roofType,
-		RoofSquareFootage: &roofSquareFootage,
-		RoofPitch:         &roofPitch,
-		FasciaLF:          &fasciaLF,
-		FasciaPaint:       true,
+		Areas: []models.ScopeArea{
+			{
+				Category:   "Roofing",
+				Tags:       []string{"asphalt_shingles", "6/12", "Shingles_Damaged"},
+				Dimensions: map[string]float64{"square_footage": 2000},
+			},
+			{
+				Category:   "Exterior Trim",
+				Tags:       []string{"fascia_damaged", "fascia_paint"},
+				Dimensions: map[string]float64{"length": 150},
+			},
+		},
 	}
 
 	ctx := context.Background()
@@ -224,9 +226,8 @@ func TestGenerateIndustryEstimate_InvalidJSON(t *testing.T) {
 
 	// Create scope sheet
 	scopeService := NewScopeSheetService(db)
-	roofType := "metal"
 	input := CreateScopeSheetInput{
-		RoofType: &roofType,
+		Areas: []models.ScopeArea{{Category: "Roofing", Tags: []string{"metal_roof"}}},
 	}
 
 	ctx := context.Background()
@@ -284,38 +285,33 @@ func TestGenerateIndustryEstimate_InvalidJSON(t *testing.T) {
 
 func TestBuildEstimatePrompt(t *testing.T) {
 	// Setup - no database needed for this test
-	mockLLM := new(MockLLMClient)
-	auditService := &AuditService{
-		db:        nil,
-		llmClient: mockLLM,
-	}
+	auditService := &AuditService{db: nil, llmClient: nil}
 
-	// Create scope sheet with various fields
-	roofType := "asphalt_shingles"
-	roofSquareFootage := 2500
-	roofPitch := "8/12"
-	fasciaLF := 200
 	notes := "Additional damage to fascia boards"
-
 	scopeSheet := &models.ScopeSheet{
-		RoofType:          &roofType,
-		RoofSquareFootage: &roofSquareFootage,
-		RoofPitch:         &roofPitch,
-		FasciaLF:          &fasciaLF,
-		FasciaPaint:       true,
-		Notes:             &notes,
+		Areas: []models.ScopeArea{
+			{
+				Category:   "Roofing",
+				Tags:       []string{"asphalt_shingles", "8/12", "Shingles_Damaged"},
+				Dimensions: map[string]float64{"square_footage": 2500},
+				Notes:      "Steep pitch, full replacement needed",
+			},
+			{
+				Category:   "Exterior Trim",
+				Tags:       []string{"fascia_damaged", "fascia_paint"},
+				Dimensions: map[string]float64{"length": 200},
+			},
+		},
+		GeneralNotes: &notes,
 	}
 
-	// Test
 	prompt := auditService.buildEstimatePrompt(scopeSheet)
 
-	// Assert
 	assert.NotEmpty(t, prompt)
 	assert.Contains(t, prompt, "asphalt_shingles")
 	assert.Contains(t, prompt, "2500")
 	assert.Contains(t, prompt, "8/12")
 	assert.Contains(t, prompt, "200")
-	assert.Contains(t, prompt, "fascia_paint: true")
 	assert.Contains(t, prompt, "Additional damage to fascia boards")
 	assert.Contains(t, prompt, "Xactimate-style estimate")
 	assert.Contains(t, prompt, "JSON")
@@ -338,11 +334,10 @@ func TestCompareEstimates_Success(t *testing.T) {
 
 	// Create scope sheet
 	scopeService := NewScopeSheetService(db)
-	roofType := "asphalt_shingles"
-	roofSquareFootage := 2000
 	input := CreateScopeSheetInput{
-		RoofType:          &roofType,
-		RoofSquareFootage: &roofSquareFootage,
+		Areas: []models.ScopeArea{
+			{Category: "Roofing", Tags: []string{"asphalt_shingles"}, Dimensions: map[string]float64{"square_footage": 2000}},
+		},
 	}
 
 	ctx := context.Background()
@@ -489,10 +484,7 @@ func TestCompareEstimates_NoIndustryEstimate(t *testing.T) {
 
 	// Create scope sheet
 	scopeService := NewScopeSheetService(db)
-	roofType := "metal"
-	input := CreateScopeSheetInput{
-		RoofType: &roofType,
-	}
+	input := CreateScopeSheetInput{Areas: []models.ScopeArea{}}
 
 	ctx := context.Background()
 	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
@@ -527,10 +519,7 @@ func TestCompareEstimates_NoCarrierEstimate(t *testing.T) {
 
 	// Create scope sheet
 	scopeService := NewScopeSheetService(db)
-	roofType := "asphalt_shingles"
-	input := CreateScopeSheetInput{
-		RoofType: &roofType,
-	}
+	input := CreateScopeSheetInput{Areas: []models.ScopeArea{}}
 
 	ctx := context.Background()
 	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
@@ -568,10 +557,7 @@ func TestCompareEstimates_CarrierEstimateNotParsed(t *testing.T) {
 
 	// Create scope sheet
 	scopeService := NewScopeSheetService(db)
-	roofType := "asphalt_shingles"
-	input := CreateScopeSheetInput{
-		RoofType: &roofType,
-	}
+	input := CreateScopeSheetInput{Areas: []models.ScopeArea{}}
 
 	ctx := context.Background()
 	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
@@ -708,10 +694,7 @@ func TestGenerateRebuttal_Success(t *testing.T) {
 
 	// Create scope sheet
 	scopeService := NewScopeSheetService(db)
-	roofType := "asphalt_shingles"
-	input := CreateScopeSheetInput{
-		RoofType: &roofType,
-	}
+	input := CreateScopeSheetInput{Areas: []models.ScopeArea{}}
 
 	ctx := context.Background()
 	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
@@ -857,10 +840,7 @@ func TestGenerateRebuttal_NoComparisonData(t *testing.T) {
 
 	// Create scope sheet
 	scopeService := NewScopeSheetService(db)
-	roofType := "asphalt_shingles"
-	input := CreateScopeSheetInput{
-		RoofType: &roofType,
-	}
+	input := CreateScopeSheetInput{Areas: []models.ScopeArea{}}
 
 	ctx := context.Background()
 	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
@@ -921,10 +901,7 @@ func TestGetRebuttal_Success(t *testing.T) {
 
 	// Create scope sheet
 	scopeService := NewScopeSheetService(db)
-	roofType := "asphalt_shingles"
-	input := CreateScopeSheetInput{
-		RoofType: &roofType,
-	}
+	input := CreateScopeSheetInput{Areas: []models.ScopeArea{}}
 
 	ctx := context.Background()
 	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, input)
@@ -979,4 +956,225 @@ func TestGetRebuttal_NotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, rebuttal)
 	assert.Contains(t, err.Error(), "rebuttal not found")
+}
+
+// ---- Viability Analysis test helpers ----
+
+// createTestPolicyWithExclusions creates a test policy with an exclusions text block
+func createTestPolicyWithExclusions(t *testing.T, db *sql.DB, propertyID string, deductible float64, exclusions string) string {
+	t.Helper()
+
+	policyID := uuid.New().String()
+	query := `INSERT INTO insurance_policies (id, property_id, carrier_name, deductible_value, exclusions, created_at, updated_at)
+	          VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`
+	_, err := db.Exec(query, policyID, propertyID, "Test Insurance Co", deductible, exclusions)
+	if err != nil {
+		t.Fatalf("Failed to create test policy with exclusions: %v", err)
+	}
+	return policyID
+}
+
+// createTestClaimWithLossType creates a test claim with a specified loss type
+func createTestClaimWithLossType(t *testing.T, db *sql.DB, propertyID, policyID, userID, lossType string) string {
+	t.Helper()
+
+	claimID := uuid.New().String()
+	query := `INSERT INTO claims (id, property_id, policy_id, loss_type, incident_date, status, created_by_user_id, created_at, updated_at)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`
+	incidentDate := time.Now().Add(-48 * time.Hour)
+	_, err := db.Exec(query, claimID, propertyID, policyID, lossType, incidentDate, "draft", userID)
+	if err != nil {
+		t.Fatalf("Failed to create test claim with loss type: %v", err)
+	}
+	return claimID
+}
+
+// makeMockViabilityResponse builds a reusable llm.ChatResponse for viability tests
+func makeMockViabilityResponse(content string) *llm.ChatResponse {
+	return &llm.ChatResponse{
+		ID:    "test-viability-id",
+		Model: "claude-sonnet-4-6",
+		Choices: []struct {
+			Index   int `json:"index"`
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+		}{
+			{
+				Index: 0,
+				Message: struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				}{Role: "assistant", Content: content},
+			},
+		},
+		Usage: struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		}{PromptTokens: 350, CompletionTokens: 180, TotalTokens: 530},
+	}
+}
+
+// ---- Viability Analysis tests ----
+
+func TestAnalyzeClaimViability_PURSUE(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	ctx := context.Background()
+
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	// Hail loss, $5,000 deductible, exclusions irrelevant to hail
+	policyID := createTestPolicyWithExclusions(t, db, propertyID, 5000.0, "Flood damage is excluded")
+	claimID := createTestClaimWithLossType(t, db, propertyID, policyID, userID, "Hail")
+
+	// Estimate total = $25,000 → net_recovery = $20,000 → economics score 85
+	scopeService := NewScopeSheetService(db)
+	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, CreateScopeSheetInput{Areas: []models.ScopeArea{}})
+	assert.NoError(t, err)
+	estimateJSON := `{"line_items":[],"subtotal":20833,"overhead_profit":4167,"total":25000}`
+	createTestAuditReport(t, db, claimID, scopeSheet.ID, userID, estimateJSON)
+
+	// LLM mock: returns PURSUE
+	llmResult := map[string]interface{}{
+		"recommendation":         "PURSUE",
+		"net_estimated_recovery": 20000.0,
+		"coverage_score":         100,
+		"economics_score":        85,
+		"top_risks":              []string{},
+		"required_next_steps":    []string{},
+		"plain_english_summary":  "Strong hail claim. Net recovery well exceeds deductible with no applicable exclusions.",
+	}
+	responseBytes, _ := json.Marshal(llmResult)
+	mockLLM := new(MockLLMClient)
+	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.1, 1000).
+		Return(makeMockViabilityResponse(string(responseBytes)), nil)
+
+	auditService := NewAuditService(db, mockLLM, scopeService)
+	analysis, err := auditService.AnalyzeClaimViability(ctx, claimID, orgID)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, analysis)
+	assert.Equal(t, "PURSUE", analysis.Recommendation)
+	assert.Equal(t, 85, analysis.EconomicsScore)
+	assert.Equal(t, 100, analysis.CoverageScore)
+	assert.InDelta(t, 20000.0, analysis.NetEstimatedRecovery, 0.01)
+	assert.NotEmpty(t, analysis.PlainEnglishSummary)
+	mockLLM.AssertExpectations(t)
+}
+
+func TestAnalyzeClaimViability_PursueWithConditions(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	ctx := context.Background()
+
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	// Water loss with flood exclusion — coverage risk applies
+	policyID := createTestPolicyWithExclusions(t, db, propertyID, 3000.0, "Flood and surface water damage excluded")
+	claimID := createTestClaimWithLossType(t, db, propertyID, policyID, userID, "Water")
+
+	// Estimate total = $14,000 → net_recovery = $11,000 → economics score 60
+	scopeService := NewScopeSheetService(db)
+	scopeSheet, err := scopeService.CreateScopeSheet(ctx, claimID, CreateScopeSheetInput{Areas: []models.ScopeArea{}})
+	assert.NoError(t, err)
+	estimateJSON := `{"line_items":[],"subtotal":11667,"overhead_profit":2333,"total":14000}`
+	createTestAuditReport(t, db, claimID, scopeSheet.ID, userID, estimateJSON)
+
+	// LLM mock: returns PURSUE_WITH_CONDITIONS (water risk + ambiguous exclusion lowers coverage score)
+	llmResult := map[string]interface{}{
+		"recommendation":         "PURSUE_WITH_CONDITIONS",
+		"net_estimated_recovery": 11000.0,
+		"coverage_score":         50,
+		"economics_score":        60,
+		"top_risks":              []string{"Water loss carries seepage risk", "Flood exclusion may apply depending on cause"},
+		"required_next_steps":    []string{"Upload plumber report confirming sudden discharge"},
+		"plain_english_summary":  "Damages exceed deductible, but water claims carry coverage risk. Get plumber report first.",
+	}
+	responseBytes, _ := json.Marshal(llmResult)
+	mockLLM := new(MockLLMClient)
+	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.1, 1000).
+		Return(makeMockViabilityResponse(string(responseBytes)), nil)
+
+	auditService := NewAuditService(db, mockLLM, scopeService)
+	analysis, err := auditService.AnalyzeClaimViability(ctx, claimID, orgID)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, analysis)
+	assert.Equal(t, "PURSUE_WITH_CONDITIONS", analysis.Recommendation)
+	assert.Equal(t, 50, analysis.CoverageScore)
+	assert.Equal(t, 60, analysis.EconomicsScore)
+	assert.NotEmpty(t, analysis.RequiredNextSteps)
+	assert.NotEmpty(t, analysis.TopRisks)
+	mockLLM.AssertExpectations(t)
+}
+
+func TestAnalyzeClaimViability_ClaimNotFound(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	ctx := context.Background()
+
+	orgID := createTestOrg(t, db)
+	mockLLM := new(MockLLMClient)
+	scopeService := NewScopeSheetService(db)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	analysis, err := auditService.AnalyzeClaimViability(ctx, "non-existent-claim-id", orgID)
+
+	assert.Error(t, err)
+	assert.Nil(t, analysis)
+	assert.Contains(t, err.Error(), "claim not found")
+}
+
+func TestAnalyzeClaimViability_NoEstimate(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+	ctx := context.Background()
+
+	orgID := createTestOrg(t, db)
+	userID := createTestUser(t, db, orgID)
+	propertyID := createTestProperty(t, db, orgID)
+	policyID := createTestPolicy(t, db, propertyID, 5000.0)
+	claimID := createTestClaimWithLossType(t, db, propertyID, policyID, userID, "Hail")
+	// Intentionally no audit_report created
+
+	mockLLM := new(MockLLMClient)
+	scopeService := NewScopeSheetService(db)
+	auditService := NewAuditService(db, mockLLM, scopeService)
+
+	analysis, err := auditService.AnalyzeClaimViability(ctx, claimID, orgID)
+
+	assert.Error(t, err)
+	assert.Nil(t, analysis)
+	assert.Contains(t, err.Error(), "no generated estimate found")
+}
+
+func TestBuildViabilityPrompt(t *testing.T) {
+	auditService := &AuditService{db: nil, llmClient: nil}
+
+	inputs := &viabilityInputs{
+		lossType:        "Water",
+		incidentDate:    time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+		totalRCV:        15000.0,
+		deductibleValue: 3600.0,
+		exclusions:      "Flood and surface water damage excluded",
+	}
+
+	prompt := auditService.buildViabilityPrompt(inputs)
+
+	assert.Contains(t, prompt, "Water")
+	assert.Contains(t, prompt, "$15000.00")
+	assert.Contains(t, prompt, "$3600.00")
+	assert.Contains(t, prompt, "Flood and surface water damage excluded")
+	assert.Contains(t, prompt, "ECONOMICS SCORE")
+	assert.Contains(t, prompt, "COVERAGE RISK SCORE")
+	assert.Contains(t, prompt, "PURSUE")
+	assert.Contains(t, prompt, "PURSUE_WITH_CONDITIONS")
+	assert.Contains(t, prompt, "DO_NOT_PURSUE")
+	assert.Contains(t, prompt, "net_estimated_recovery")
+	assert.Contains(t, prompt, "plain_english_summary")
 }

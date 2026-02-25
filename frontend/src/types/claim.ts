@@ -1,6 +1,46 @@
 export type LossType = 'water' | 'hail'
+
+// ─── PM Brain Strategy Engine ──────────────────────────────────────────────
+export type PMBrainStatus = 'CLOSE' | 'DISPUTE_OFFER' | 'LEGAL_REVIEW' | 'NEED_DOCS'
+
+export interface PMBrainDeltaDriver {
+  line_item: string
+  contractor_price: number
+  carrier_price: number
+  delta: number
+  reason: string
+}
+
+export interface PMBrainCoverageDispute {
+  item: string
+  status: 'denied' | 'partial'
+  contractor_position: string
+}
+
+export interface PMBrainAnalysis {
+  status: PMBrainStatus
+  plain_english_summary: string
+  total_contractor_estimate: number
+  total_carrier_estimate: number
+  total_delta: number
+  top_delta_drivers: PMBrainDeltaDriver[]
+  coverage_disputes: PMBrainCoverageDispute[]
+  required_next_steps: string[]
+  legal_threshold_met: boolean
+}
 export type ClaimStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
 export type DeductibleResult = 'worth_filing' | 'not_worth_filing'
+export type ViabilityRecommendation = 'PURSUE' | 'PURSUE_WITH_CONDITIONS' | 'DO_NOT_PURSUE'
+
+export interface ViabilityAnalysis {
+  recommendation: ViabilityRecommendation
+  net_estimated_recovery: number
+  coverage_score: number
+  economics_score: number
+  top_risks: string[]
+  required_next_steps: string[]
+  plain_english_summary: string
+}
 
 export interface Payment {
   id: string

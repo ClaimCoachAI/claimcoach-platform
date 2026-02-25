@@ -19,7 +19,7 @@ func TestCarrierEstimateService_CreateCarrierEstimate(t *testing.T) {
 
 	// Mock storage client (will be nil for this test since we don't test storage)
 	var storageClient *storage.SupabaseStorage = nil
-	claimService := NewClaimService(db, NewPropertyService(db))
+	claimService := NewClaimService(db, NewPropertyService(db), nil)
 	service := NewCarrierEstimateService(db, storageClient, claimService)
 
 	ctx := context.Background()
@@ -65,7 +65,7 @@ func TestCarrierEstimateService_GetCarrierEstimatesByClaimID(t *testing.T) {
 	defer db.Close()
 
 	var storageClient *storage.SupabaseStorage = nil
-	claimService := NewClaimService(db, NewPropertyService(db))
+	claimService := NewClaimService(db, NewPropertyService(db), nil)
 	service := NewCarrierEstimateService(db, storageClient, claimService)
 
 	ctx := context.Background()

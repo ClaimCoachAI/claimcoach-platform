@@ -5,6 +5,8 @@ import { getStepDefinition } from '../lib/stepUtils'
 import Toast from './Toast'
 import ContractorStatusBadge from './ContractorStatusBadge'
 import ScopeSheetSummary from './ScopeSheetSummary'
+import Step3ViabilityAnalysis from './Step3ViabilityAnalysis'
+import Step6AdjudicationEngine from './Step6AdjudicationEngine'
 import type { Claim, Payment } from '../types/claim'
 
 interface ContractorPhoto {
@@ -12,44 +14,6 @@ interface ContractorPhoto {
   file_name: string
   document_type: string
   uploaded_at: string
-}
-
-interface CarrierEstimateData {
-  id: string
-  file_name: string
-  file_size_bytes: number | null
-  parse_status: 'pending' | 'processing' | 'completed' | 'failed'
-  parse_error: string | null
-  uploaded_at: string
-  parsed_at: string | null
-}
-
-interface DiscrepancyItem {
-  item: string
-  industry_price: number
-  carrier_price: number
-  delta: number
-  justification: string
-}
-
-interface ComparisonData {
-  discrepancies: DiscrepancyItem[]
-  summary: {
-    total_industry: number
-    total_carrier: number
-    total_delta: number
-  }
-}
-
-interface AuditReportData {
-  id: string
-  generated_estimate: string | null
-  comparison_data: string | null
-  total_contractor_estimate: number | null
-  total_carrier_estimate: number | null
-  total_delta: number | null
-  status: 'pending' | 'processing' | 'completed' | 'failed'
-  error_message: string | null
 }
 
 interface ClaimStepperProps {
@@ -60,26 +24,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const [activeStep, setActiveStep] = useState(claim.current_step || 1)
   const queryClient = useQueryClient()
 
-  // AI Audit states (Step 6) — declared early because carrier estimate query uses isPollingCarrierEstimate
-  const [carrierEstimateFile, setCarrierEstimateFile] = useState<File | null>(null)
-  const [isPollingCarrierEstimate, setIsPollingCarrierEstimate] = useState(false)
-  const [rebuttalText, setRebuttalText] = useState<string | null>(null)
-  const [auditLoadingStep, setAuditLoadingStep] = useState(0)
   const [photosOpen, setPhotosOpen] = useState(false)
-
-  // Legal escalation state (Step 6)
-  const [discrepanciesOpen, setDiscrepanciesOpen] = useState(false)
-  const [legalEscalationDismissed, setLegalEscalationDismissed] = useState(false)
-  const [showLegalEscalationForm, setShowLegalEscalationForm] = useState(false)
-  const [legalEscalationSubmitted, setLegalEscalationSubmitted] = useState<{
-    ownerName: string
-    ownerEmail: string
-    legalPartnerName: string
-  } | null>(null)
-  const [legalPartnerName, setLegalPartnerName] = useState('')
-  const [legalPartnerEmail, setLegalPartnerEmail] = useState('')
-  const [ownerName, setOwnerName] = useState(claim.property?.owner_entity_name || '')
-  const [ownerEmail, setOwnerEmail] = useState('')
 
   // Scope sheet query
   const {
@@ -153,44 +98,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     retry: false,
   })
 
-  // Carrier estimate query (Step 6 - with polling)
-  const {
-    data: carrierEstimates,
-    refetch: refetchCarrierEstimates,
-  } = useQuery<CarrierEstimateData[]>({
-    queryKey: ['carrier-estimates', claim.id],
-    queryFn: async () => {
-      try {
-        const response = await api.get(`/api/claims/${claim.id}/carrier-estimate`)
-        return response.data.data || []
-      } catch {
-        return []
-      }
-    },
-    enabled: !!claim.id,
-    retry: false,
-    refetchInterval: isPollingCarrierEstimate ? 3000 : false,
-  })
-
-  // Audit report query (Step 6)
-  const {
-    data: auditReport,
-    refetch: refetchAuditReport,
-  } = useQuery<AuditReportData | null>({
-    queryKey: ['audit-report', claim.id],
-    queryFn: async () => {
-      try {
-        const response = await api.get(`/api/claims/${claim.id}/audit`)
-        return response.data.data
-      } catch (error: any) {
-        if (error.response?.status === 404) return null
-        return null
-      }
-    },
-    enabled: !!claim.id,
-    retry: false,
-  })
-
   // Toast state
   const [toast, setToast] = useState<{
     message: string
@@ -203,17 +110,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     contractor_email: claim.contractor_email || '',
   })
   const [isEditingContractor, setIsEditingContractor] = useState(!claim.contractor_name)
-
-  const [estimateAmount, setEstimateAmount] = useState(
-    claim.contractor_estimate_total?.toString() || ''
-  )
-  const [isEditingEstimate, setIsEditingEstimate] = useState(!claim.contractor_estimate_total)
-  const [comparison, setComparison] = useState<{
-    estimate: number
-    deductible: number
-    worthFiling: boolean
-  } | null>(null)
-  const deductible = claim.policy?.deductible_value || 0
 
   const [step4Description, setStep4Description] = useState<string>(claim.description || '')
   const [isEditingDescription, setIsEditingDescription] = useState<boolean>(false)
@@ -238,41 +134,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   useEffect(() => {
     if (rcvPayment) setIsEditingRcv(false)
   }, [rcvPayment?.id])
-
-  // Initialize comparison if estimate exists
-  useEffect(() => {
-    if (claim.contractor_estimate_total) {
-      setComparison({
-        estimate: claim.contractor_estimate_total,
-        deductible,
-        worthFiling: claim.contractor_estimate_total > deductible,
-      })
-    }
-  }, [claim.contractor_estimate_total, deductible])
-
-  // Stop polling when carrier estimate parse completes or fails
-  useEffect(() => {
-    const latest = carrierEstimates?.[0]
-    if (latest?.parse_status === 'completed' || latest?.parse_status === 'failed') {
-      setIsPollingCarrierEstimate(false)
-    }
-  }, [carrierEstimates])
-
-
-  useEffect(() => {
-    if (activeStep === 3 && estimateAmount) {
-      const estimate = parseFloat(estimateAmount)
-      if (!isNaN(estimate)) {
-        setComparison({
-          estimate,
-          deductible,
-          worthFiling: estimate > deductible,
-        })
-      } else {
-        setComparison(null)
-      }
-    }
-  }, [estimateAmount, deductible, activeStep])
 
   const [filingData, setFilingData] = useState({
     insurance_claim_number: claim.insurance_claim_number || '',
@@ -314,27 +175,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         message: 'Failed to send email. Please try again.',
         type: 'error',
       })
-    },
-  })
-
-  const step3Mutation = useMutation({
-    mutationFn: async () => {
-      if (!comparison) throw new Error('Invalid estimate')
-      const response = await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 4,
-        steps_completed: [1, 2, 3],
-        contractor_estimate_total: comparison.estimate,
-        deductible_comparison_result: comparison.worthFiling ? 'worth_filing' : 'not_worth_filing',
-      })
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['claim', claim.id] })
-      setToast({
-        message: '✓ Estimate saved successfully',
-        type: 'success',
-      })
-      setIsEditingEstimate(false)
     },
   })
 
@@ -391,24 +231,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         type: 'success',
       })
       setIsEditingAdjuster(false)
-    },
-  })
-
-  const step6Mutation = useMutation({
-    mutationFn: async () => {
-      const updatedStepsCompleted = [...new Set([...(claim.steps_completed || []), 6])]
-      const response = await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 7,
-        steps_completed: updatedStepsCompleted,
-      })
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['claim', claim.id] })
-      setToast({
-        message: '✓ Insurance offer reviewed',
-        type: 'success',
-      })
     },
   })
 
@@ -480,111 +302,9 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     },
   })
 
-  const uploadCarrierEstimateMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const urlRes = await api.post(`/api/claims/${claim.id}/carrier-estimate/upload-url`, {
-        file_name: file.name,
-        file_size: file.size,
-        mime_type: 'application/pdf',
-      })
-      const { upload_url, estimate_id } = urlRes.data.data
-      await fetch(upload_url, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': 'application/pdf' },
-      })
-      await api.post(`/api/claims/${claim.id}/carrier-estimate/${estimate_id}/confirm`)
-      await api.post(`/api/claims/${claim.id}/carrier-estimate/${estimate_id}/parse`)
-      return estimate_id
-    },
-    onSuccess: () => {
-      setCarrierEstimateFile(null)
-      setIsPollingCarrierEstimate(true)
-      refetchCarrierEstimates()
-      setToast({ message: '✓ PDF uploaded — parsing in progress', type: 'success' })
-    },
-    onError: (err: any) => {
-      setToast({
-        message: err?.response?.data?.error || 'Failed to upload PDF. Please try again.',
-        type: 'error',
-      })
-    },
-  })
-
-  const generateAuditMutation = useMutation({
-    mutationFn: async () => {
-      const genRes = await api.post(`/api/claims/${claim.id}/audit/generate`)
-      const auditReportId = genRes.data.data.audit_report_id
-      await api.post(`/api/claims/${claim.id}/audit/${auditReportId}/compare`)
-      return auditReportId
-    },
-    onSuccess: () => {
-      refetchAuditReport()
-      setToast({ message: '✓ AI analysis complete', type: 'success' })
-    },
-    onError: (err: any) => {
-      setToast({
-        message: err?.response?.data?.error || 'Analysis failed. Please try again.',
-        type: 'error',
-      })
-    },
-  })
-
-  // Cycle through loading steps while AI analysis runs
-  useEffect(() => {
-    if (!generateAuditMutation.isPending) {
-      setAuditLoadingStep(0)
-      return
-    }
-    const interval = setInterval(() => {
-      setAuditLoadingStep(s => (s + 1) % 4)
-    }, 3500)
-    return () => clearInterval(interval)
-  }, [generateAuditMutation.isPending])
-
-  const generateRebuttalMutation = useMutation({
-    mutationFn: async (auditReportId: string) => {
-      const res = await api.post(`/api/claims/${claim.id}/audit/${auditReportId}/rebuttal`)
-      return res.data.data.content as string
-    },
-    onSuccess: (content) => {
-      setRebuttalText(content)
-      setToast({ message: '✓ Rebuttal letter generated', type: 'success' })
-    },
-    onError: () => {
-      setToast({ message: 'Failed to generate rebuttal. Please try again.', type: 'error' })
-    },
-  })
-
-  const legalEscalationMutation = useMutation({
-    mutationFn: async (data: {
-      legal_partner_name: string
-      legal_partner_email: string
-      owner_name: string
-      owner_email: string
-    }) => {
-      const res = await api.post(`/api/claims/${claim.id}/legal-escalation`, data)
-      return res.data
-    },
-    onSuccess: (_, variables) => {
-      setLegalEscalationSubmitted({
-        ownerName: variables.owner_name,
-        ownerEmail: variables.owner_email,
-        legalPartnerName: variables.legal_partner_name,
-      })
-    },
-  })
-
   const handleStep2Submit = (e: React.FormEvent) => {
     e.preventDefault()
     step2Mutation.mutate()
-  }
-
-  const handleStep3Submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (comparison) {
-      step3Mutation.mutate()
-    }
   }
 
   const handleStep4Submit = (e: React.FormEvent) => {
@@ -602,16 +322,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const handleStep5Submit = (e: React.FormEvent) => {
     e.preventDefault()
     step5Mutation.mutate()
-  }
-
-  const handleStep6Submit = () => {
-    step6Mutation.mutate()
-  }
-
-  const handleCarrierEstimateUpload = () => {
-    if (carrierEstimateFile) {
-      uploadCarrierEstimateMutation.mutate(carrierEstimateFile)
-    }
   }
 
   const handleAcvSubmit = (e: React.FormEvent) => {
@@ -660,24 +370,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     if (activeStep !== stepNum) return null
 
     const isLocked = !claim.steps_completed?.includes(stepNum) && stepNum !== claim.current_step
-
-    // Derived values for Step 6 audit flow
-    const latestCarrierEstimate = carrierEstimates?.[0]
-    const isParsed = latestCarrierEstimate?.parse_status === 'completed'
-    const isParsing = isPollingCarrierEstimate ||
-      latestCarrierEstimate?.parse_status === 'pending' ||
-      latestCarrierEstimate?.parse_status === 'processing'
-    const parseFailed = latestCarrierEstimate?.parse_status === 'failed'
-    const hasAuditResult = auditReport?.status === 'completed' && !!auditReport?.comparison_data
-
-    let comparisonData: ComparisonData | null = null
-    if (auditReport?.comparison_data) {
-      try {
-        comparisonData = JSON.parse(auditReport.comparison_data) as ComparisonData
-      } catch {
-        comparisonData = null
-      }
-    }
 
     const content = (() => {
     switch (stepNum) {
@@ -904,108 +596,10 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
       case 3:
         return (
-          <form onSubmit={handleStep3Submit} className="step-content step-form">
-            {!isEditingEstimate ? (
-              <div className="contractor-view-card">
-                <div className="contractor-view-fields">
-                  <span className="contractor-view-label">Contractor Estimate</span>
-                  <span className="estimate-view-amount">
-                    ${(comparison?.estimate ?? claim.contractor_estimate_total ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="edit-contractor-btn"
-                  onClick={() => setIsEditingEstimate(true)}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                  Edit
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="form-field">
-                  <label>
-                    Contractor Estimate <span className="required">*</span>
-                  </label>
-                  <div className="input-with-prefix">
-                    <span className="prefix">$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={estimateAmount}
-                      onChange={(e) => setEstimateAmount(e.target.value)}
-                      placeholder="0.00"
-                    />
-                  </div>
-                </div>
-                {!!claim.contractor_estimate_total && (
-                  <button
-                    type="button"
-                    className="cancel-edit-btn"
-                    onClick={() => {
-                      setIsEditingEstimate(false)
-                      const saved = claim.contractor_estimate_total!
-                      setEstimateAmount(saved.toString())
-                      setComparison({
-                        estimate: saved,
-                        deductible,
-                        worthFiling: saved > deductible,
-                      })
-                    }}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </>
-            )}
-
-            <div className="info-box">
-              <div className="info-row">
-                <span>Your Deductible</span>
-                <strong>${deductible.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong>
-              </div>
-            </div>
-
-            {comparison && (
-              <div className={`result-box ${comparison.worthFiling ? 'success' : 'warning'}`}>
-                <div className="result-icon">{comparison.worthFiling ? '✓' : '⚠'}</div>
-                <div>
-                  <div className="result-title">
-                    {comparison.worthFiling ? 'Worth Filing' : 'Below Deductible'}
-                  </div>
-                  <div className="result-text">
-                    {comparison.worthFiling
-                      ? `$${(comparison.estimate - comparison.deductible).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                        })} above your deductible`
-                      : `$${(comparison.deductible - comparison.estimate).toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                        })} below your deductible`}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {step3Mutation.isError && (
-              <div className="error">
-                {(step3Mutation.error as any)?.response?.data?.error || 'Failed to update'}
-              </div>
-            )}
-            {isEditingEstimate && (
-              <button type="submit" disabled={step3Mutation.isPending || !comparison}>
-                {step3Mutation.isPending
-                  ? 'Saving...'
-                  : !!claim.contractor_estimate_total
-                    ? 'Save Changes'
-                    : 'Continue to Next Step'}
-              </button>
-            )}
-          </form>
+          <Step3ViabilityAnalysis
+            claim={claim}
+            scopeSheet={scopeSheet ?? null}
+          />
         )
 
       case 4: {
@@ -1344,481 +938,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                 )}
               </div>
             )}
-
-            {/* AI Audit header */}
-            <div className="audit-section-header">
-              <div className="audit-section-icon">🤖</div>
-              <div>
-                <strong className="audit-section-title">AI Estimate Audit</strong>
-                <p className="audit-section-subtitle">Upload the carrier's PDF estimate to compare against your contractor's scope</p>
-              </div>
-            </div>
-
-            {/* Phase 1: Upload zone */}
-            {!latestCarrierEstimate && !uploadCarrierEstimateMutation.isPending && (
-              <div className="audit-upload-zone">
-                <div className="audit-upload-icon">📄</div>
-                <div className="audit-upload-label">Insurance Carrier Estimate (PDF only)</div>
-                <div className="audit-upload-hint">The estimate document your insurance company sent after the adjuster inspection</div>
-                <label className="audit-file-btn">
-                  {carrierEstimateFile ? `✓ ${carrierEstimateFile.name}` : 'Choose PDF File'}
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) setCarrierEstimateFile(file)
-                    }}
-                  />
-                </label>
-                {carrierEstimateFile && (
-                  <button
-                    type="button"
-                    onClick={handleCarrierEstimateUpload}
-                    disabled={uploadCarrierEstimateMutation.isPending}
-                  >
-                    Upload &amp; Parse PDF
-                  </button>
-                )}
-                {uploadCarrierEstimateMutation.isError && (
-                  <div className="error">
-                    {(uploadCarrierEstimateMutation.error as any)?.response?.data?.error || 'Upload failed. Please try again.'}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Uploading progress */}
-            {uploadCarrierEstimateMutation.isPending && (
-              <div className="audit-progress-card">
-                <div className="audit-spinner" />
-                <div>
-                  <span className="audit-progress-label">Uploading PDF...</span>
-                  <span className="audit-progress-sub">Sending file to storage</span>
-                </div>
-              </div>
-            )}
-
-            {/* Parsing progress */}
-            {isParsing && !uploadCarrierEstimateMutation.isPending && (
-              <div className="audit-progress-card">
-                <div className="audit-spinner" />
-                <div>
-                  <span className="audit-progress-label">Parsing insurance document</span>
-                  <span className="audit-progress-sub">Extracting line items from PDF — this takes about 30 seconds</span>
-                </div>
-              </div>
-            )}
-
-            {/* Parse failed */}
-            {parseFailed && (
-              <div className="audit-error-card">
-                <span className="audit-error-text">Failed to parse PDF. The file may be corrupted or in an unsupported format. Try uploading a different file.</span>
-                <button
-                  type="button"
-                  className="audit-retry-btn"
-                  onClick={() => queryClient.setQueryData(['carrier-estimates', claim.id], [])}
-                >
-                  Try Again
-                </button>
-              </div>
-            )}
-
-            {/* Parsed — ready to run analysis */}
-            {isParsed && !hasAuditResult && !generateAuditMutation.isPending && (
-              <>
-                <div className="audit-file-card">
-                  <span className="audit-file-icon">📄</span>
-                  <div className="audit-file-info">
-                    <span className="audit-file-name">{latestCarrierEstimate?.file_name}</span>
-                    <span className="audit-file-status">✓ Document parsed successfully</span>
-                  </div>
-                </div>
-                <div className="audit-run-card">
-                  <div className="audit-run-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                  <div className="audit-run-body">
-                    <strong className="audit-run-title">Ready to analyze</strong>
-                    <p className="audit-run-text">AI will compare the carrier's estimate against your contractor's scope sheet and flag any underpayments or missing items.</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => generateAuditMutation.mutate()}
-                  disabled={generateAuditMutation.isPending}
-                >
-                  Run AI Analysis
-                </button>
-                {generateAuditMutation.isError && (
-                  <div className="error">
-                    {(generateAuditMutation.error as any)?.response?.data?.error || 'Analysis failed. Please try again.'}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* AI analyzing — fun loading screen */}
-            {generateAuditMutation.isPending && (
-              <div className="audit-loading-screen">
-                <div className="audit-loading-orb">
-                  <div className="audit-orb-ring audit-orb-ring-1" />
-                  <div className="audit-orb-ring audit-orb-ring-2" />
-                  <div className="audit-orb-ring audit-orb-ring-3" />
-                  <div className="audit-orb-core">🤖</div>
-                </div>
-                <div className="audit-loading-steps">
-                  {[
-                    { icon: '📄', label: 'Reading carrier estimate' },
-                    { icon: '🔍', label: 'Comparing against contractor scope' },
-                    { icon: '⚡', label: 'Identifying discrepancies' },
-                    { icon: '📊', label: 'Calculating delta amounts' },
-                  ].map((s, i) => (
-                    <div
-                      key={i}
-                      className={`audit-loading-step ${i < auditLoadingStep ? 'done' : i === auditLoadingStep ? 'active' : 'pending'}`}
-                    >
-                      <div className="audit-loading-step-icon">
-                        {i < auditLoadingStep ? '✓' : s.icon}
-                      </div>
-                      <span className="audit-loading-step-label">{s.label}</span>
-                    </div>
-                  ))}
-                </div>
-                <p className="audit-loading-note">This takes about 60 seconds</p>
-              </div>
-            )}
-
-            {/* Audit failed */}
-            {auditReport?.status === 'failed' && (
-              <div className="audit-error-card">
-                <span className="audit-error-text">{auditReport.error_message || 'Analysis failed. Please try again.'}</span>
-                <button
-                  type="button"
-                  className="audit-retry-btn"
-                  onClick={() => generateAuditMutation.mutate()}
-                  disabled={generateAuditMutation.isPending}
-                >
-                  Retry Analysis
-                </button>
-              </div>
-            )}
-
-            {/* Audit results */}
-            {hasAuditResult && comparisonData && (
-              <div className="audit-results">
-                {/* Summary totals — redesigned */}
-                {(() => {
-                  const industry = comparisonData.summary.total_industry || 0
-                  const carrier = comparisonData.summary.total_carrier || 0
-                  // raw delta: positive = industry > carrier = carrier underpaid
-                  //            negative = carrier > industry = carrier overpaid
-                  const rawDelta = comparisonData.summary.total_delta || 0
-                  const absDelta = Math.abs(rawDelta)
-                  const maxAmt = Math.max(industry, carrier, 0.01)
-                  const industryPct = Math.max(5, Math.round((industry / maxAmt) * 100))
-                  const carrierPct = Math.max(5, Math.round((carrier / maxAmt) * 100))
-                  // Only escalate when carrier genuinely underpaid (positive delta)
-                  const deltaLevel = rawDelta >= 10000 ? 'high' : rawDelta >= 500 ? 'medium' : 'low'
-                  const bannerLabel = rawDelta <= 0
-                    ? 'Carrier paid more than industry standard'
-                    : deltaLevel === 'low'
-                      ? 'Looks fair'
-                      : 'Potential underpayment'
-                  return (
-                    <div className="audit-summary-v2">
-                      <div className="audit-comparison-cols">
-                        <div className="audit-comp-col">
-                          <span className="audit-comp-eyebrow">Industry Standard</span>
-                          <span className="audit-comp-amount industry-amount">
-                            ${industry.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </span>
-                          <span className="audit-comp-desc">What fair repairs cost</span>
-                          <div className="audit-bar-track">
-                            <div className="audit-bar-fill industry-fill" style={{width: `${industryPct}%`}} />
-                          </div>
-                        </div>
-                        <div className="audit-comp-vs-col">
-                          <span className="audit-comp-vs">VS</span>
-                        </div>
-                        <div className="audit-comp-col">
-                          <span className="audit-comp-eyebrow">Carrier Paid</span>
-                          <span className="audit-comp-amount carrier-amount">
-                            ${carrier.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </span>
-                          <span className="audit-comp-desc">What was approved</span>
-                          <div className="audit-bar-track">
-                            <div className="audit-bar-fill carrier-fill" style={{width: `${carrierPct}%`}} />
-                          </div>
-                        </div>
-                      </div>
-                      <div className={`audit-delta-banner delta-${deltaLevel}`}>
-                        <div className="audit-delta-icon-col">
-                          {deltaLevel === 'low' ? '✓' : '⚠'}
-                        </div>
-                        <div className="audit-delta-body">
-                          <span className="audit-delta-eyebrow">{bannerLabel}</span>
-                          <span className="audit-delta-amount">
-                            ${absDelta.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </span>
-                          {deltaLevel !== 'low' && (
-                            <span className="audit-delta-context">
-                              Carrier paid less than industry standard on {comparisonData.discrepancies.length} line item{comparisonData.discrepancies.length === 1 ? '' : 's'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {/* Discrepancies — collapsible summary row */}
-                {comparisonData.discrepancies.length > 0 ? (() => {
-                  const sorted = [...comparisonData.discrepancies].sort((a, b) => b.delta - a.delta)
-                  const topGap = sorted[0]
-                  return (
-                    <div className="audit-discrepancies">
-                      <div className="audit-disc-summary-row">
-                        <span className="audit-disc-count">
-                          {comparisonData.discrepancies.length} Discrepanc{comparisonData.discrepancies.length === 1 ? 'y' : 'ies'} Found
-                        </span>
-                        <span className="audit-disc-top-gap">
-                          Top gap: {topGap.item} +${(topGap.delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </span>
-                        <button
-                          type="button"
-                          className="audit-disc-toggle"
-                          onClick={() => setDiscrepanciesOpen(o => !o)}
-                        >
-                          {discrepanciesOpen ? 'Hide Details ▴' : 'View Details ▾'}
-                        </button>
-                      </div>
-                      {discrepanciesOpen && (
-                        <div className="audit-disc-expanded">
-                          {comparisonData.discrepancies.map((disc, i) => (
-                            <div key={i} className="audit-disc-item">
-                              <div className="audit-disc-top">
-                                <span className="audit-disc-item-name">{disc.item}</span>
-                                <span className="audit-disc-delta-badge">+${(disc.delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                              </div>
-                              <div className="audit-disc-prices">
-                                <span className="audit-disc-price">Industry: ${(disc.industry_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                                <span className="audit-disc-sep">·</span>
-                                <span className="audit-disc-price carrier-price">Carrier: ${(disc.carrier_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-                              </div>
-                              {disc.justification && (
-                                <p className="audit-disc-justification">{disc.justification}</p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })() : (
-                  <div className="audit-no-disc">
-                    <span>✓ No significant discrepancies found. The carrier estimate appears to be in line with industry standards.</span>
-                  </div>
-                )}
-
-                {/* Rebuttal section — only shown for delta $500–$9,999.99 */}
-                {!rebuttalText && comparisonData.discrepancies.length > 0 &&
-                  (comparisonData.summary.total_delta || 0) >= 500 &&
-                  (comparisonData.summary.total_delta || 0) < 10000 && (
-                  <div className="audit-rebuttal-cta">
-                    <div>
-                      <strong className="audit-rebuttal-cta-title">Generate a rebuttal letter?</strong>
-                      <p className="audit-rebuttal-cta-text">Our AI will draft a professional letter addressing each discrepancy that you can send to your carrier to request additional payment.</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="audit-rebuttal-cta-btn"
-                      onClick={() => generateRebuttalMutation.mutate(auditReport!.id)}
-                      disabled={generateRebuttalMutation.isPending}
-                    >
-                      {generateRebuttalMutation.isPending ? 'Generating...' : 'Generate Rebuttal Letter'}
-                    </button>
-                    {generateRebuttalMutation.isError && (
-                      <div className="error">Failed to generate rebuttal. Please try again.</div>
-                    )}
-                  </div>
-                )}
-
-                {rebuttalText && (
-                  <div className="audit-rebuttal">
-                    <div className="audit-rebuttal-header">
-                      <span className="audit-rebuttal-title">Rebuttal Letter</span>
-                      <button
-                        type="button"
-                        className="audit-copy-btn"
-                        onClick={() => {
-                          navigator.clipboard.writeText(rebuttalText)
-                          setToast({ message: '✓ Copied to clipboard', type: 'success' })
-                        }}
-                      >
-                        Copy
-                      </button>
-                    </div>
-                    <pre className="audit-rebuttal-text">{rebuttalText}</pre>
-                  </div>
-                )}
-              </div>
-            )}
-
-                {/* Legal action prompt — delta >= $10,000 */}
-                {comparisonData && (comparisonData.summary.total_delta || 0) >= 10000 &&
-                  !legalEscalationDismissed &&
-                  !showLegalEscalationForm &&
-                  !legalEscalationSubmitted &&
-                  !claim.legal_escalation_status && (
-                  <div className="legal-escalation-prompt">
-                    <div className="legal-escalation-prompt-content">
-                      <strong className="legal-escalation-prompt-title">
-                        You may be leaving ${(comparisonData.summary.total_delta || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} on the table
-                      </strong>
-                      <p className="legal-escalation-prompt-text">
-                        The carrier underpaid by a significant amount relative to industry-standard repair costs.
-                        You may have grounds to escalate this claim with a legal partner.
-                      </p>
-                    </div>
-                    <div className="legal-escalation-prompt-actions">
-                      <button
-                        type="button"
-                        className="legal-escalation-btn-primary"
-                        onClick={() => setShowLegalEscalationForm(true)}
-                      >
-                        Pursue Legal Action
-                      </button>
-                      <button
-                        type="button"
-                        className="legal-escalation-btn-secondary"
-                        onClick={() => setLegalEscalationDismissed(true)}
-                      >
-                        Skip for Now
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Legal escalation form */}
-                {showLegalEscalationForm && !legalEscalationSubmitted && (
-                  <div className="legal-escalation-form-wrap">
-                    <h4 className="legal-escalation-form-title">Escalate to Legal Partner</h4>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        legalEscalationMutation.mutate({
-                          legal_partner_name: legalPartnerName,
-                          legal_partner_email: legalPartnerEmail,
-                          owner_name: ownerName,
-                          owner_email: ownerEmail,
-                        })
-                      }}
-                      className="legal-escalation-form"
-                    >
-                      <label className="form-label">
-                        Legal Partner Name
-                        <input
-                          type="text"
-                          required
-                          className="form-input"
-                          placeholder="Sarah Chen"
-                          value={legalPartnerName}
-                          onChange={e => setLegalPartnerName(e.target.value)}
-                        />
-                      </label>
-                      <label className="form-label">
-                        Legal Partner Email
-                        <input
-                          type="email"
-                          required
-                          className="form-input"
-                          placeholder="schen@chenlaw.com"
-                          value={legalPartnerEmail}
-                          onChange={e => setLegalPartnerEmail(e.target.value)}
-                        />
-                      </label>
-                      <label className="form-label">
-                        Owner Name
-                        <input
-                          type="text"
-                          required
-                          className="form-input"
-                          value={ownerName}
-                          onChange={e => setOwnerName(e.target.value)}
-                        />
-                      </label>
-                      <label className="form-label">
-                        Owner Email
-                        <input
-                          type="email"
-                          required
-                          className="form-input"
-                          placeholder="owner@example.com"
-                          value={ownerEmail}
-                          onChange={e => setOwnerEmail(e.target.value)}
-                        />
-                      </label>
-                      {legalEscalationMutation.isError && (
-                        <div className="error">Failed to send escalation. Please try again.</div>
-                      )}
-                      <div className="legal-escalation-form-actions">
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          onClick={() => { setShowLegalEscalationForm(false); setLegalEscalationDismissed(false) }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          className="btn-primary"
-                          disabled={legalEscalationMutation.isPending}
-                        >
-                          {legalEscalationMutation.isPending ? 'Sending...' : 'Send Approval Request'}
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                )}
-
-                {/* Legal escalation confirmation */}
-                {legalEscalationSubmitted && (
-                  <div className="legal-escalation-confirmation">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{color: '#16a34a', flexShrink: 0}}>
-                      <path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M22 4L12 14.01l-3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <p>
-                      Approval request sent to <strong>{legalEscalationSubmitted.ownerName}</strong> ({legalEscalationSubmitted.ownerEmail}).
-                      Once they approve, the legal package will be automatically sent to <strong>{legalEscalationSubmitted.legalPartnerName}</strong>.
-                    </p>
-                  </div>
-                )}
-
-                {/* Already escalated — show status */}
-                {claim.legal_escalation_status && (
-                  <div className="legal-escalation-status-badge">
-                    Legal escalation: {claim.legal_escalation_status.replace(/_/g, ' ')}
-                  </div>
-                )}
-
-            {/* Continue CTA — only shown after audit is complete */}
-            {hasAuditResult && (
-              <>
-                {step6Mutation.isError && (
-                  <div className="error">
-                    {(step6Mutation.error as any)?.response?.data?.error || 'Failed to advance'}
-                  </div>
-                )}
-                <button onClick={handleStep6Submit} disabled={step6Mutation.isPending} className="audit-continue-btn">
-                  {step6Mutation.isPending ? 'Saving...' : 'Review Complete — Continue to Payments →'}
-                </button>
-              </>
-            )}
+            <Step6AdjudicationEngine claim={claim} />
           </div>
         )
 

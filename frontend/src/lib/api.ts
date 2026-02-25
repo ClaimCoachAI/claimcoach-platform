@@ -84,24 +84,48 @@ export const generateIndustryEstimate = async (claimId: string) => {
   return response.data.data
 }
 
+export const analyzeClaimViability = async (claimId: string) => {
+  const response = await api.post(`/api/claims/${claimId}/audit/viability`)
+  return response.data.data
+}
+
 export const getAuditReport = async (claimId: string) => {
   const response = await api.get(`/api/claims/${claimId}/audit`)
   return response.data.data
 }
 
-export const compareEstimates = async (claimId: string, auditId: string) => {
-  const response = await api.post(`/api/claims/${claimId}/audit/${auditId}/compare`)
+export const runPMBrainAnalysis = async (claimId: string, auditId: string) => {
+  const response = await api.post(`/api/claims/${claimId}/audit/${auditId}/pm-brain`)
+  return response.data.data
+}
+
+export const generateDisputeLetter = async (claimId: string, auditId: string) => {
+  const response = await api.post(`/api/claims/${claimId}/audit/${auditId}/dispute-letter`)
+  return response.data.data.letter as string
+}
+
+// Parse carrier estimate after upload
+export const parseCarrierEstimate = async (claimId: string, estimateId: string) => {
+  const response = await api.post(`/api/claims/${claimId}/carrier-estimate/${estimateId}/parse`)
   return response.data
 }
 
-export const generateRebuttal = async (claimId: string, auditId: string) => {
-  const response = await api.post(`/api/claims/${claimId}/audit/${auditId}/rebuttal`)
-  return response.data.data
+export const sendLegalEscalation = async (claimId: string, data: {
+  legal_partner_name: string
+  legal_partner_email: string
+  owner_name: string
+  owner_email: string
+}) => {
+  const response = await api.post(`/api/claims/${claimId}/legal-escalation`, data)
+  return response.data
 }
 
-export const getRebuttal = async (rebuttalId: string) => {
-  const response = await api.get(`/api/rebuttals/${rebuttalId}`)
-  return response.data.data
+export const updateClaimStep = async (claimId: string, data: {
+  current_step: number
+  steps_completed: number[]
+}) => {
+  const response = await api.patch(`/api/claims/${claimId}/step`, data)
+  return response.data
 }
 
 export default api
