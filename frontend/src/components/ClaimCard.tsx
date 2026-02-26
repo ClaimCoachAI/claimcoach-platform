@@ -55,85 +55,79 @@ export default function ClaimCard({ claim }: ClaimCardProps) {
     },
   })
 
+  const stepsCompleted = claim.steps_completed || []
+  const currentStep = claim.current_step || 1
+
   return (
     <div
-      className="glass-card rounded-2xl p-6 hover:shadow-lg transition-all duration-200 animate-scale-in relative"
+      className="glass-card rounded-xl px-4 py-3 flex items-center gap-4 hover:shadow-lg transition-all duration-200 animate-scale-in"
       style={{ borderLeftColor: accentColor, borderLeftWidth: '3px' }}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center space-x-3">
-          <span className="text-3xl">{icon}</span>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-lg font-semibold text-navy">{damageLabel}</h3>
-              {referenceId && (
-                <span
-                  aria-label={`Claim reference: ${referenceId}`}
-                  className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full"
-                  style={{ color: accentColor, backgroundColor: `${accentColor}18` }}
-                >
-                  {referenceId}
-                </span>
-              )}
-            </div>
-            <p className="text-sm text-slate">
-              {incidentDate ?? (claim.property?.legal_address || 'Property')}
-            </p>
+      {/* Identity — icon + type + ref + date */}
+      <div className="flex items-center gap-2.5 w-52 shrink-0 min-w-0">
+        <span className="text-xl shrink-0">{icon}</span>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <h3 className="text-sm font-semibold text-navy leading-tight">{damageLabel}</h3>
+            {referenceId && (
+              <span
+                aria-label={`Claim reference: ${referenceId}`}
+                className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded-full shrink-0 leading-tight"
+                style={{ color: accentColor, backgroundColor: `${accentColor}18` }}
+              >
+                {referenceId}
+              </span>
+            )}
           </div>
+          <p className="text-xs text-slate/60 leading-tight mt-0.5">
+            {incidentDate ?? timeAgo}
+          </p>
         </div>
+      </div>
+
+      {/* Status + progress — flex-1 middle column */}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-slate truncate mb-1.5">{statusText}</p>
+        <div className="flex items-center gap-1">
+          {[1, 2, 3, 4, 5, 6, 7].map((step) => (
+            <div
+              key={step}
+              className={`h-1 flex-1 rounded-full transition-all ${
+                stepsCompleted.includes(step)
+                  ? 'bg-teal'
+                  : step === currentStep
+                  ? 'bg-teal/40 animate-pulse'
+                  : 'bg-slate/15'
+              }`}
+            />
+          ))}
+          <span className="text-xs text-slate/50 ml-1.5 shrink-0 tabular-nums">
+            {progress.completed}/7
+          </span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <button
+          onClick={() => navigate(`/claims/${claim.id}`)}
+          className="btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap"
+        >
+          View →
+        </button>
         <button
           onClick={(e) => {
             e.stopPropagation()
             setShowDeleteConfirm(true)
           }}
-          className="p-2 text-slate hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
+          className="p-1.5 text-slate/40 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
           title="Delete claim"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
             />
           </svg>
-        </button>
-      </div>
-
-      <div className="mb-4">
-        <p className="text-sm font-medium text-slate mb-1">{statusText}</p>
-        <p className="text-xs text-slate/70">
-          Step {claim.current_step || 1} of 6
-        </p>
-      </div>
-
-      <div className="mb-4">
-        <div className="flex items-center space-x-1 mb-1">
-          {[1, 2, 3, 4, 5, 6].map((step) => (
-            <div
-              key={step}
-              className={`h-1.5 flex-1 rounded-full transition-all ${
-                (claim.steps_completed || []).includes(step)
-                  ? 'bg-teal'
-                  : step === (claim.current_step || 1)
-                  ? 'bg-teal/50 animate-pulse'
-                  : 'bg-slate/20'
-              }`}
-            />
-          ))}
-        </div>
-        <p className="text-xs text-slate">
-          {progress.completed} of {progress.total} steps done
-        </p>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-slate">Started {timeAgo}</span>
-        <button
-          onClick={() => navigate(`/claims/${claim.id}`)}
-          className="btn-primary px-4 py-2 rounded-xl text-sm font-semibold"
-        >
-          View Claim →
         </button>
       </div>
 
