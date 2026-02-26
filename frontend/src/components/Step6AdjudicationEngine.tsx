@@ -126,7 +126,7 @@ function buildAttorneyBriefing(claim: import('../types/claim').Claim, pmBrain: i
 
   // ── Section 3: Financial Summary ─────────────────────────────────────────
   t += `3. FINANCIAL SUMMARY\n`
-  t += `   ClaimCoach Net Position (contractor estimate):  ${fc(pmBrain.total_contractor_estimate)}\n`
+  t += `   ClaimCoach Estimate (Net Position):             ${fc(pmBrain.total_contractor_estimate)}\n`
   t += `   Carrier Net Position (carrier offer):           ${fc(pmBrain.total_carrier_estimate)}\n`
   t += `   Delta (underpayment):                           ${fc(pmBrain.total_delta)}\n\n`
 
