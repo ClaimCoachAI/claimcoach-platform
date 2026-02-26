@@ -60,35 +60,55 @@ export default function ClaimCard({ claim }: ClaimCardProps) {
 
   return (
     <div
-      className="glass-card rounded-xl px-4 py-3 flex items-center gap-4 hover:shadow-lg transition-all duration-200 animate-scale-in"
-      style={{ borderLeftColor: accentColor, borderLeftWidth: '3px' }}
+      className="glass-card rounded-xl p-4 flex flex-col h-full hover:shadow-lg transition-all duration-200 animate-scale-in"
+      style={{ borderTopColor: accentColor, borderTopWidth: '3px' }}
     >
-      {/* Identity — icon + type + ref + date */}
-      <div className="flex items-center gap-2.5 w-52 shrink-0 min-w-0">
-        <span className="text-xl shrink-0">{icon}</span>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <h3 className="text-sm font-semibold text-navy leading-tight">{damageLabel}</h3>
-            {referenceId && (
-              <span
-                aria-label={`Claim reference: ${referenceId}`}
-                className="text-xs font-mono font-semibold px-1.5 py-0.5 rounded-full shrink-0 leading-tight"
-                style={{ color: accentColor, backgroundColor: `${accentColor}18` }}
-              >
-                {referenceId}
-              </span>
-            )}
+      {/* Header: icon tile + type + delete */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-xl shrink-0"
+            style={{ backgroundColor: `${accentColor}18` }}
+          >
+            {icon}
           </div>
-          <p className="text-xs text-slate/60 leading-tight mt-0.5">
-            {incidentDate ?? timeAgo}
-          </p>
+          <div>
+            <h3 className="text-sm font-semibold text-navy leading-tight">{damageLabel}</h3>
+            <p className="text-xs text-slate/60 mt-0.5">{incidentDate ?? timeAgo}</p>
+          </div>
         </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(true) }}
+          className="p-1 -mt-0.5 -mr-0.5 text-slate/30 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
+          title="Delete claim"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+            />
+          </svg>
+        </button>
       </div>
 
-      {/* Status + progress — flex-1 middle column */}
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-slate truncate mb-1.5">{statusText}</p>
-        <div className="flex items-center gap-1">
+      {/* Reference badge */}
+      {referenceId && (
+        <div className="mb-3">
+          <span
+            aria-label={`Claim reference: ${referenceId}`}
+            className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full"
+            style={{ color: accentColor, backgroundColor: `${accentColor}15` }}
+          >
+            {referenceId}
+          </span>
+        </div>
+      )}
+
+      {/* Status */}
+      <p className="text-xs text-slate line-clamp-2 mb-3 flex-1">{statusText}</p>
+
+      {/* Progress */}
+      <div className="mb-3">
+        <div className="flex gap-0.5 mb-1">
           {[1, 2, 3, 4, 5, 6, 7].map((step) => (
             <div
               key={step}
@@ -101,33 +121,18 @@ export default function ClaimCard({ claim }: ClaimCardProps) {
               }`}
             />
           ))}
-          <span className="text-xs text-slate/50 ml-1.5 shrink-0 tabular-nums">
-            {progress.completed}/7
-          </span>
         </div>
+        <p className="text-xs text-slate/50">{progress.completed} of 7 steps done</p>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      {/* Footer */}
+      <div className="flex items-center justify-between pt-2 border-t border-slate/10">
+        <span className="text-xs text-slate/50">Started {timeAgo}</span>
         <button
           onClick={() => navigate(`/claims/${claim.id}`)}
-          className="btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap"
+          className="btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold"
         >
-          View →
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            setShowDeleteConfirm(true)
-          }}
-          className="p-1.5 text-slate/40 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"
-          title="Delete claim"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-            />
-          </svg>
+          View Claim →
         </button>
       </div>
 

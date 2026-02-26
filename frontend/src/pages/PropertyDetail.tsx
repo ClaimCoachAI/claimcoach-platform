@@ -232,7 +232,7 @@ export default function PropertyDetail() {
         {activeTab === 'claims' && (
           <div className="animate-fade-in" role="tabpanel" id="panel-claims" aria-labelledby="tab-claims">
             {claims && claims.length > 0 ? (
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {claims.map((claim) => (
                   <ClaimCard key={claim.id} claim={claim} />
                 ))}
