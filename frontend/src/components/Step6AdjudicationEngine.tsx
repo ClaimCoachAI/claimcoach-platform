@@ -9,6 +9,7 @@ import {
   getAuditReport,
   updateClaimStep,
   parseCarrierEstimate,
+  downloadLegalPackage,
 } from '../lib/api'
 import type { Claim, PMBrainAnalysis, PMBrainStatus } from '../types/claim'
 
@@ -187,6 +188,8 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
   const [ownerApproved, setOwnerApproved] = useState(false)
   const [lawyerBriefingCopied, setLawyerBriefingCopied] = useState(false)
   const [attorneyContacted, setAttorneyContacted] = useState(false)
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false)
+  const [zipDownloadError, setZipDownloadError] = useState<string | null>(null)
 
   const step6Done = claim.steps_completed?.includes(6) ?? false
 
@@ -1345,6 +1348,55 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
                     {buildAttorneyBriefing(claim, pmBrain)}
                   </pre>
                 </div>
+
+                {/* ZIP Download Button */}
+                {zipDownloadError && (
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      borderRadius: 8,
+                      marginBottom: 12,
+                      fontSize: 13,
+                      color: '#991b1b',
+                    }}
+                  >
+                    {zipDownloadError}
+                  </div>
+                )}
+                <button
+                  onClick={async () => {
+                    setIsDownloadingZip(true)
+                    setZipDownloadError(null)
+                    try {
+                      await downloadLegalPackage(claim.id)
+                    } catch (err: any) {
+                      setZipDownloadError(
+                        err?.response?.data?.error || err?.message || 'Failed to generate ZIP. Please try again.'
+                      )
+                    } finally {
+                      setIsDownloadingZip(false)
+                    }
+                  }}
+                  disabled={isDownloadingZip}
+                  style={{
+                    width: '100%',
+                    padding: '14px 24px',
+                    background: isDownloadingZip ? '#374151' : '#111827',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    fontWeight: 700,
+                    cursor: isDownloadingZip ? 'not-allowed' : 'pointer',
+                    fontSize: 15,
+                    opacity: isDownloadingZip ? 0.7 : 1,
+                    marginBottom: 12,
+                  }}
+                >
+                  {isDownloadingZip ? '⏳ Generating ZIP…' : '⬇ Download Case Files (ZIP)'}
+                </button>
+
                 <div
                   style={{
                     padding: '14px 18px',

@@ -86,6 +86,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	scopeSheetHandler := handlers.NewScopeSheetHandler(scopeSheetService, magicLinkService, claimService)
 	auditService := services.NewAuditService(db, llmClient, scopeSheetService)
 	auditHandler := handlers.NewAuditHandler(auditService)
+	legalPackageService := services.NewLegalPackageService(db, storageClient, auditService)
+	legalPackageHandler := handlers.NewLegalPackageHandler(legalPackageService)
 
 	// Phase 7 services and handlers
 	meetingService := services.NewMeetingService(db, emailService, claimService)
@@ -195,6 +197,9 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.POST("/claims/:id/audit/:auditId/pm-brain", auditHandler.RunPMBrain)
 		api.POST("/claims/:id/audit/:auditId/dispute-letter", auditHandler.GenerateDisputeLetter)
 		api.POST("/claims/:id/audit/:auditId/owner-pitch", auditHandler.GenerateOwnerPitch)
+
+		// Legal Package routes
+		api.GET("/claims/:id/legal-package/download", legalPackageHandler.Download)
 
 		// Meeting routes (Phase 7 - protected)
 		api.POST("/claims/:id/meetings", meetingHandler.CreateMeeting)

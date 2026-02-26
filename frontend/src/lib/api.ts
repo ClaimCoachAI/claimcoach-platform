@@ -115,6 +115,28 @@ export const generateOwnerPitch = async (claimId: string, auditId: string) => {
   return response.data.data.pitch as string
 }
 
+export const downloadLegalPackage = async (claimId: string): Promise<void> => {
+  const response = await api.get(`/api/claims/${claimId}/legal-package/download`, {
+    responseType: 'blob',
+  })
+
+  const contentDisposition = response.headers['content-disposition'] as string | undefined
+  let filename = `ClaimCoach-Legal-Package-${claimId}.zip`
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="?([^"]+)"?/)
+    if (match?.[1]) filename = match[1]
+  }
+
+  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 export const updateClaimStep = async (claimId: string, data: {
   current_step: number
   steps_completed: number[]
