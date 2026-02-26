@@ -89,9 +89,9 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 
 	// Generate ClaimCoach reference number (CC-XXXX, per-org sequential)
 	var claimCount int
-	countQuery := `SELECT COUNT(*) FROM claims WHERE organization_id = (
-    SELECT organization_id FROM properties WHERE id = $1
-)`
+	countQuery := `SELECT COUNT(*) FROM claims c
+    JOIN properties p ON c.property_id = p.id
+    WHERE p.organization_id = (SELECT organization_id FROM properties WHERE id = $1)`
 	err = s.db.QueryRow(countQuery, input.PropertyID).Scan(&claimCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate claim number: %w", err)
