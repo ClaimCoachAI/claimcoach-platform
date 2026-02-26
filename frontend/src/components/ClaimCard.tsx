@@ -58,7 +58,7 @@ export default function ClaimCard({ claim }: ClaimCardProps) {
         </div>
         <div className="flex items-center gap-2">
           {referenceId && (
-            <span className="text-xs font-mono font-medium text-slate bg-slate/10 px-2 py-0.5 rounded-full">
+            <span aria-label={`Claim reference: ${referenceId}`} className="text-xs font-mono font-medium text-slate bg-slate/10 px-2 py-0.5 rounded-full">
               {referenceId}
             </span>
           )}
