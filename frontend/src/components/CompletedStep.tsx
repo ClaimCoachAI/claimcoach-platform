@@ -23,9 +23,9 @@ export default function CompletedStep({ stepNumber, claim }: CompletedStepProps)
         }
       case 2:
         return {
-          icon: '📸',
-          title: 'Photos Received',
-          detail: `From: ${claim.contractor_name || 'contractor'}`,
+          icon: '🔍',
+          title: 'Assessment Complete',
+          detail: `By: ${claim.contractor_name || 'assessor'}`,
         }
       case 3:
         return {

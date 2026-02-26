@@ -434,11 +434,11 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
               <div className="contractor-view-card">
                 <div className="contractor-view-fields">
                   <div className="contractor-view-field">
-                    <span className="contractor-view-label">Contractor Name</span>
+                    <span className="contractor-view-label">Assessor Name</span>
                     <span className="contractor-view-value">{contractorData.contractor_name}</span>
                   </div>
                   <div className="contractor-view-field">
-                    <span className="contractor-view-label">Contractor Email</span>
+                    <span className="contractor-view-label">Assessor Email</span>
                     <span className="contractor-view-value">{contractorData.contractor_email}</span>
                   </div>
                 </div>
@@ -458,7 +458,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
               <>
                 <div className="form-field">
                   <label>
-                    Contractor Name <span className="required">*</span>
+                    Assessor Name <span className="required">*</span>
                   </label>
                   <input
                     type="text"
@@ -467,12 +467,12 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                     onChange={(e) =>
                       setContractorData({ ...contractorData, contractor_name: e.target.value })
                     }
-                    placeholder="ABC Roofing Company"
+                    placeholder="e.g. ABC Roofing, John Smith"
                   />
                 </div>
                 <div className="form-field">
                   <label>
-                    Contractor Email <span className="required">*</span>
+                    Assessor Email <span className="required">*</span>
                   </label>
                   <input
                     type="email"
@@ -481,7 +481,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                     onChange={(e) =>
                       setContractorData({ ...contractorData, contractor_email: e.target.value })
                     }
-                    placeholder="contractor@example.com"
+                    placeholder="assessor@example.com"
                   />
                 </div>
                 {!!claim.contractor_name && (
@@ -588,8 +588,8 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
               {step2Mutation.isPending
                 ? 'Sending...'
                 : !!claim.contractor_name && !isEditingContractor
-                  ? 'Resend Link to Contractor'
-                  : 'Send Link to Contractor'}
+                  ? 'Resend Assessment Link'
+                  : 'Send Assessment Link'}
             </button>
           </form>
         )

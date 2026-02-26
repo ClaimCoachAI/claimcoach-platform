@@ -24,10 +24,10 @@ export const STEP_DEFINITIONS: Record<StepNumber, StepDefinition> = {
   },
   2: {
     number: 2,
-    title: 'Get Contractor Photos',
-    description: 'Send a link to your contractor for photos and estimate',
-    learnMore: 'Your contractor will receive an email with a secure link. They can upload photos and their estimate without creating an account. The link works for 7 days. Tip: Give them a heads up that the email is coming!',
-    icon: '📸'
+    title: 'Damage Assessment',
+    description: 'Send a secure link to your assessor to document damage and complete a scope sheet',
+    learnMore: 'Your assessor will receive an email with a secure link. They can upload photos and complete a scope sheet without creating an account. The link works for 7 days. Tip: Give them a heads up that the email is coming!',
+    icon: '🔍'
   },
   3: {
     number: 3,
@@ -114,7 +114,7 @@ function getCompletedStepText(step: StepNumber, claim: Claim): string {
     case 1:
       return `✅ Damage Reported - ${getDamageTypeLabel(claim.loss_type)}`
     case 2:
-      return `✅ Photos Received from ${claim.contractor_name || 'contractor'}`
+      return `✅ Assessment completed by ${claim.contractor_name || 'assessor'}`
     case 3:
       return claim.deductible_comparison_result === 'worth_filing'
         ? '✅ Worth Filing - Above deductible'
@@ -136,8 +136,8 @@ function getInProgressStepText(step: StepNumber, claim: Claim): string {
   switch (step) {
     case 2:
       return claim.contractor_email
-        ? `⏳ Waiting for ${claim.contractor_name || 'contractor'} to upload`
-        : '🎯 NEXT: Send link to contractor'
+        ? `⏳ Scope sheet in progress — sent to ${claim.contractor_name || 'assessor'}`
+        : '🎯 NEXT: Send assessment link'
     case 3:
       return '🎯 NEXT: Compare estimate to deductible'
     case 4:
