@@ -184,11 +184,12 @@ type docEntry struct {
 }
 
 // loadCarrierEstimates fetches carrier estimates from the separate carrier_estimates table.
+// Note: carrier_estimates has no status column — all records are valid uploads.
 func (s *LegalPackageService) loadCarrierEstimates(ctx context.Context, claimID string) ([]docEntry, error) {
 	query := `
 		SELECT file_path, file_name
 		FROM carrier_estimates
-		WHERE claim_id = $1 AND status = 'confirmed'
+		WHERE claim_id = $1
 		ORDER BY uploaded_at ASC
 	`
 	rows, err := s.db.QueryContext(ctx, query, claimID)
@@ -362,7 +363,8 @@ func (s *LegalPackageService) generateBriefingPDF(data *legalClaimData) ([]byte,
 		pdf.MultiCell(pageW, 5, latin1Safe(text), "", "L", false)
 	}
 
-	lossTypeDisplay := strings.Title(strings.ToLower(data.LossType))
+	lossTypeRaw := strings.ToLower(data.LossType)
+	lossTypeDisplay := strings.ToUpper(lossTypeRaw[:1]) + lossTypeRaw[1:]
 
 	// ── Section 1: Claim Snapshot ─────────────────────────────────────────────
 	sectionHeader("1. CLAIM SNAPSHOT")
@@ -373,20 +375,6 @@ func (s *LegalPackageService) generateBriefingPDF(data *legalClaimData) ([]byte,
 	kv("Carrier:", data.CarrierName)
 	kv("Policy Number:", data.PolicyNumber)
 	pdf.Ln(4)
-
-	if data.PMBrain == nil {
-		if err := pdf.OutputAndClose(nopCloser{io.Discard}); err != nil {
-			// ignore
-		}
-		// Return minimal PDF
-		var buf bytes.Buffer
-		pdf2 := fpdf.New("P", "mm", "A4", "")
-		pdf2.AddPage()
-		pdf2.SetFont("Helvetica", "", 12)
-		pdf2.Cell(0, 10, "Legal brief generation incomplete — audit data missing.")
-		var _ = pdf2.Output(&buf)
-		return buf.Bytes(), nil
-	}
 
 	pmb := data.PMBrain
 
@@ -531,7 +519,3 @@ func sanitizeFilename(name string) string {
 	return name
 }
 
-// nopCloser wraps an io.Writer to satisfy io.WriteCloser (for fpdf).
-type nopCloser struct{ io.Writer }
-
-func (nopCloser) Close() error { return nil }
