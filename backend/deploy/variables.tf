@@ -62,7 +62,7 @@ variable "sendgrid_api_key" {
 variable "sendgrid_from_email" {
   description = "From email address for SendGrid"
   type        = string
-  default     = "noreply@claimcoach.ai"
+  default     = "claims@claimcoach.ai"
 }
 
 variable "sendgrid_from_name" {

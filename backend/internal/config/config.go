@@ -53,7 +53,7 @@ func Load() (*Config, error) {
 		AnthropicAPIKey:      os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicModel:       getEnvOrDefault("ANTHROPIC_MODEL", "claude-opus-4-6"),
 		SendGridAPIKey:       os.Getenv("SENDGRID_API_KEY"),
-		SendGridFromEmail:    getEnvOrDefault("SENDGRID_FROM_EMAIL", "noreply@claimcoach.ai"),
+		SendGridFromEmail:    getEnvOrDefault("SENDGRID_FROM_EMAIL", "claims@claimcoach.ai"),
 		SendGridFromName:     getEnvOrDefault("SENDGRID_FROM_NAME", "ClaimCoach AI"),
 		ClaimCoachEmail:          getEnvOrDefault("CLAIMCOACH_EMAIL", "claims@claimcoach.ai"),
 		LegalEscalationThreshold: getEnvFloat64OrDefault("LEGAL_ESCALATION_THRESHOLD_DOLLARS", 10000),
