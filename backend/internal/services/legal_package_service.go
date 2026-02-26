@@ -364,7 +364,10 @@ func (s *LegalPackageService) generateBriefingPDF(data *legalClaimData) ([]byte,
 	}
 
 	lossTypeRaw := strings.ToLower(data.LossType)
-	lossTypeDisplay := strings.ToUpper(lossTypeRaw[:1]) + lossTypeRaw[1:]
+	lossTypeDisplay := lossTypeRaw
+	if len(lossTypeRaw) > 0 {
+		lossTypeDisplay = strings.ToUpper(lossTypeRaw[:1]) + lossTypeRaw[1:]
+	}
 
 	// ── Section 1: Claim Snapshot ─────────────────────────────────────────────
 	sectionHeader("1. CLAIM SNAPSHOT")
