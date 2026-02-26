@@ -55,7 +55,7 @@ func Load() (*Config, error) {
 		SendGridAPIKey:       os.Getenv("SENDGRID_API_KEY"),
 		SendGridFromEmail:    getEnvOrDefault("SENDGRID_FROM_EMAIL", "claims@claimcoach.ai"),
 		SendGridFromName:     getEnvOrDefault("SENDGRID_FROM_NAME", "ClaimCoach AI"),
-		ClaimCoachEmail:          getEnvOrDefault("CLAIMCOACH_EMAIL", "claims@claimcoach.ai"),
+		ClaimCoachEmail:          getEnvOrDefault("CLAIMCOACH_EMAIL", "jesse@claimcoach.ai"),
 		LegalEscalationThreshold: getEnvFloat64OrDefault("LEGAL_ESCALATION_THRESHOLD_DOLLARS", 10000),
 	}
 

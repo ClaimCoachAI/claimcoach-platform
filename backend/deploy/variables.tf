@@ -74,7 +74,7 @@ variable "sendgrid_from_name" {
 variable "claimcoach_email" {
   description = "Internal ClaimCoach email address"
   type        = string
-  default     = "claims@claimcoach.ai"
+  default     = "jesse@claimcoach.ai"
 }
 
 variable "lambda_timeout" {
