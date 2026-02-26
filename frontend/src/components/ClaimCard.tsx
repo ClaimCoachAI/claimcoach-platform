@@ -18,6 +18,11 @@ interface ClaimCardProps {
   claim: Claim
 }
 
+const DAMAGE_ACCENT: Record<string, string> = {
+  water: '#38bdf8',  // sky-400
+  hail:  '#818cf8',  // indigo-400
+}
+
 export default function ClaimCard({ claim }: ClaimCardProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -32,6 +37,12 @@ export default function ClaimCard({ claim }: ClaimCardProps) {
   )
   const timeAgo = formatTimeAgo(claim.created_at)
   const referenceId = claim.insurance_claim_number || claim.claim_number || null
+  const accentColor = DAMAGE_ACCENT[claim.loss_type] ?? '#38bdf8'
+  const incidentDate = claim.incident_date
+    ? new Date(claim.incident_date).toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+      })
+    : null
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -45,41 +56,48 @@ export default function ClaimCard({ claim }: ClaimCardProps) {
   })
 
   return (
-    <div className="glass-card rounded-2xl p-6 hover:shadow-lg transition-all duration-200 animate-scale-in relative">
+    <div
+      className="glass-card rounded-2xl p-6 hover:shadow-lg transition-all duration-200 animate-scale-in relative"
+      style={{ borderLeftColor: accentColor, borderLeftWidth: '3px' }}
+    >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
           <span className="text-3xl">{icon}</span>
           <div>
-            <h3 className="text-lg font-semibold text-navy">{damageLabel}</h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-lg font-semibold text-navy">{damageLabel}</h3>
+              {referenceId && (
+                <span
+                  aria-label={`Claim reference: ${referenceId}`}
+                  className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full"
+                  style={{ color: accentColor, backgroundColor: `${accentColor}18` }}
+                >
+                  {referenceId}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-slate">
-              {claim.property?.legal_address || 'Property'}
+              {incidentDate ?? (claim.property?.legal_address || 'Property')}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {referenceId && (
-            <span aria-label={`Claim reference: ${referenceId}`} className="text-xs font-mono font-medium text-slate bg-slate/10 px-2 py-0.5 rounded-full">
-              {referenceId}
-            </span>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setShowDeleteConfirm(true)
-            }}
-            className="p-2 text-slate hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
-            title="Delete claim"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-          </button>
-        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setShowDeleteConfirm(true)
+          }}
+          className="p-2 text-slate hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
+          title="Delete claim"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+            />
+          </svg>
+        </button>
       </div>
 
       <div className="mb-4">
