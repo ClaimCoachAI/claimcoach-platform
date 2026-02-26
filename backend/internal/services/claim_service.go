@@ -87,6 +87,17 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 		stepsCompleted = *input.StepsCompleted
 	}
 
+	// Generate ClaimCoach reference number (CC-XXXX, per-org sequential)
+	var claimCount int
+	countQuery := `SELECT COUNT(*) FROM claims WHERE organization_id = (
+    SELECT organization_id FROM properties WHERE id = $1
+)`
+	err = s.db.QueryRow(countQuery, input.PropertyID).Scan(&claimCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate claim number: %w", err)
+	}
+	claimNumber := fmt.Sprintf("CC-%04d", claimCount+1)
+
 	// Create the claim
 	claim := &models.Claim{
 		ID:              uuid.New().String(),
@@ -99,6 +110,7 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 		CurrentStep:     currentStep,
 		StepsCompleted:  stepsCompleted,
 		CreatedByUserID: userID,
+		ClaimNumber:     &claimNumber,
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 
@@ -134,7 +146,7 @@ func (s *ClaimService) CreateClaim(input CreateClaimInput, userID string, organi
 		claim.ID,
 		claim.PropertyID,
 		claim.PolicyID,
-		nil, // claim_number
+		claimNumber,
 		claim.LossType,
 		claim.IncidentDate,
 		claim.Status,
