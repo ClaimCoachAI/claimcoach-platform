@@ -219,7 +219,7 @@ export default function Claims() {
               <div
                 key={claim.id}
                 style={{ animationDelay: `${index * 50}ms` }}
-                className="animate-scale-in"
+                className="animate-scale-in h-full"
               >
                 <ClaimCard claim={claim} />
               </div>
