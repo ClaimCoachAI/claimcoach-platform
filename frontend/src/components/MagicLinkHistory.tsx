@@ -99,7 +99,7 @@ export default function MagicLinkHistory({ claimId }: MagicLinkHistoryProps) {
       <div className="px-6 py-5 border-b border-gray-200">
         <h3 className="text-lg font-medium text-gray-900">Magic Link History</h3>
         <p className="mt-1 text-sm text-gray-500">
-          Track all magic links sent to contractors for this claim
+          Track all assessment links sent for this claim
         </p>
       </div>
 
@@ -200,7 +200,7 @@ export default function MagicLinkHistory({ claimId }: MagicLinkHistoryProps) {
               No magic links sent yet
             </h3>
             <p className="mt-1 text-sm text-gray-500">
-              Magic links sent to contractors will appear here.
+              Assessment links sent will appear here.
             </p>
           </div>
         )}

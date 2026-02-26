@@ -38,7 +38,7 @@ const statusColors = {
 
 const meetingTypeLabels: Record<string, string> = {
   adjuster_inspection: 'Adjuster Inspection',
-  contractor_walkthrough: 'Contractor Walkthrough',
+  contractor_walkthrough: 'Site Walkthrough',
   final_inspection: 'Final Inspection',
 }
 
@@ -266,7 +266,7 @@ export default function MeetingsSection({ claimId }: MeetingsSectionProps) {
               </svg>
               <h3 className="mt-2 text-sm font-medium text-gray-900">No meetings scheduled</h3>
               <p className="mt-1 text-sm text-gray-500">
-                Schedule a meeting with the adjuster or contractor.
+                Schedule a meeting with the adjuster or assessor.
               </p>
             </div>
           )}
@@ -359,7 +359,7 @@ function ScheduleMeetingModal({ onClose, onSubmit, isLoading }: ScheduleMeetingM
               required
             >
               <option value="adjuster_inspection">Adjuster Inspection</option>
-              <option value="contractor_walkthrough">Contractor Walkthrough</option>
+              <option value="contractor_walkthrough">Site Walkthrough</option>
               <option value="final_inspection">Final Inspection</option>
             </select>
           </div>

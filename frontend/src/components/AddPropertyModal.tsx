@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import api from '../lib/api'
 
 interface AddPropertyModalProps {
@@ -12,13 +12,6 @@ interface PropertyFormData {
   nickname: string
   legal_address: string
   owner_entity_name: string
-  mortgage_bank_id: string
-}
-
-interface MortgageBank {
-  id: string
-  name: string
-  endorsement_required: boolean
 }
 
 export default function AddPropertyModal({
@@ -30,25 +23,11 @@ export default function AddPropertyModal({
     nickname: '',
     legal_address: '',
     owner_entity_name: '',
-    mortgage_bank_id: '',
-  })
-
-  // Fetch mortgage banks
-  const { data: mortgageBanks } = useQuery({
-    queryKey: ['mortgage-banks'],
-    queryFn: async () => {
-      const response = await api.get('/api/mortgage-banks')
-      return response.data.data as MortgageBank[]
-    },
   })
 
   const createPropertyMutation = useMutation({
     mutationFn: async (data: PropertyFormData) => {
-      const payload = {
-        ...data,
-        mortgage_bank_id: data.mortgage_bank_id || undefined,
-      }
-      const response = await api.post('/api/properties', payload)
+      const response = await api.post('/api/properties', data)
       return response.data
     },
     onSuccess: () => {
@@ -56,7 +35,6 @@ export default function AddPropertyModal({
         nickname: '',
         legal_address: '',
         owner_entity_name: '',
-        mortgage_bank_id: '',
       })
       onSuccess()
       onClose()
@@ -164,28 +142,6 @@ export default function AddPropertyModal({
                 />
               </div>
 
-              <div>
-                <label
-                  htmlFor="mortgage_bank_id"
-                  className="block text-sm font-medium text-navy mb-2"
-                >
-                  Mortgage Bank <span className="text-slate">(Optional)</span>
-                </label>
-                <select
-                  id="mortgage_bank_id"
-                  name="mortgage_bank_id"
-                  value={formData.mortgage_bank_id}
-                  onChange={handleChange}
-                  className="glass-input w-full px-4 py-3 rounded-xl text-navy cursor-pointer"
-                >
-                  <option value="">Select a bank (optional)</option>
-                  {mortgageBanks?.map((bank) => (
-                    <option key={bank.id} value={bank.id}>
-                      {bank.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
 
             <div className="px-8 py-6 border-t border-white/20 flex justify-end gap-3">

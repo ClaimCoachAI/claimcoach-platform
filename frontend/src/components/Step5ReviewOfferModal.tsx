@@ -45,7 +45,7 @@ export default function Step5ReviewOfferModal({
             Review Insurance Offer
           </h3>
           <p className="text-sm text-slate mb-6">
-            Upload your insurance company's estimate and we'll compare it to your contractor's estimate to find discrepancies.
+            Upload your insurance company's estimate and we'll compare it to your ClaimCoach estimate to find discrepancies.
           </p>
 
           <div className="p-4 rounded-xl bg-teal/10 border border-teal/20 mb-6">

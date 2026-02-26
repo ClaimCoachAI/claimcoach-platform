@@ -197,7 +197,7 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
         <form onSubmit={handleStep2Submit} className="space-y-4 mt-6">
           <div>
             <label className="block text-sm font-medium text-navy mb-2">
-              Contractor Name <span className="text-red-500">*</span>
+              Assessor Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -207,13 +207,13 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
                 setContractorData({ ...contractorData, contractor_name: e.target.value })
               }
               className="glass-input w-full px-4 py-3 rounded-xl text-navy"
-              placeholder="ABC Roofing Company"
+              placeholder="e.g. ABC Roofing, John Smith"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-navy mb-2">
-              Contractor Email <span className="text-red-500">*</span>
+              Assessor Email <span className="text-red-500">*</span>
             </label>
             <input
               type="email"
@@ -223,7 +223,7 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
                 setContractorData({ ...contractorData, contractor_email: e.target.value })
               }
               className="glass-input w-full px-4 py-3 rounded-xl text-navy"
-              placeholder="contractor@example.com"
+              placeholder="assessor@example.com"
             />
           </div>
 
@@ -250,7 +250,7 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
         <form onSubmit={handleStep3Submit} className="space-y-4 mt-6">
           <div>
             <label className="block text-sm font-medium text-navy mb-2">
-              Contractor Estimate Total <span className="text-red-500">*</span>
+              ClaimCoach Estimate Total <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate">$</span>

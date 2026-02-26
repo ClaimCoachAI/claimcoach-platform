@@ -51,16 +51,16 @@ export default function Step2ContractorModal({
 
         <div className="relative z-10 w-full max-w-md glass-card-strong rounded-2xl p-6 animate-scale-in">
           <h3 className="text-2xl font-display font-bold text-navy mb-4">
-            Send Link to Contractor
+            Send Assessment Link
           </h3>
           <p className="text-sm text-slate mb-6">
-            We'll email your contractor a secure link to upload photos and their estimate
+            We'll email your assessor a secure link to upload photos and complete a scope sheet
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-navy mb-2">
-                Contractor Name <span className="text-red-500">*</span>
+                Assessor Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -68,13 +68,13 @@ export default function Step2ContractorModal({
                 value={formData.contractor_name}
                 onChange={(e) => setFormData({ ...formData, contractor_name: e.target.value })}
                 className="glass-input w-full px-4 py-3 rounded-xl text-navy"
-                placeholder="ABC Roofing Company"
+                placeholder="e.g. ABC Roofing, John Smith"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-navy mb-2">
-                Contractor Email <span className="text-red-500">*</span>
+                Assessor Email <span className="text-red-500">*</span>
               </label>
               <input
                 type="email"
@@ -82,7 +82,7 @@ export default function Step2ContractorModal({
                 value={formData.contractor_email}
                 onChange={(e) => setFormData({ ...formData, contractor_email: e.target.value })}
                 className="glass-input w-full px-4 py-3 rounded-xl text-navy"
-                placeholder="contractor@example.com"
+                placeholder="assessor@example.com"
               />
             </div>
 

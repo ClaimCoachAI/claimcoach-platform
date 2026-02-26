@@ -168,7 +168,7 @@ function ContractorSubmissionWrapper({ claimId, documents, onDownload }: Contrac
   return (
     <div className="bg-white shadow rounded-lg">
       <div className="px-6 py-5 border-b border-gray-200">
-        <h3 className="text-lg font-medium text-gray-900">Contractor Submission</h3>
+        <h3 className="text-lg font-medium text-gray-900">Assessment Submission</h3>
       </div>
       <div className="px-6 py-5 space-y-6">
         <ScopeSheetSummary scopeSheet={scopeSheet} />
@@ -735,7 +735,7 @@ function DeductibleAnalysis({ claim, policy, onEstimateUpdated }: DeductibleAnal
         {/* Estimate input */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Contractor Estimate Total
+            ClaimCoach Estimate Total
           </label>
           <div className="flex gap-2">
             <input
@@ -780,7 +780,7 @@ function DeductibleAnalysis({ claim, policy, onEstimateUpdated }: DeductibleAnal
 
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Contractor Estimate:</span>
+                    <span className="text-gray-600">ClaimCoach Estimate:</span>
                     <span className="font-medium">{formatCurrency(comparison.estimate)}</span>
                   </div>
                   <div className="flex justify-between">
@@ -1527,7 +1527,7 @@ export default function ClaimDetail() {
               </div>
             </div>
 
-            {/* Contractor Submission - scope sheet + photos */}
+            {/* Assessment Submission - scope sheet + photos */}
             {claim && documents && !loadingDocuments && (
               <ContractorSubmissionWrapper
                 claimId={claim.id}

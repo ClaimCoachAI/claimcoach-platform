@@ -81,13 +81,13 @@ export default function Step3DeductibleModal({
             Check if Worth Filing
           </h3>
           <p className="text-sm text-slate mb-6">
-            Compare your contractor's estimate to your deductible
+            Compare your ClaimCoach estimate to your deductible
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-navy mb-2">
-                Contractor Estimate Total <span className="text-red-500">*</span>
+                ClaimCoach Estimate Total <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate">$</span>

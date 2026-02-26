@@ -477,9 +477,9 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
         </div>
         <div style={{ padding: '24px 20px', border: '1.5px dashed rgba(148,163,184,0.3)', borderRadius: '12px', textAlign: 'center' }}>
           <div style={{ fontSize: '28px', marginBottom: '10px', opacity: 0.5 }}>📋</div>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Waiting for Contractor Scope Sheet</div>
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Waiting for Assessment Scope Sheet</div>
           <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.6', maxWidth: '280px', margin: '0 auto' }}>
-            The AI analysis requires the contractor's damage scope. Send the Magic Link in Step 2 and return here once submitted.
+            The AI analysis requires the assessor's scope sheet. Send the assessment link in Step 2 and return here once submitted.
           </div>
         </div>
       </div>
@@ -602,7 +602,7 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
           fontSize: '10px', fontWeight: '800', color: '#fff', flexShrink: 0,
         }}>✓</div>
         <span style={{ fontSize: '12px', fontWeight: '500', color: '#0d9488' }}>
-          Contractor scope sheet received
+          Assessment scope sheet received
         </span>
       </div>
 

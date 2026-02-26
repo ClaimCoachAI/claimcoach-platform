@@ -16,7 +16,7 @@ export default function ContractorStatusBadge({
       <div
         className="inline-flex items-center px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200"
         role="status"
-        aria-label="Contractor status: Completed"
+        aria-label="Assessment status: Completed"
       >
         <svg className="w-4 h-4 text-emerald-600 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -30,12 +30,12 @@ export default function ContractorStatusBadge({
     <div
       className="inline-flex items-center px-3 py-1 rounded-full bg-amber-50 border border-amber-200"
       role="status"
-      aria-label="Contractor status: Waiting on contractor"
+      aria-label="Assessment status: Waiting on assessor"
     >
       <svg className="w-4 h-4 text-amber-600 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
-      <span className="text-sm font-medium text-amber-700">Waiting on contractor</span>
+      <span className="text-sm font-medium text-amber-700">Waiting on assessor</span>
     </div>
   )
 }
