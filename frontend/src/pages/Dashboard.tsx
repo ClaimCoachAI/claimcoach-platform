@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import Layout from '../components/Layout'
 import PropertyCard from '../components/PropertyCard'
@@ -10,7 +9,6 @@ import type { Property } from '../types/claim'
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const navigate = useNavigate()
 
   const {
     data: properties,
