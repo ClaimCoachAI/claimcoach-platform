@@ -4,15 +4,18 @@ import { useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import Layout from '../components/Layout'
 import PropertyCard from '../components/PropertyCard'
+import AddPropertyModal from '../components/AddPropertyModal'
 import type { Property } from '../types/claim'
 
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const navigate = useNavigate()
 
   const {
     data: properties,
     isLoading,
+    refetch,
   } = useQuery({
     queryKey: ['properties'],
     queryFn: async () => {
@@ -49,6 +52,15 @@ export default function Dashboard() {
                 : 'Loading...'}
             </p>
           </div>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="btn-primary inline-flex items-center px-6 py-3 rounded-xl text-sm font-semibold"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Property
+          </button>
         </div>
 
         {/* Search Bar */}
@@ -164,7 +176,7 @@ export default function Dashboard() {
                 </h3>
                 <p className="mt-2 text-slate">Add your first property to get started</p>
                 <button
-                  onClick={() => navigate('/properties/new')}
+                  onClick={() => setIsModalOpen(true)}
                   className="mt-6 btn-primary px-6 py-3 rounded-xl text-sm font-semibold"
                 >
                   Add Property
@@ -174,6 +186,12 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      <AddPropertyModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={() => refetch()}
+      />
     </Layout>
   )
 }
