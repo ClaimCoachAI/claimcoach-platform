@@ -20,7 +20,7 @@ func NewPropertyService(db *sql.DB) *PropertyService {
 type CreatePropertyInput struct {
 	Nickname        string  `json:"nickname" binding:"required"`
 	LegalAddress    string  `json:"legal_address" binding:"required"`
-	OwnerEntityName string  `json:"owner_entity_name" binding:"required"`
+	OwnerEntityName string  `json:"owner_entity_name"`
 	MortgageBankID  *string `json:"mortgage_bank_id"`
 }
 

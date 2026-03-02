@@ -11,7 +11,6 @@ interface AddPropertyModalProps {
 interface PropertyFormData {
   nickname: string
   legal_address: string
-  owner_entity_name: string
 }
 
 export default function AddPropertyModal({
@@ -22,7 +21,6 @@ export default function AddPropertyModal({
   const [formData, setFormData] = useState<PropertyFormData>({
     nickname: '',
     legal_address: '',
-    owner_entity_name: '',
   })
 
   const createPropertyMutation = useMutation({
@@ -34,7 +32,6 @@ export default function AddPropertyModal({
       setFormData({
         nickname: '',
         legal_address: '',
-        owner_entity_name: '',
       })
       onSuccess()
       onClose()
@@ -120,25 +117,6 @@ export default function AddPropertyModal({
                   onChange={handleChange}
                   className="glass-input w-full px-4 py-3 rounded-xl text-navy placeholder-slate/50"
                   placeholder="e.g., 123 Main St, City, State 12345"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="owner_entity_name"
-                  className="block text-sm font-medium text-navy mb-2"
-                >
-                  Owner Entity Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="owner_entity_name"
-                  name="owner_entity_name"
-                  required
-                  value={formData.owner_entity_name}
-                  onChange={handleChange}
-                  className="glass-input w-full px-4 py-3 rounded-xl text-navy placeholder-slate/50"
-                  placeholder="e.g., ABC Properties LLC"
                 />
               </div>
 

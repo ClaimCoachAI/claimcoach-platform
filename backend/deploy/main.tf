@@ -113,6 +113,7 @@ resource "aws_lambda_function" "api" {
       FRONTEND_URL        = var.frontend_url
       ALLOWED_ORIGINS     = var.frontend_url
       PERPLEXITY_API_KEY  = var.perplexity_api_key
+      ANTHROPIC_API_KEY   = var.anthropic_api_key
       SENDGRID_API_KEY    = var.sendgrid_api_key
       SENDGRID_FROM_EMAIL = var.sendgrid_from_email
       SENDGRID_FROM_NAME  = var.sendgrid_from_name

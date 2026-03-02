@@ -52,6 +52,13 @@ variable "perplexity_api_key" {
   default     = ""
 }
 
+variable "anthropic_api_key" {
+  description = "Anthropic API key for Claude AI features"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "sendgrid_api_key" {
   description = "SendGrid API key for email (optional - falls back to mock)"
   type        = string
