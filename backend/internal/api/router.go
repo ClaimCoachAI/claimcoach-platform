@@ -82,6 +82,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 	magicLinkService := services.NewMagicLinkService(db, cfg, storageClient, claimService, emailService)
 	magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
+	inspectionService := services.NewInspectionService(db, magicLinkService)
+	inspectionHandler := handlers.NewInspectionHandler(inspectionService)
 	scopeSheetService := services.NewScopeSheetService(db)
 	scopeSheetHandler := handlers.NewScopeSheetHandler(scopeSheetService, magicLinkService, claimService)
 	auditService := services.NewAuditService(db, llmClient, scopeSheetService)
@@ -119,6 +121,10 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	r.POST("/api/magic-links/:token/scope-sheet", scopeSheetHandler.CreateViaMagicLink)
 	r.POST("/api/magic-links/:token/scope-sheet/draft", scopeSheetHandler.SaveDraft)
 	r.GET("/api/magic-links/:token/scope-sheet/draft", scopeSheetHandler.GetDraft)
+
+	// Inspection V2 routes (public - no auth required)
+	r.GET("/api/magic-links/:token/v2/inspection", inspectionHandler.GetSetup)
+	r.POST("/api/magic-links/:token/v2/inspection", inspectionHandler.SaveSetup)
 
 	// Protected routes
 	api := r.Group("/api")
