@@ -116,9 +116,25 @@ export const generateOwnerPitch = async (claimId: string, auditId: string) => {
 }
 
 export const downloadLegalPackage = async (claimId: string): Promise<void> => {
-  const response = await api.get(`/api/claims/${claimId}/legal-package/download`, {
-    responseType: 'blob',
-  })
+  let response
+  try {
+    response = await api.get(`/api/claims/${claimId}/legal-package/download`, {
+      responseType: 'blob',
+    })
+  } catch (err: any) {
+    // When responseType is 'blob', error response bodies are Blobs not parsed JSON.
+    // Convert the blob to text so we can surface the real error message.
+    if (err?.response?.data instanceof Blob) {
+      const text = await err.response.data.text()
+      try {
+        const parsed = JSON.parse(text)
+        throw Object.assign(new Error(parsed.error || text), { response: { data: parsed } })
+      } catch {
+        throw new Error(text || err.message)
+      }
+    }
+    throw err
+  }
 
   const contentDisposition = response.headers['content-disposition'] as string | undefined
   let filename = `ClaimCoach-Legal-Package-${claimId}.zip`

@@ -242,7 +242,7 @@ func (s *RCVDemandService) getClaimContext(ctx context.Context, claimID string) 
 			p.nickname,
 			p.legal_address,
 			pol.policy_number,
-			pol.carrier
+			pol.carrier_name
 		FROM claims c
 		INNER JOIN properties p ON c.property_id = p.id
 		LEFT JOIN insurance_policies pol ON p.id = pol.property_id
