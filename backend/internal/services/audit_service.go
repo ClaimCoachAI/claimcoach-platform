@@ -633,43 +633,57 @@ func (s *AuditService) GenerateDisputeLetter(ctx context.Context, auditReportID,
 		return "", fmt.Errorf("failed to fetch claim context: %w", err)
 	}
 
-	// 4. Build letter prompt
-	analysisJSON, _ := json.Marshal(analysis)
-	var b strings.Builder
-	b.WriteString("Write a formal Dispute / Supplement Request Letter for an insurance claim.\n\n")
-	b.WriteString("CLAIM DETAILS:\n")
-	b.WriteString(fmt.Sprintf("- Property Address: %s\n", address))
-	b.WriteString(fmt.Sprintf("- Insurance Carrier: %s\n", carrierName))
+	// 4. Build letter prompt — use a concise structured summary, NOT raw JSON
+	policyNum := ""
 	if policyNumber != nil {
-		b.WriteString(fmt.Sprintf("- Policy Number: %s\n", *policyNumber))
+		policyNum = *policyNumber
 	}
+	claimNum := ""
 	if claimNumber != nil {
-		b.WriteString(fmt.Sprintf("- Claim Number: %s\n", *claimNumber))
+		claimNum = *claimNumber
 	}
-	b.WriteString(fmt.Sprintf("- Incident Date: %s\n", incidentDate.Format("January 2, 2006")))
-	b.WriteString(fmt.Sprintf("- Today's Date: %s\n\n", time.Now().Format("January 2, 2006")))
-	b.WriteString("PM BRAIN ANALYSIS (use this data for the letter):\n")
-	b.WriteString(string(analysisJSON))
-	b.WriteString("\n\n")
-	b.WriteString(`Write a professional business letter that:
-1. Opens with a formal salutation to the insurance carrier's claims department
-2. References the claim number and policy number in the subject line
-3. States clearly that the property manager is disputing the carrier's estimate
-4. For each top_delta_driver: explains the pricing gap with justification
-5. For any coverage_disputes (denied/partial): argues why those items should be covered with supporting reasoning
-6. States the total additional funds requested (total_delta)
-7. Lists the required_next_steps as a formal request to the carrier
-8. Closes professionally, requesting a written response within 10 business days
-9. Uses plain English — no jargon. Firm but professional and respectful tone.
 
-Format as plain text (no markdown). Include today's date at the top.
-Return ONLY the letter text, no preamble or explanation.`)
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Date: %s\n", time.Now().Format("January 2, 2006")))
+	b.WriteString(fmt.Sprintf("Property: %s\n", address))
+	b.WriteString(fmt.Sprintf("Carrier: %s\n", carrierName))
+	b.WriteString(fmt.Sprintf("Policy: %s  |  Claim: %s\n", policyNum, claimNum))
+	b.WriteString(fmt.Sprintf("Loss date: %s\n\n", incidentDate.Format("January 2, 2006")))
+	b.WriteString(fmt.Sprintf("FINANCIALS: Contractor estimate $%.2f | Carrier paid $%.2f | Gap $%.2f\n\n",
+		analysis.TotalContractorEstimate, analysis.TotalCarrierEstimate, analysis.TotalDelta))
+
+	if len(analysis.TopDeltaDrivers) > 0 {
+		b.WriteString("PRICING GAPS:\n")
+		for i, d := range analysis.TopDeltaDrivers {
+			if i >= 5 {
+				break
+			}
+			b.WriteString(fmt.Sprintf("- %s: carrier $%.2f vs required $%.2f (gap $%.2f) — %s\n",
+				d.LineItem, d.CarrierPrice, d.ContractorPrice, d.Delta, d.Reason))
+		}
+		b.WriteString("\n")
+	}
+
+	if len(analysis.CoverageDisputes) > 0 {
+		b.WriteString("COVERAGE DISPUTES:\n")
+		for i, cd := range analysis.CoverageDisputes {
+			if i >= 5 {
+				break
+			}
+			b.WriteString(fmt.Sprintf("- %s [%s]: %s\n", cd.Item, cd.Status, cd.ContractorPosition))
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString(`Write a formal insurance dispute letter using the data above.
+Include: date, salutation to claims dept, subject line with claim/policy numbers, clear dispute of the carrier's estimate citing specific pricing gaps and coverage disputes, total additional funds requested, request for written response within 10 business days, professional closing.
+Plain text only. Return ONLY the letter, no preamble.`)
 
 	// 5. Call LLM
 	messages := []llm.Message{
 		{
 			Role:    "system",
-			Content: "You are a professional insurance claim specialist. Write formal, persuasive dispute letters. Return only the letter text, no markdown, no preamble.",
+			Content: "You are an insurance claim specialist. Write concise formal dispute letters. Return only the letter text.",
 		},
 		{
 			Role:    "user",
@@ -677,7 +691,7 @@ Return ONLY the letter text, no preamble or explanation.`)
 		},
 	}
 
-	response, err := s.llmClient.Chat(ctx, messages, 0.3, 2048)
+	response, err := s.llmClient.Chat(ctx, messages, 0.3, 900)
 	if err != nil {
 		return "", fmt.Errorf("LLM API call failed: %w", err)
 	}
