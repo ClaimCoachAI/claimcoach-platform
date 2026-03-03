@@ -118,7 +118,8 @@ func (s *InspectionService) GetByToken(token string) (*GetSetupResponse, error) 
 
 // SaveSetup validates the token, upserts the inspection_v2 row (INSERT on first call,
 // UPDATE on subsequent calls), upserts the area_selection row, sets current_step = 2,
-// and returns the saved inspection.
+// and returns the saved inspection. Both writes are wrapped in a transaction so that
+// a failure on the second write does not leave the database in a partial state.
 func (s *InspectionService) SaveSetup(token string, input SaveSetupInput) (*models.InspectionV2, error) {
 	validation, err := s.magicLinkSvc.ValidateToken(token)
 	if err != nil {
@@ -131,6 +132,12 @@ func (s *InspectionService) SaveSetup(token string, input SaveSetupInput) (*mode
 	claimID := validation.Claim.ID
 	magicLinkID := validation.MagicLinkID
 	now := time.Now()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
 
 	// Upsert inspection_v2 — insert if no row for this magic_link_id, otherwise update.
 	upsertInspQuery := `
@@ -152,7 +159,7 @@ func (s *InspectionService) SaveSetup(token string, input SaveSetupInput) (*mode
 	var insp models.InspectionV2
 	var submittedAt sql.NullTime
 
-	err = s.db.QueryRow(
+	err = tx.QueryRow(
 		upsertInspQuery,
 		newID,
 		claimID,
@@ -195,7 +202,7 @@ func (s *InspectionService) SaveSetup(token string, input SaveSetupInput) (*mode
 	`
 
 	var area models.InspectionAreaSelection
-	err = s.db.QueryRow(
+	err = tx.QueryRow(
 		upsertAreaQuery,
 		insp.ID,
 		input.AreaSelection.IncludeRoof,
@@ -211,6 +218,10 @@ func (s *InspectionService) SaveSetup(token string, input SaveSetupInput) (*mode
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to upsert inspection_area_selection: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	insp.AreaSelection = &area

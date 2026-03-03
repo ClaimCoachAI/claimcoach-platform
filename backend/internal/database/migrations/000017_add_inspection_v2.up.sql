@@ -15,7 +15,7 @@ CREATE TABLE inspection_v2 (
 );
 
 CREATE INDEX idx_inspection_v2_claim ON inspection_v2(claim_id);
-CREATE INDEX idx_inspection_v2_magic_link ON inspection_v2(magic_link_id);
+CREATE UNIQUE INDEX idx_inspection_v2_magic_link ON inspection_v2(magic_link_id);
 
 CREATE TABLE inspection_area_selection (
     inspection_id    UUID PRIMARY KEY REFERENCES inspection_v2(id) ON DELETE CASCADE,
