@@ -87,7 +87,7 @@ variable "claimcoach_email" {
 variable "lambda_timeout" {
   description = "Lambda function timeout in seconds"
   type        = number
-  default     = 30
+  default     = 120
 }
 
 variable "lambda_memory_size" {

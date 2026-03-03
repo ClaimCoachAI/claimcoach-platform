@@ -114,6 +114,7 @@ resource "aws_lambda_function" "api" {
       ALLOWED_ORIGINS     = var.frontend_url
       PERPLEXITY_API_KEY  = var.perplexity_api_key
       ANTHROPIC_API_KEY   = var.anthropic_api_key
+      ANTHROPIC_MODEL     = "claude-sonnet-4-6"
       SENDGRID_API_KEY    = var.sendgrid_api_key
       SENDGRID_FROM_EMAIL = var.sendgrid_from_email
       SENDGRID_FROM_NAME  = var.sendgrid_from_name
@@ -155,6 +156,7 @@ resource "aws_apigatewayv2_integration" "lambda" {
   integration_type       = "AWS_PROXY"
   integration_uri        = aws_lambda_function.api.invoke_arn
   payload_format_version = "2.0"
+  timeout_milliseconds   = 29000
 }
 
 # Default catch-all route
