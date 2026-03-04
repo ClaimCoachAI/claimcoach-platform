@@ -137,7 +137,7 @@ func (s *MagicLinkService) GenerateMagicLink(claimID string, organizationID stri
 	}
 
 	// Step 6: Build frontend URL
-	linkURL := fmt.Sprintf("%s/upload/%s", s.cfg.FrontendURL, token)
+	linkURL := fmt.Sprintf("%s/contractor/v2/%s", s.cfg.FrontendURL, token)
 
 	// Step 7: Get claim and property data for email
 	claim, err := s.claimService.GetClaim(claimID, organizationID)
@@ -635,7 +635,7 @@ func (s *MagicLinkService) GetMagicLinksByClaimID(claimID string, organizationID
 		}
 
 		// Build link URL
-		ml.LinkURL = fmt.Sprintf("%s/upload/%s", s.cfg.FrontendURL, token)
+		ml.LinkURL = fmt.Sprintf("%s/contractor/v2/%s", s.cfg.FrontendURL, token)
 
 		// Set user info if available
 		if createdByUserID != nil && userName != nil && userEmail != nil {
