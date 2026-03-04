@@ -79,6 +79,7 @@ export function useWizardV2State(token: string): WizardV2State {
   const [rooms, setRooms] = useState<InspectionRoom[]>([])
   const [roomsLoading, setRoomsLoading] = useState(false)
   const roomDebounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const pendingRoomUpdates = useRef<Map<string, UpdateRoomInput>>(new Map())
 
   useEffect(() => {
     const load = async () => {
@@ -185,17 +186,25 @@ export function useWizardV2State(token: string): WizardV2State {
   }, [token])
 
   const updateRoom = useCallback((roomId: string, input: UpdateRoomInput) => {
+    // Accumulate pending updates for this room
+    const current = pendingRoomUpdates.current.get(roomId) ?? ({} as UpdateRoomInput)
+    const merged = { ...current, ...input }
+    pendingRoomUpdates.current.set(roomId, merged)
+
     // Optimistic update
     setRooms(prev => prev.map(r => r.id === roomId ? { ...r, ...input } : r))
+
     // Debounce per room
     const existing = roomDebounceTimers.current.get(roomId)
     if (existing) clearTimeout(existing)
     const timer = setTimeout(async () => {
       roomDebounceTimers.current.delete(roomId)
+      const payload = pendingRoomUpdates.current.get(roomId)
+      pendingRoomUpdates.current.delete(roomId)
       try {
         const { data } = await axios.put<{ success: boolean; data: InspectionRoom }>(
           `${API}/api/magic-links/${token}/v2/inspection/rooms/${roomId}`,
-          input
+          payload
         )
         setRooms(prev => prev.map(r => r.id === roomId ? data.data : r))
       } catch {
@@ -206,6 +215,13 @@ export function useWizardV2State(token: string): WizardV2State {
   }, [token])
 
   const deleteRoom = useCallback(async (roomId: string) => {
+    // Cancel any pending debounced update for this room
+    const existing = roomDebounceTimers.current.get(roomId)
+    if (existing) {
+      clearTimeout(existing)
+      roomDebounceTimers.current.delete(roomId)
+    }
+    pendingRoomUpdates.current.delete(roomId)
     setRooms(prev => prev.filter(r => r.id !== roomId))
     try {
       await axios.delete(`${API}/api/magic-links/${token}/v2/inspection/rooms/${roomId}`)
@@ -225,7 +241,7 @@ export function useWizardV2State(token: string): WizardV2State {
       )
       const photo = data.data
       setRooms(prev => prev.map(r =>
-        r.id === roomId ? { ...r, photos: [...r.photos, photo] } : r
+        r.id === roomId ? { ...r, photos: [...(r.photos ?? []), photo] } : r
       ))
       return photo
     } catch {
@@ -235,7 +251,7 @@ export function useWizardV2State(token: string): WizardV2State {
 
   const deleteRoomPhoto = useCallback(async (roomId: string, photoId: string) => {
     setRooms(prev => prev.map(r =>
-      r.id === roomId ? { ...r, photos: r.photos.filter(p => p.id !== photoId) } : r
+      r.id === roomId ? { ...r, photos: (r.photos ?? []).filter(p => p.id !== photoId) } : r
     ))
     try {
       await axios.delete(
