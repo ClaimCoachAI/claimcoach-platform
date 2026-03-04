@@ -2,6 +2,7 @@ import WizardV2Progress from './WizardV2Progress'
 import { useWizardV2State } from './useWizardV2State'
 import QuickSetupStep from './steps/QuickSetupStep'
 import ElevationsStep from './steps/ElevationsStep'
+import RoofStep from './steps/RoofStep'
 
 interface ContractorWizardV2Props {
   token: string
@@ -50,14 +51,29 @@ export default function ContractorWizardV2({ token }: ContractorWizardV2Props) {
           token={state.token}
           elevations={state.elevations}
           onSaveElevation={state.saveElevation}
-          onContinue={() => state.setCurrentStep(3)}
-          onBack={() => state.setCurrentStep(1)}
+          onContinue={() => state.setCurrentStep(state.computeNextStep(2))}
+          onBack={() => state.setCurrentStep(state.computePrevStep(2))}
           loading={state.elevationLoading}
           error={state.error}
         />
       )}
 
-      {state.currentStep > 2 && (
+      {state.currentStep === 3 && (
+        <RoofStep
+          token={state.token}
+          roof={state.roof}
+          damageSpots={state.roofDamageSpots}
+          onSaveRoof={state.saveRoof}
+          onAddDamageSpot={state.addDamageSpot}
+          onDeleteDamageSpot={state.deleteDamageSpot}
+          onContinue={() => state.setCurrentStep(state.computeNextStep(3))}
+          onBack={() => state.setCurrentStep(state.computePrevStep(3))}
+          loading={state.roofLoading}
+          error={state.error}
+        />
+      )}
+
+      {state.currentStep > 3 && (
         <div style={{ padding: 32, textAlign: 'center', color: '#6b7280' }}>
           <p style={{ fontSize: 18, fontWeight: 600, color: '#374151' }}>Step {state.currentStep}</p>
           <p style={{ marginTop: 8 }}>Coming in the next slice...</p>
