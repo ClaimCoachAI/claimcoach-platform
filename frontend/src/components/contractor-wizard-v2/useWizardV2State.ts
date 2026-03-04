@@ -9,6 +9,10 @@ import type {
   ElevationSide,
   RoofData,
   RoofDamageSpot,
+  InspectionRoom,
+  InspectionRoomPhoto,
+  CreateRoomInput,
+  UpdateRoomInput,
 } from './types'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -36,6 +40,14 @@ export interface WizardV2State {
   deleteDamageSpot: (spotId: string) => Promise<void>
   computeNextStep: (from: WizardStep) => WizardStep
   computePrevStep: (from: WizardStep) => WizardStep
+  rooms: InspectionRoom[]
+  roomsLoading: boolean
+  loadRooms: () => Promise<void>
+  createRoom: (input: CreateRoomInput) => Promise<InspectionRoom | null>
+  updateRoom: (roomId: string, input: UpdateRoomInput) => void
+  deleteRoom: (roomId: string) => Promise<void>
+  addRoomPhoto: (roomId: string, input: { photo_document_id?: string; caption?: string; sort_order?: number }) => Promise<InspectionRoomPhoto | null>
+  deleteRoomPhoto: (roomId: string, photoId: string) => Promise<void>
 }
 
 const defaultAreaSelection = {
@@ -64,6 +76,9 @@ export function useWizardV2State(token: string): WizardV2State {
   const [roofDamageSpots, setRoofDamageSpots] = useState<RoofDamageSpot[]>([])
   const [roofLoading, setRoofLoading] = useState(false)
   const roofDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [rooms, setRooms] = useState<InspectionRoom[]>([])
+  const [roomsLoading, setRoomsLoading] = useState(false)
+  const roomDebounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   useEffect(() => {
     const load = async () => {
@@ -141,6 +156,96 @@ export function useWizardV2State(token: string): WizardV2State {
     }
   }, [token])
 
+  const loadRooms = useCallback(async () => {
+    setRoomsLoading(true)
+    try {
+      const { data } = await axios.get<{ success: boolean; data: InspectionRoom[] }>(
+        `${API}/api/magic-links/${token}/v2/inspection/rooms`
+      )
+      setRooms(data.data ?? [])
+    } catch {
+      // non-fatal
+    } finally {
+      setRoomsLoading(false)
+    }
+  }, [token])
+
+  const createRoom = useCallback(async (input: CreateRoomInput): Promise<InspectionRoom | null> => {
+    try {
+      const { data } = await axios.post<{ success: boolean; data: InspectionRoom }>(
+        `${API}/api/magic-links/${token}/v2/inspection/rooms`,
+        input
+      )
+      const newRoom = data.data
+      setRooms(prev => [...prev, newRoom])
+      return newRoom
+    } catch {
+      return null
+    }
+  }, [token])
+
+  const updateRoom = useCallback((roomId: string, input: UpdateRoomInput) => {
+    // Optimistic update
+    setRooms(prev => prev.map(r => r.id === roomId ? { ...r, ...input } : r))
+    // Debounce per room
+    const existing = roomDebounceTimers.current.get(roomId)
+    if (existing) clearTimeout(existing)
+    const timer = setTimeout(async () => {
+      roomDebounceTimers.current.delete(roomId)
+      try {
+        const { data } = await axios.put<{ success: boolean; data: InspectionRoom }>(
+          `${API}/api/magic-links/${token}/v2/inspection/rooms/${roomId}`,
+          input
+        )
+        setRooms(prev => prev.map(r => r.id === roomId ? data.data : r))
+      } catch {
+        // non-fatal
+      }
+    }, 800)
+    roomDebounceTimers.current.set(roomId, timer)
+  }, [token])
+
+  const deleteRoom = useCallback(async (roomId: string) => {
+    setRooms(prev => prev.filter(r => r.id !== roomId))
+    try {
+      await axios.delete(`${API}/api/magic-links/${token}/v2/inspection/rooms/${roomId}`)
+    } catch {
+      // non-fatal
+    }
+  }, [token])
+
+  const addRoomPhoto = useCallback(async (
+    roomId: string,
+    input: { photo_document_id?: string; caption?: string; sort_order?: number }
+  ): Promise<InspectionRoomPhoto | null> => {
+    try {
+      const { data } = await axios.post<{ success: boolean; data: InspectionRoomPhoto }>(
+        `${API}/api/magic-links/${token}/v2/inspection/rooms/${roomId}/photos`,
+        input
+      )
+      const photo = data.data
+      setRooms(prev => prev.map(r =>
+        r.id === roomId ? { ...r, photos: [...r.photos, photo] } : r
+      ))
+      return photo
+    } catch {
+      return null
+    }
+  }, [token])
+
+  const deleteRoomPhoto = useCallback(async (roomId: string, photoId: string) => {
+    setRooms(prev => prev.map(r =>
+      r.id === roomId ? { ...r, photos: r.photos.filter(p => p.id !== photoId) } : r
+    ))
+    try {
+      await axios.delete(
+        `${API}/api/magic-links/${token}/v2/inspection/rooms/${roomId}/photos/${photoId}`
+      )
+    } catch {
+      // non-fatal
+    }
+  }, [token])
+
   const saveRoof = useCallback(async (data: Partial<RoofData>) => {
     // 800ms debounce — cancel any pending save
     if (roofDebounceTimer.current) clearTimeout(roofDebounceTimer.current)
@@ -199,7 +304,8 @@ export function useWizardV2State(token: string): WizardV2State {
   useEffect(() => {
     if (currentStep === 2) loadElevations()
     if (currentStep === 3) loadRoof()
-  }, [currentStep, loadElevations, loadRoof])
+    if (currentStep === 4) loadRooms()
+  }, [currentStep, loadElevations, loadRoof, loadRooms])
 
   const saveElevation = useCallback(async (side: ElevationSide, data: Partial<ElevationData>) => {
     // Debounce per-side: cancel any pending save for this side
@@ -281,5 +387,13 @@ export function useWizardV2State(token: string): WizardV2State {
     deleteDamageSpot,
     computeNextStep,
     computePrevStep,
+    rooms,
+    roomsLoading,
+    loadRooms,
+    createRoom,
+    updateRoom,
+    deleteRoom,
+    addRoomPhoto,
+    deleteRoomPhoto,
   }
 }
