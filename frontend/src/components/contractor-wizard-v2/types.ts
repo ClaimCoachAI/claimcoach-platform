@@ -32,3 +32,22 @@ export interface GetSetupResponse {
 
 // Wizard step IDs — drives which screen is shown
 export type WizardStep = 1 | 2 | 3 | 4 | 5
+
+export type ElevationSide = 'front' | 'right' | 'back' | 'left'
+
+export type SidingType = 'vinyl' | 'wood' | 'fiber_cement' | 'brick' | 'stucco' | 'other'
+
+export interface ElevationData {
+  id?: string
+  side: ElevationSide
+  photo_document_id: string | null
+  photo_url: string | null
+  has_damage: boolean
+  siding_type: SidingType | null
+  siding_replace_sf: number | null
+  siding_paint_sf: number | null
+  gutter_lf: number | null
+  windows_count: number | null
+  doors_count: number | null
+  notes: string | null
+}
