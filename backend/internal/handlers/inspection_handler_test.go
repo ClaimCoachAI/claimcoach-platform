@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/claimcoach/backend/internal/models"
 	"github.com/gin-gonic/gin"
@@ -28,7 +29,8 @@ type mockInspectionService struct {
 	updateRoomFn      func(token string, roomID string, input updateRoomInput) (*roomResponse, error)
 	deleteRoomFn      func(token string, roomID string) error
 	addRoomPhotoFn    func(token string, roomID string, input addRoomPhotoInput) (*roomPhotoResponse, error)
-	deleteRoomPhotoFn func(token string, photoID string) error
+	deleteRoomPhotoFn    func(token string, photoID string) error
+	submitInspectionFn  func(token string) (*submitInspectionResponse, error)
 }
 
 func (m *mockInspectionService) GetByToken(token string) (*getSetupResponse, error) {
@@ -76,6 +78,9 @@ func (m *mockInspectionService) AddRoomPhoto(token string, roomID string, input 
 }
 func (m *mockInspectionService) DeleteRoomPhoto(token string, photoID string) error {
 	return m.deleteRoomPhotoFn(token, photoID)
+}
+func (m *mockInspectionService) SubmitInspection(token string) (*submitInspectionResponse, error) {
+	return m.submitInspectionFn(token)
 }
 
 func TestInspectionHandler_GetSetup_ReturnsAddressWhenNoDraft(t *testing.T) {
@@ -479,4 +484,62 @@ func TestInspectionHandler_AddRoomPhoto_Returns201OnSuccess(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	data := resp["data"].(map[string]interface{})
 	assert.Equal(t, "photo-uuid-333", data["id"])
+}
+
+func TestInspectionHandler_SubmitInspection_Returns200OnSuccess(t *testing.T) {
+	now := time.Now()
+	mock := &mockInspectionService{
+		submitInspectionFn: func(token string) (*submitInspectionResponse, error) {
+			return &submitInspectionResponse{
+				ID:          "insp-uuid-001",
+				Status:      "submitted",
+				SubmittedAt: &now,
+			}, nil
+		},
+	}
+	handler := NewInspectionHandler(mock)
+	r := gin.New()
+	r.POST("/api/magic-links/:token/v2/inspection/submit", handler.SubmitInspection)
+	req, _ := http.NewRequest("POST", "/api/magic-links/test-token/v2/inspection/submit", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, true, resp["success"])
+	data := resp["data"].(map[string]interface{})
+	assert.Equal(t, "submitted", data["status"])
+}
+
+func TestInspectionHandler_SubmitInspection_Returns401ForInvalidToken(t *testing.T) {
+	mock := &mockInspectionService{
+		submitInspectionFn: func(token string) (*submitInspectionResponse, error) {
+			return nil, fmt.Errorf("invalid or expired token: %s", token)
+		},
+	}
+	handler := NewInspectionHandler(mock)
+	r := gin.New()
+	r.POST("/api/magic-links/:token/v2/inspection/submit", handler.SubmitInspection)
+	req, _ := http.NewRequest("POST", "/api/magic-links/bad-token/v2/inspection/submit", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestInspectionHandler_SubmitInspection_Returns404WhenNoInspection(t *testing.T) {
+	mock := &mockInspectionService{
+		submitInspectionFn: func(token string) (*submitInspectionResponse, error) {
+			return nil, fmt.Errorf("inspection not found: %w", sql.ErrNoRows)
+		},
+	}
+	handler := NewInspectionHandler(mock)
+	r := gin.New()
+	r.POST("/api/magic-links/:token/v2/inspection/submit", handler.SubmitInspection)
+	req, _ := http.NewRequest("POST", "/api/magic-links/test-token/v2/inspection/submit", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Contains(t, resp["error"], "not found")
 }

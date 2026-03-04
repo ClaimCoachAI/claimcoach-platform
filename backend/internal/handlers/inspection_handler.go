@@ -30,6 +30,8 @@ type addRoomPhotoInput = services.AddRoomPhotoInput
 type roomResponse      = models.InspectionRoom
 type roomPhotoResponse = models.InspectionRoomPhoto
 
+type submitInspectionResponse = models.InspectionV2
+
 // inspectionServiceInterface is the narrow interface used by InspectionHandler.
 // It is satisfied by *services.InspectionService and by mockInspectionService in tests.
 type inspectionServiceInterface interface {
@@ -47,6 +49,7 @@ type inspectionServiceInterface interface {
 	DeleteRoom(token string, roomID string) error
 	AddRoomPhoto(token string, roomID string, input addRoomPhotoInput) (*roomPhotoResponse, error)
 	DeleteRoomPhoto(token string, photoID string) error
+	SubmitInspection(token string) (*submitInspectionResponse, error)
 }
 
 // InspectionHandler handles HTTP requests for the inspection v2 wizard.
@@ -445,4 +448,26 @@ func (h *InspectionHandler) DeleteRoomPhoto(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// SubmitInspection handles POST /api/magic-links/:token/v2/inspection/submit.
+// Returns 200 with the updated inspection (idempotent — safe to call multiple times).
+func (h *InspectionHandler) SubmitInspection(c *gin.Context) {
+	token := c.Param("token")
+
+	insp, err := h.service.SubmitInspection(token)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Inspection not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to submit inspection: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": insp})
 }
