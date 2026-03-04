@@ -506,7 +506,8 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
       setPhase('reading')
       await new Promise(r => setTimeout(r, 700))
       setPhase('estimating')
-      await generateIndustryEstimate(claim.id)
+      const rawEstimate = await generateIndustryEstimate(claim.id)
+      if (rawEstimate?.line_items?.length > 0) setGeneratedEstimate(rawEstimate)
       setPhase('analyzing')
       const result: ViabilityAnalysis = await analyzeClaimViability(claim.id)
       setAnalysis(result)
@@ -551,16 +552,16 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
       const saved: ViabilityAnalysis = JSON.parse(auditReport.viability_analysis)
       setAnalysis(saved)
       setPhase('complete')
+      if (auditReport.generated_estimate) {
+        try {
+          const est: GeneratedEstimate = JSON.parse(auditReport.generated_estimate)
+          if (est.line_items?.length > 0) setGeneratedEstimate(est)
+        } catch {
+          // silent fail — section just won't render
+        }
+      }
     } catch {
       // If parse fails, stay on idle so user can re-analyze
-    }
-    if (auditReport?.generated_estimate) {
-      try {
-        const est: GeneratedEstimate = JSON.parse(auditReport.generated_estimate)
-        if (est.line_items?.length > 0) setGeneratedEstimate(est)
-      } catch {
-        // silent fail — section just won't render
-      }
     }
   }, [auditReport])
 
@@ -658,7 +659,7 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
           analysis={analysis}
           deductibleValue={deductibleValue}
           onContinue={() => saveMutation.mutate()}
-          onReanalyze={() => { setPhase('idle'); setAnalysis(null) }}
+          onReanalyze={() => { setPhase('idle'); setAnalysis(null); setGeneratedEstimate(null) }}
           isPending={saveMutation.isPending}
           readOnly={step3Done}
         />
