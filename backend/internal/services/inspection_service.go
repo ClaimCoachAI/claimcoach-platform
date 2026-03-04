@@ -839,7 +839,7 @@ func (s *InspectionService) GetRooms(token string) ([]models.InspectionRoom, err
 		rooms = append(rooms, r)
 	}
 	if err = rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to iterate room rows: %w", err)
 	}
 
 	if len(rooms) == 0 {
@@ -1024,7 +1024,10 @@ func (s *InspectionService) UpdateRoom(token string, roomID string, input Update
 		}
 		r.Photos = append(r.Photos, p)
 	}
-	return &r, photoRows.Err()
+	if err = photoRows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate room photos after update: %w", err)
+	}
+	return &r, nil
 }
 
 // DeleteRoom removes a room by ID, verifying it belongs to this inspection.
