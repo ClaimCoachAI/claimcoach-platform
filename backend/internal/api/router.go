@@ -134,6 +134,14 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	r.POST("/api/magic-links/:token/v2/inspection/roof/damage-spots", inspectionHandler.AddDamageSpot)
 	r.DELETE("/api/magic-links/:token/v2/inspection/roof/damage-spots/:spotId", inspectionHandler.DeleteDamageSpot)
 
+	// Rooms routes
+	r.GET("/api/magic-links/:token/v2/inspection/rooms", inspectionHandler.GetRooms)
+	r.POST("/api/magic-links/:token/v2/inspection/rooms", inspectionHandler.CreateRoom)
+	r.PUT("/api/magic-links/:token/v2/inspection/rooms/:roomId", inspectionHandler.UpdateRoom)
+	r.DELETE("/api/magic-links/:token/v2/inspection/rooms/:roomId", inspectionHandler.DeleteRoom)
+	r.POST("/api/magic-links/:token/v2/inspection/rooms/:roomId/photos", inspectionHandler.AddRoomPhoto)
+	r.DELETE("/api/magic-links/:token/v2/inspection/rooms/:roomId/photos/:photoId", inspectionHandler.DeleteRoomPhoto)
+
 	// Protected routes
 	api := r.Group("/api")
 	api.Use(auth.AuthMiddleware(supabase, db))
