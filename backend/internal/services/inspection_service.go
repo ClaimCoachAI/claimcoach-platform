@@ -545,7 +545,7 @@ func (s *InspectionService) SaveRoof(token string, input SaveRoofInput) (*models
 		validation.MagicLinkID,
 	).Scan(&inspectionID)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("inspection not found for this magic link: %w", sql.ErrNoRows)
+		return nil, fmt.Errorf("inspection not found for this magic link: %w", err)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up inspection: %w", err)
@@ -661,7 +661,7 @@ func (s *InspectionService) AddDamageSpot(token string, input AddDamageSpotInput
 		validation.MagicLinkID,
 	).Scan(&inspectionID)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("inspection not found for this magic link: %w", sql.ErrNoRows)
+		return nil, fmt.Errorf("inspection not found for this magic link: %w", err)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up inspection: %w", err)
@@ -731,7 +731,7 @@ func (s *InspectionService) DeleteDamageSpot(token string, spotID string) error 
 		validation.MagicLinkID,
 	).Scan(&inspectionID)
 	if err == sql.ErrNoRows {
-		return fmt.Errorf("inspection not found: %w", sql.ErrNoRows)
+		return fmt.Errorf("inspection not found: %w", err)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to look up inspection: %w", err)
