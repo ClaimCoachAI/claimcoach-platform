@@ -135,6 +135,7 @@ function RoomPhotoGallery({ photos, onDelete, onAdd }: RoomPhotoGalleryProps) {
             <button
               type="button"
               onClick={() => onDelete(photo.id)}
+              aria-label={`Remove photo${photo.caption ? `: ${photo.caption}` : ''}`}
               style={{
                 position: 'absolute',
                 top: '2px',
@@ -157,7 +158,7 @@ function RoomPhotoGallery({ photos, onDelete, onAdd }: RoomPhotoGalleryProps) {
             </button>
           </div>
         ))}
-        <div style={addTileStyle} onClick={onAdd}>+</div>
+        <button type="button" style={addTileStyle} onClick={onAdd} aria-label="Add damage photo">+</button>
       </div>
     </div>
   )
@@ -189,7 +190,7 @@ function RoomCard({
     length_ft: room.length_ft,
     width_ft: room.width_ft,
     height_ft: room.height_ft,
-    damaged_materials: room.damaged_materials as DamagedMaterial[],
+    damaged_materials: room.damaged_materials,
     notes: room.notes,
     ...overrides,
   })
@@ -252,15 +253,20 @@ function RoomCard({
 
   return (
     <div style={cardStyle}>
-      <div style={headerStyle} onClick={onToggle}>
+      <button
+        type="button"
+        style={{ ...headerStyle, width: '100%', background: 'none', border: 'none', textAlign: 'left' }}
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+      >
         <span style={{ fontWeight: 600, fontSize: '15px', color: '#111827' }}>{room.name}</span>
         <span style={{ color: '#6b7280', fontSize: '18px' }}>{isExpanded ? '−' : '+'}</span>
-      </div>
+      </button>
       {isExpanded && (
         <div style={bodyStyle}>
           {/* Room name */}
           <div>
-            <label style={{ ...labelStyle }}>Room name</label>
+            <label style={labelStyle}>Room name</label>
             <input
               style={inputStyle}
               value={room.name}
@@ -271,7 +277,7 @@ function RoomCard({
 
           {/* Dimensions */}
           <div>
-            <label style={{ ...labelStyle }}>Dimensions (ft)</label>
+            <label style={labelStyle}>Dimensions (ft)</label>
             <div style={dimRowStyle}>
               <div>
                 <span style={labelStyle}>Length</span>
@@ -357,8 +363,11 @@ export default function RoomsStep({
 
   const handleCreateRoom = async () => {
     setCreating(true)
-    await onCreateRoom()
-    setCreating(false)
+    try {
+      await onCreateRoom()
+    } finally {
+      setCreating(false)
+    }
   }
 
   const handleDeleteRoom = async (roomId: string) => {
