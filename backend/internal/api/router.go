@@ -128,6 +128,12 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	r.GET("/api/magic-links/:token/v2/inspection/elevations", inspectionHandler.GetElevations)
 	r.PUT("/api/magic-links/:token/v2/inspection/elevations/:side", inspectionHandler.SaveElevation)
 
+	// Roof routes
+	r.GET("/api/magic-links/:token/v2/inspection/roof", inspectionHandler.GetRoof)
+	r.PUT("/api/magic-links/:token/v2/inspection/roof", inspectionHandler.SaveRoof)
+	r.POST("/api/magic-links/:token/v2/inspection/roof/damage-spots", inspectionHandler.AddDamageSpot)
+	r.DELETE("/api/magic-links/:token/v2/inspection/roof/damage-spots/:spotId", inspectionHandler.DeleteDamageSpot)
+
 	// Protected routes
 	api := r.Group("/api")
 	api.Use(auth.AuthMiddleware(supabase, db))
