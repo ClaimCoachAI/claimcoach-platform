@@ -1,6 +1,7 @@
 import WizardV2Progress from './WizardV2Progress'
 import { useWizardV2State } from './useWizardV2State'
 import QuickSetupStep from './steps/QuickSetupStep'
+import ElevationsStep from './steps/ElevationsStep'
 
 interface ContractorWizardV2Props {
   token: string
@@ -44,7 +45,19 @@ export default function ContractorWizardV2({ token }: ContractorWizardV2Props) {
         />
       )}
 
-      {state.currentStep > 1 && (
+      {state.currentStep === 2 && (
+        <ElevationsStep
+          token={state.token}
+          elevations={state.elevations}
+          onSaveElevation={state.saveElevation}
+          onContinue={() => state.setCurrentStep(3)}
+          onBack={() => state.setCurrentStep(1)}
+          loading={state.elevationLoading}
+          error={state.error}
+        />
+      )}
+
+      {state.currentStep > 2 && (
         <div style={{ padding: 32, textAlign: 'center', color: '#6b7280' }}>
           <p style={{ fontSize: 18, fontWeight: 600, color: '#374151' }}>Step {state.currentStep}</p>
           <p style={{ marginTop: 8 }}>Coming in the next slice...</p>
