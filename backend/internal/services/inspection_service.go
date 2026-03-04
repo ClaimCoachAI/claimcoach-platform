@@ -276,10 +276,10 @@ func (s *InspectionService) GetElevations(token string) ([]models.InspectionElev
 		LEFT JOIN documents d ON d.id = e.photo_document_id
 		WHERE e.inspection_id = $1
 		ORDER BY CASE e.side
-		    WHEN 'front' THEN 1
-		    WHEN 'right' THEN 2
-		    WHEN 'back'  THEN 3
-		    WHEN 'left'  THEN 4
+			WHEN 'front' THEN 1
+			WHEN 'right' THEN 2
+			WHEN 'back'  THEN 3
+			WHEN 'left'  THEN 4
 		END
 	`, inspectionID)
 	if err != nil {
@@ -322,7 +322,7 @@ func (s *InspectionService) SaveElevation(token string, side string, input SaveE
 		validation.MagicLinkID,
 	).Scan(&inspectionID)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("inspection not found for this magic link")
+		return nil, fmt.Errorf("inspection not found for this magic link: %w", err)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up inspection: %w", err)
@@ -331,32 +331,44 @@ func (s *InspectionService) SaveElevation(token string, side string, input SaveE
 	now := time.Now()
 	newID := uuid.New().String()
 
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	var e models.InspectionElevation
-	err = s.db.QueryRow(`
-		INSERT INTO inspection_elevation (
-		    id, inspection_id, side,
-		    photo_document_id, has_damage, siding_type,
-		    siding_replace_sf, siding_paint_sf, gutter_lf,
-		    windows_count, doors_count, notes,
-		    created_at, updated_at
+	err = tx.QueryRow(`
+		WITH upserted AS (
+			INSERT INTO inspection_elevation (
+				id, inspection_id, side,
+				photo_document_id, has_damage, siding_type,
+				siding_replace_sf, siding_paint_sf, gutter_lf,
+				windows_count, doors_count, notes,
+				created_at, updated_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+			ON CONFLICT (inspection_id, side) DO UPDATE
+			SET photo_document_id = EXCLUDED.photo_document_id,
+			    has_damage        = EXCLUDED.has_damage,
+			    siding_type       = EXCLUDED.siding_type,
+			    siding_replace_sf = EXCLUDED.siding_replace_sf,
+			    siding_paint_sf   = EXCLUDED.siding_paint_sf,
+			    gutter_lf         = EXCLUDED.gutter_lf,
+			    windows_count     = EXCLUDED.windows_count,
+			    doors_count       = EXCLUDED.doors_count,
+			    notes             = EXCLUDED.notes,
+			    updated_at        = EXCLUDED.updated_at
+			RETURNING *
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
-		ON CONFLICT (inspection_id, side) DO UPDATE
-		SET photo_document_id = EXCLUDED.photo_document_id,
-		    has_damage        = EXCLUDED.has_damage,
-		    siding_type       = EXCLUDED.siding_type,
-		    siding_replace_sf = EXCLUDED.siding_replace_sf,
-		    siding_paint_sf   = EXCLUDED.siding_paint_sf,
-		    gutter_lf         = EXCLUDED.gutter_lf,
-		    windows_count     = EXCLUDED.windows_count,
-		    doors_count       = EXCLUDED.doors_count,
-		    notes             = EXCLUDED.notes,
-		    updated_at        = EXCLUDED.updated_at
-		RETURNING id, inspection_id, side,
-		          photo_document_id, has_damage, siding_type,
-		          siding_replace_sf, siding_paint_sf, gutter_lf,
-		          windows_count, doors_count, notes,
-		          created_at, updated_at
+		SELECT u.id, u.inspection_id, u.side,
+		       u.photo_document_id, d.file_url,
+		       u.has_damage, u.siding_type,
+		       u.siding_replace_sf, u.siding_paint_sf, u.gutter_lf,
+		       u.windows_count, u.doors_count, u.notes,
+		       u.created_at, u.updated_at
+		FROM upserted u
+		LEFT JOIN documents d ON d.id = u.photo_document_id
 	`,
 		newID, inspectionID, side,
 		input.PhotoDocumentID, input.HasDamage, input.SidingType,
@@ -365,7 +377,8 @@ func (s *InspectionService) SaveElevation(token string, side string, input SaveE
 		now,
 	).Scan(
 		&e.ID, &e.InspectionID, &e.Side,
-		&e.PhotoDocumentID, &e.HasDamage, &e.SidingType,
+		&e.PhotoDocumentID, &e.PhotoURL,
+		&e.HasDamage, &e.SidingType,
 		&e.SidingReplaceSF, &e.SidingPaintSF, &e.GutterLF,
 		&e.WindowsCount, &e.DoorsCount, &e.Notes,
 		&e.CreatedAt, &e.UpdatedAt,
@@ -375,16 +388,23 @@ func (s *InspectionService) SaveElevation(token string, side string, input SaveE
 	}
 
 	// Advance to step 3 once all 4 sides have a confirmed photo.
+	// The count and UPDATE run inside the same transaction as the upsert.
 	var sidesWithPhoto int
-	if countErr := s.db.QueryRow(`
+	if countErr := tx.QueryRow(`
 		SELECT COUNT(*) FROM inspection_elevation
 		WHERE inspection_id = $1 AND photo_document_id IS NOT NULL
 	`, inspectionID).Scan(&sidesWithPhoto); countErr == nil && sidesWithPhoto == 4 {
-		_, _ = s.db.Exec(
+		if _, err = tx.Exec(
 			`UPDATE inspection_v2 SET current_step = 3, updated_at = $1
 			 WHERE id = $2 AND current_step < 3`,
 			now, inspectionID,
-		)
+		); err != nil {
+			return nil, fmt.Errorf("failed to advance inspection step: %w", err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit elevation save: %w", err)
 	}
 
 	return &e, nil
