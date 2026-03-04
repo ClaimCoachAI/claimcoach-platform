@@ -506,8 +506,14 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
       setPhase('reading')
       await new Promise(r => setTimeout(r, 700))
       setPhase('estimating')
-      const rawEstimate = await generateIndustryEstimate(claim.id)
-      if (rawEstimate?.line_items?.length > 0) setGeneratedEstimate(rawEstimate)
+      const rawData = await generateIndustryEstimate(claim.id)
+      const estStr = rawData?.audit_report?.generated_estimate
+      if (estStr) {
+        try {
+          const est: GeneratedEstimate = JSON.parse(estStr)
+          if (est.line_items?.length > 0) setGeneratedEstimate(est)
+        } catch { /* silent fail */ }
+      }
       setPhase('analyzing')
       const result: ViabilityAnalysis = await analyzeClaimViability(claim.id)
       setAnalysis(result)
