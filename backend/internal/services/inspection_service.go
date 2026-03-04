@@ -227,3 +227,165 @@ func (s *InspectionService) SaveSetup(token string, input SaveSetupInput) (*mode
 	insp.AreaSelection = &area
 	return &insp, nil
 }
+
+// SaveElevationInput is the request body for saving one elevation side.
+type SaveElevationInput struct {
+	PhotoDocumentID *string  `json:"photo_document_id"`
+	HasDamage       bool     `json:"has_damage"`
+	SidingType      *string  `json:"siding_type"`
+	SidingReplaceSF *float64 `json:"siding_replace_sf"`
+	SidingPaintSF   *float64 `json:"siding_paint_sf"`
+	GutterLF        *float64 `json:"gutter_lf"`
+	WindowsCount    *int     `json:"windows_count"`
+	DoorsCount      *int     `json:"doors_count"`
+	Notes           *string  `json:"notes"`
+}
+
+// GetElevations loads all saved elevation rows for the inspection identified by token.
+// Returns an empty slice (not nil) when no rows exist yet.
+func (s *InspectionService) GetElevations(token string) ([]models.InspectionElevation, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		// Inspection not started yet — return empty slice.
+		return []models.InspectionElevation{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	rows, err := s.db.Query(`
+		SELECT e.id, e.inspection_id, e.side,
+		       e.photo_document_id, d.file_url,
+		       e.has_damage, e.siding_type,
+		       e.siding_replace_sf, e.siding_paint_sf, e.gutter_lf,
+		       e.windows_count, e.doors_count, e.notes,
+		       e.created_at, e.updated_at
+		FROM inspection_elevation e
+		LEFT JOIN documents d ON d.id = e.photo_document_id
+		WHERE e.inspection_id = $1
+		ORDER BY CASE e.side
+		    WHEN 'front' THEN 1
+		    WHEN 'right' THEN 2
+		    WHEN 'back'  THEN 3
+		    WHEN 'left'  THEN 4
+		END
+	`, inspectionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query elevations: %w", err)
+	}
+	defer rows.Close()
+
+	elevations := []models.InspectionElevation{}
+	for rows.Next() {
+		var e models.InspectionElevation
+		if err = rows.Scan(
+			&e.ID, &e.InspectionID, &e.Side,
+			&e.PhotoDocumentID, &e.PhotoURL,
+			&e.HasDamage, &e.SidingType,
+			&e.SidingReplaceSF, &e.SidingPaintSF, &e.GutterLF,
+			&e.WindowsCount, &e.DoorsCount, &e.Notes,
+			&e.CreatedAt, &e.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan elevation row: %w", err)
+		}
+		elevations = append(elevations, e)
+	}
+	return elevations, rows.Err()
+}
+
+// SaveElevation upserts a single elevation side for the inspection identified by token.
+// It advances current_step to 3 when all 4 sides have a confirmed photo.
+func (s *InspectionService) SaveElevation(token string, side string, input SaveElevationInput) (*models.InspectionElevation, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("inspection not found for this magic link")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	now := time.Now()
+	newID := uuid.New().String()
+
+	var e models.InspectionElevation
+	err = s.db.QueryRow(`
+		INSERT INTO inspection_elevation (
+		    id, inspection_id, side,
+		    photo_document_id, has_damage, siding_type,
+		    siding_replace_sf, siding_paint_sf, gutter_lf,
+		    windows_count, doors_count, notes,
+		    created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+		ON CONFLICT (inspection_id, side) DO UPDATE
+		SET photo_document_id = EXCLUDED.photo_document_id,
+		    has_damage        = EXCLUDED.has_damage,
+		    siding_type       = EXCLUDED.siding_type,
+		    siding_replace_sf = EXCLUDED.siding_replace_sf,
+		    siding_paint_sf   = EXCLUDED.siding_paint_sf,
+		    gutter_lf         = EXCLUDED.gutter_lf,
+		    windows_count     = EXCLUDED.windows_count,
+		    doors_count       = EXCLUDED.doors_count,
+		    notes             = EXCLUDED.notes,
+		    updated_at        = EXCLUDED.updated_at
+		RETURNING id, inspection_id, side,
+		          photo_document_id, has_damage, siding_type,
+		          siding_replace_sf, siding_paint_sf, gutter_lf,
+		          windows_count, doors_count, notes,
+		          created_at, updated_at
+	`,
+		newID, inspectionID, side,
+		input.PhotoDocumentID, input.HasDamage, input.SidingType,
+		input.SidingReplaceSF, input.SidingPaintSF, input.GutterLF,
+		input.WindowsCount, input.DoorsCount, input.Notes,
+		now,
+	).Scan(
+		&e.ID, &e.InspectionID, &e.Side,
+		&e.PhotoDocumentID, &e.HasDamage, &e.SidingType,
+		&e.SidingReplaceSF, &e.SidingPaintSF, &e.GutterLF,
+		&e.WindowsCount, &e.DoorsCount, &e.Notes,
+		&e.CreatedAt, &e.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert elevation: %w", err)
+	}
+
+	// Advance to step 3 once all 4 sides have a confirmed photo.
+	var sidesWithPhoto int
+	if countErr := s.db.QueryRow(`
+		SELECT COUNT(*) FROM inspection_elevation
+		WHERE inspection_id = $1 AND photo_document_id IS NOT NULL
+	`, inspectionID).Scan(&sidesWithPhoto); countErr == nil && sidesWithPhoto == 4 {
+		_, _ = s.db.Exec(
+			`UPDATE inspection_v2 SET current_step = 3, updated_at = $1
+			 WHERE id = $2 AND current_step < 3`,
+			now, inspectionID,
+		)
+	}
+
+	return &e, nil
+}
