@@ -70,3 +70,41 @@ type InspectionElevation struct {
 	CreatedAt       time.Time     `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time     `json:"updated_at" db:"updated_at"`
 }
+
+// ── Roof ──────────────────────────────────────────────────────────────────────
+
+// InspectionRoof holds metrics and named photo slots for the roof inspection step.
+type InspectionRoof struct {
+	ID                string    `json:"id" db:"id"`
+	InspectionID      string    `json:"inspection_id" db:"inspection_id"`
+	OverviewPhotoID   *string   `json:"overview_photo_id" db:"overview_photo_id"`
+	OverviewPhotoURL  *string   `json:"overview_photo_url,omitempty"` // populated via JOIN
+	SlopePhotoID      *string   `json:"slope_photo_id" db:"slope_photo_id"`
+	SlopePhotoURL     *string   `json:"slope_photo_url,omitempty"`
+	ShinglesPhotoID   *string   `json:"shingles_photo_id" db:"shingles_photo_id"`
+	ShinglesPhotoURL  *string   `json:"shingles_photo_url,omitempty"`
+	RidgePhotoID      *string   `json:"ridge_photo_id" db:"ridge_photo_id"`
+	RidgePhotoURL     *string   `json:"ridge_photo_url,omitempty"`
+	Pitch             *string   `json:"pitch" db:"pitch"`
+	ShingleType       *string   `json:"shingle_type" db:"shingle_type"`
+	Layers            *int      `json:"layers" db:"layers"`
+	Squares           *float64  `json:"squares" db:"squares"`
+	HasRidgeDamage    bool      `json:"has_ridge_damage" db:"has_ridge_damage"`
+	HasValleyDamage   bool      `json:"has_valley_damage" db:"has_valley_damage"`
+	HasFlashingDamage bool      `json:"has_flashing_damage" db:"has_flashing_damage"`
+	DeckingCondition  *string   `json:"decking_condition" db:"decking_condition"`
+	Notes             *string   `json:"notes" db:"notes"`
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// RoofDamageSpot is one damage-evidence photo attached to a roof inspection.
+type RoofDamageSpot struct {
+	ID        string    `json:"id" db:"id"`
+	RoofID    string    `json:"roof_id" db:"roof_id"`
+	PhotoID   *string   `json:"photo_id" db:"photo_id"`
+	PhotoURL  *string   `json:"photo_url" db:"photo_url"`
+	Caption   *string   `json:"caption" db:"caption"`
+	SortOrder int       `json:"sort_order" db:"sort_order"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
