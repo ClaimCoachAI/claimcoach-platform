@@ -48,6 +48,8 @@ export interface WizardV2State {
   deleteRoom: (roomId: string) => Promise<void>
   addRoomPhoto: (roomId: string, input: { photo_document_id?: string; caption?: string; sort_order?: number }) => Promise<InspectionRoomPhoto | null>
   deleteRoomPhoto: (roomId: string, photoId: string) => Promise<void>
+  submittedAt: string | null
+  submitInspection: () => Promise<boolean>
 }
 
 const defaultAreaSelection = {
@@ -78,6 +80,7 @@ export function useWizardV2State(token: string): WizardV2State {
   const roofDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [rooms, setRooms] = useState<InspectionRoom[]>([])
   const [roomsLoading, setRoomsLoading] = useState(false)
+  const [submittedAt, setSubmittedAt] = useState<string | null>(null)
   const roomDebounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const pendingRoomUpdates = useRef<Map<string, UpdateRoomInput>>(new Map())
 
@@ -99,6 +102,7 @@ export function useWizardV2State(token: string): WizardV2State {
             stories: insp.stories,
             area_selection: insp.area_selection ?? { ...defaultAreaSelection },
           })
+          if (insp.submitted_at) setSubmittedAt(insp.submitted_at)
         }
       } catch (e: unknown) {
         const err = e as { response?: { data?: { error?: string } } }
@@ -262,6 +266,18 @@ export function useWizardV2State(token: string): WizardV2State {
     }
   }, [token])
 
+  const submitInspection = useCallback(async (): Promise<boolean> => {
+    try {
+      const { data } = await axios.post<{ success: boolean; data: InspectionV2 }>(
+        `${API}/api/magic-links/${token}/v2/inspection/submit`
+      )
+      if (data.data.submitted_at) setSubmittedAt(data.data.submitted_at)
+      return true
+    } catch {
+      return false
+    }
+  }, [token])
+
   const saveRoof = useCallback(async (data: Partial<RoofData>) => {
     // 800ms debounce — cancel any pending save
     if (roofDebounceTimer.current) clearTimeout(roofDebounceTimer.current)
@@ -321,6 +337,11 @@ export function useWizardV2State(token: string): WizardV2State {
     if (currentStep === 2) loadElevations()
     if (currentStep === 3) loadRoof()
     if (currentStep === 4) loadRooms()
+    if (currentStep === 5) {
+      loadElevations()
+      loadRoof()
+      loadRooms()
+    }
   }, [currentStep, loadElevations, loadRoof, loadRooms])
 
   const saveElevation = useCallback(async (side: ElevationSide, data: Partial<ElevationData>) => {
@@ -411,5 +432,7 @@ export function useWizardV2State(token: string): WizardV2State {
     deleteRoom,
     addRoomPhoto,
     deleteRoomPhoto,
+    submittedAt,
+    submitInspection,
   }
 }

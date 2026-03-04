@@ -16,6 +16,7 @@ export interface InspectionV2 {
   status: 'draft' | 'in_progress' | 'submitted'
   current_step: number
   area_selection: AreaSelection | null
+  submitted_at: string | null
 }
 
 export interface QuickSetupData {
