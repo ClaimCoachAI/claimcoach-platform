@@ -15,6 +15,22 @@ interface Step3ViabilityAnalysisProps {
 
 type Phase = 'idle' | 'reading' | 'estimating' | 'analyzing' | 'complete' | 'error'
 
+interface LineItem {
+  description: string
+  quantity: number
+  unit: string
+  unit_cost: number
+  total: number
+  category: string
+}
+
+interface GeneratedEstimate {
+  line_items: LineItem[]
+  subtotal: number
+  overhead_profit: number
+  total: number
+}
+
 const PHASES = [
   { id: 'reading'    as Phase, label: 'Reading scope sheet',          sub: 'Parsing damage areas & dimensions'        },
   { id: 'estimating' as Phase, label: 'Building ClaimCoach estimate',  sub: 'Industry-standard pricing at 2026 rates'  },
@@ -389,6 +405,8 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
   const queryClient = useQueryClient()
   const [phase, setPhase]       = useState<Phase>('idle')
   const [analysis, setAnalysis] = useState<ViabilityAnalysis | null>(null)
+  const [generatedEstimate, setGeneratedEstimate] = useState<GeneratedEstimate | null>(null)
+  const [estimateOpen, setEstimateOpen] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const scopeSubmitted  = !!scopeSheet?.submitted_at
@@ -448,6 +466,14 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
       setPhase('complete')
     } catch {
       // If parse fails, stay on idle so user can re-analyze
+    }
+    if (auditReport?.generated_estimate) {
+      try {
+        const est: GeneratedEstimate = JSON.parse(auditReport.generated_estimate)
+        if (est.line_items?.length > 0) setGeneratedEstimate(est)
+      } catch {
+        // silent fail — section just won't render
+      }
     }
   }, [auditReport])
 
