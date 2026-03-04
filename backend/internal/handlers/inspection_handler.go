@@ -148,6 +148,7 @@ func (h *InspectionHandler) SaveElevation(c *gin.Context) {
 	token := c.Param("token")
 	side := c.Param("side")
 
+	// Validate the URL parameter before reading the request body.
 	if !models.IsValidElevationSide(side) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,

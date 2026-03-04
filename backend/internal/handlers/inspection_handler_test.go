@@ -197,4 +197,8 @@ func TestInspectionHandler_SaveElevation_Returns401ForInvalidToken(t *testing.T)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, false, resp["success"])
+	assert.Contains(t, resp["error"], "Invalid or expired magic link")
 }
