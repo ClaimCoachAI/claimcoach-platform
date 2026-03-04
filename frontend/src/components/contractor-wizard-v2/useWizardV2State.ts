@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import axios from 'axios'
 import type {
   WizardStep,
   QuickSetupData,
   GetSetupResponse,
   InspectionV2,
+  ElevationData,
+  ElevationSide,
 } from './types'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -21,6 +23,9 @@ export interface WizardV2State {
   setCurrentStep: (step: WizardStep) => void
   setQuickSetup: (data: QuickSetupData) => void
   submitQuickSetup: () => Promise<void>
+  elevations: ElevationData[]
+  elevationLoading: boolean
+  saveElevation: (side: ElevationSide, data: Partial<ElevationData>) => Promise<void>
 }
 
 const defaultAreaSelection = {
@@ -42,6 +47,9 @@ export function useWizardV2State(token: string): WizardV2State {
     stories: null,
     area_selection: { ...defaultAreaSelection },
   })
+  const [elevations, setElevations] = useState<ElevationData[]>([])
+  const [elevationLoading, setElevationLoading] = useState(false)
+  const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   useEffect(() => {
     const load = async () => {
@@ -70,6 +78,52 @@ export function useWizardV2State(token: string): WizardV2State {
       }
     }
     load()
+  }, [token])
+
+  const loadElevations = useCallback(async () => {
+    try {
+      const { data } = await axios.get<{ success: boolean; data: ElevationData[] }>(
+        `${API}/api/magic-links/${token}/v2/inspection/elevations`
+      )
+      setElevations(data.data)
+    } catch {
+      // non-fatal: elevations just stay at current state
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (currentStep === 2) {
+      loadElevations()
+    }
+  }, [currentStep, loadElevations])
+
+  const saveElevation = useCallback(async (side: ElevationSide, data: Partial<ElevationData>) => {
+    // Debounce per-side: cancel any pending save for this side
+    if (debounceTimers.current[side]) {
+      clearTimeout(debounceTimers.current[side])
+    }
+    debounceTimers.current[side] = setTimeout(async () => {
+      setElevationLoading(true)
+      try {
+        const { data: res } = await axios.put<{ success: boolean; data: ElevationData }>(
+          `${API}/api/magic-links/${token}/v2/inspection/elevations/${side}`,
+          data
+        )
+        setElevations(prev => {
+          const idx = prev.findIndex(e => e.side === side)
+          if (idx >= 0) {
+            const updated = [...prev]
+            updated[idx] = res.data
+            return updated
+          }
+          return [...prev, res.data]
+        })
+      } catch {
+        // non-fatal: field state stays, retry possible
+      } finally {
+        setElevationLoading(false)
+      }
+    }, 800)
   }, [token])
 
   const submitQuickSetup = async () => {
@@ -106,5 +160,8 @@ export function useWizardV2State(token: string): WizardV2State {
     setCurrentStep,
     setQuickSetup,
     submitQuickSetup,
+    elevations,
+    elevationLoading,
+    saveElevation,
   }
 }
