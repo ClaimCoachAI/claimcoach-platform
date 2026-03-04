@@ -314,7 +314,7 @@ function RoomCard({
 
           {/* Damaged materials */}
           <DamagedMaterialPills
-            selected={room.damaged_materials as DamagedMaterial[]}
+            selected={room.damaged_materials}
             onChange={next => onUpdate(buildInput({ damaged_materials: next }))}
           />
 
