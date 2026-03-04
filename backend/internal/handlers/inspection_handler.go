@@ -13,12 +13,16 @@ import (
 type getSetupResponse = services.GetSetupResponse
 type saveSetupInput = services.SaveSetupInput
 type inspectionV2Response = models.InspectionV2
+type saveElevationInput     = services.SaveElevationInput
+type inspectionElevResponse = models.InspectionElevation
 
 // inspectionServiceInterface is the narrow interface used by InspectionHandler.
 // It is satisfied by *services.InspectionService and by mockInspectionService in tests.
 type inspectionServiceInterface interface {
 	GetByToken(token string) (*getSetupResponse, error)
 	SaveSetup(token string, input saveSetupInput) (*inspectionV2Response, error)
+	GetElevations(token string) ([]inspectionElevResponse, error)
+	SaveElevation(token string, side string, input saveElevationInput) (*inspectionElevResponse, error)
 }
 
 // InspectionHandler handles HTTP requests for the inspection v2 wizard.
@@ -108,5 +112,77 @@ func (h *InspectionHandler) SaveSetup(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
 		"data":    insp,
+	})
+}
+
+// GetElevations handles GET /api/magic-links/:token/v2/inspection/elevations.
+// Returns all saved elevation rows for this inspection (empty array when none yet).
+func (h *InspectionHandler) GetElevations(c *gin.Context) {
+	token := c.Param("token")
+
+	elevations, err := h.service.GetElevations(token)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   "Invalid or expired magic link",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to load elevations: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    elevations,
+	})
+}
+
+// SaveElevation handles PUT /api/magic-links/:token/v2/inspection/elevations/:side.
+// :side must be one of front, right, back, left — returns 400 otherwise.
+func (h *InspectionHandler) SaveElevation(c *gin.Context) {
+	token := c.Param("token")
+	side := c.Param("side")
+
+	if !models.IsValidElevationSide(side) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid elevation side: must be front, right, back, or left",
+		})
+		return
+	}
+
+	var input saveElevationInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	elevation, err := h.service.SaveElevation(token, side, input)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   "Invalid or expired magic link",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to save elevation: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"data":    elevation,
 	})
 }
