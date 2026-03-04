@@ -1176,3 +1176,39 @@ func (s *InspectionService) DeleteRoomPhoto(token string, photoID string) error 
 	}
 	return nil
 }
+
+// SubmitInspection marks the inspection as submitted.
+// It is idempotent: if already submitted, the original submitted_at is preserved
+// and the current inspection is returned without error.
+func (s *InspectionService) SubmitInspection(token string) (*models.InspectionV2, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var insp models.InspectionV2
+	err = s.db.QueryRow(`
+		UPDATE inspection_v2
+		SET    status       = 'submitted',
+		       submitted_at = CASE WHEN submitted_at IS NULL THEN NOW() ELSE submitted_at END,
+		       updated_at   = NOW()
+		WHERE  magic_link_id = $1
+		RETURNING id, claim_id, magic_link_id, property_type, stories,
+		          status, current_step, submitted_at, created_at, updated_at
+	`, validation.MagicLinkID).Scan(
+		&insp.ID, &insp.ClaimID, &insp.MagicLinkID,
+		&insp.PropertyType, &insp.Stories,
+		&insp.Status, &insp.CurrentStep,
+		&insp.SubmittedAt, &insp.CreatedAt, &insp.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("inspection not found: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to submit inspection: %w", err)
+	}
+	return &insp, nil
+}
