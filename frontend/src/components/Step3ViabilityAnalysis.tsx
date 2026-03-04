@@ -659,7 +659,7 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
           analysis={analysis}
           deductibleValue={deductibleValue}
           onContinue={() => saveMutation.mutate()}
-          onReanalyze={() => { setPhase('idle'); setAnalysis(null); setGeneratedEstimate(null) }}
+          onReanalyze={() => { setPhase('idle'); setAnalysis(null); setGeneratedEstimate(null); setEstimateOpen(false) }}
           isPending={saveMutation.isPending}
           readOnly={step3Done}
         />
