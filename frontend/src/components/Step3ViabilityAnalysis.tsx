@@ -318,6 +318,93 @@ function VerdictCard({ analysis, deductibleValue, onContinue, onReanalyze, isPen
   )
 }
 
+// ─── Estimate line items ──────────────────────────────────────────────────────
+
+function EstimateLineItems({
+  estimate,
+  open,
+  onToggle,
+}: {
+  estimate: GeneratedEstimate
+  open: boolean
+  onToggle: () => void
+}) {
+  const fmt = (n: number) =>
+    n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+
+  return (
+    <div style={{
+      border: '1px solid rgba(148,163,184,0.2)',
+      borderRadius: '12px',
+      overflow: 'hidden',
+    }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '12px 16px',
+          background: 'rgba(241,245,249,0.5)',
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <span style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+          ClaimCoach Estimate ({estimate.line_items.length} items)
+        </span>
+        <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', fontFamily: "'Work Sans', sans-serif" }}>
+          {fmt(estimate.total)} {open ? '▲' : '▼'}
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '0 16px 12px' }}>
+          {estimate.line_items.map((item, i) => (
+            <div
+              key={i}
+              style={{
+                padding: '10px 0',
+                borderTop: '1px solid #f1f5f9',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>
+                  {item.description}
+                </span>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', fontFamily: "'Work Sans', sans-serif" }}>
+                  {fmt(item.total)}
+                </span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#94a3b8' }}>{item.category}</div>
+            </div>
+          ))}
+
+          <div style={{ borderTop: '1px solid #e2e8f0', marginTop: '8px', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
+              <span>Subtotal</span>
+              <span>{fmt(estimate.subtotal)}</span>
+            </div>
+            {estimate.overhead_profit > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
+                <span>Overhead &amp; Profit</span>
+                <span>{fmt(estimate.overhead_profit)}</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: '700', color: '#0f172a', marginTop: '4px' }}>
+              <span>Total</span>
+              <span style={{ fontFamily: "'Work Sans', sans-serif" }}>{fmt(estimate.total)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Progress timeline ────────────────────────────────────────────────────────
 
 function ProgressTimeline({ currentPhase }: { currentPhase: Phase }) {
@@ -575,6 +662,13 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
           isPending={saveMutation.isPending}
           readOnly={step3Done}
         />
+        {generatedEstimate && (
+          <EstimateLineItems
+            estimate={generatedEstimate}
+            open={estimateOpen}
+            onToggle={() => setEstimateOpen(o => !o)}
+          />
+        )}
         {saveMutation.isError && (
           <div style={{
             padding: '10px 14px',
