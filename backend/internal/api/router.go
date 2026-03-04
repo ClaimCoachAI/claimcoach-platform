@@ -141,6 +141,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	r.DELETE("/api/magic-links/:token/v2/inspection/rooms/:roomId", inspectionHandler.DeleteRoom)
 	r.POST("/api/magic-links/:token/v2/inspection/rooms/:roomId/photos", inspectionHandler.AddRoomPhoto)
 	r.DELETE("/api/magic-links/:token/v2/inspection/rooms/:roomId/photos/:photoId", inspectionHandler.DeleteRoomPhoto)
+	r.POST("/api/magic-links/:token/v2/inspection/submit", inspectionHandler.SubmitInspection)
 
 	// Protected routes
 	api := r.Group("/api")
