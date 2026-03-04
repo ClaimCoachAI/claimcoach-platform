@@ -3,6 +3,7 @@ import { useWizardV2State } from './useWizardV2State'
 import QuickSetupStep from './steps/QuickSetupStep'
 import ElevationsStep from './steps/ElevationsStep'
 import RoofStep from './steps/RoofStep'
+import RoomsStep from './steps/RoomsStep'
 
 interface ContractorWizardV2Props {
   token: string
@@ -73,10 +74,22 @@ export default function ContractorWizardV2({ token }: ContractorWizardV2Props) {
         />
       )}
 
-      {state.currentStep > 3 && (
-        <div style={{ padding: 32, textAlign: 'center', color: '#6b7280' }}>
-          <p style={{ fontSize: 18, fontWeight: 600, color: '#374151' }}>Step {state.currentStep}</p>
-          <p style={{ marginTop: 8 }}>Coming in the next slice...</p>
+      {state.currentStep === 4 && (
+        <RoomsStep
+          rooms={state.rooms}
+          roomsLoading={state.roomsLoading}
+          onCreateRoom={async () => { await state.createRoom({ name: 'Room' }) }}
+          onUpdateRoom={state.updateRoom}
+          onDeleteRoom={state.deleteRoom}
+          onAddRoomPhoto={async (roomId, input) => { await state.addRoomPhoto(roomId, input) }}
+          onDeleteRoomPhoto={state.deleteRoomPhoto}
+          onContinue={() => state.setCurrentStep(state.computeNextStep(4))}
+          onBack={() => state.setCurrentStep(state.computePrevStep(4))}
+        />
+      )}
+      {state.currentStep > 4 && (
+        <div style={{ padding: '32px 16px', textAlign: 'center' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: 700 }}>Step 5 coming soon</h2>
         </div>
       )}
     </div>
