@@ -15,6 +15,11 @@ type saveSetupInput = services.SaveSetupInput
 type inspectionV2Response = models.InspectionV2
 type saveElevationInput     = services.SaveElevationInput
 type inspectionElevResponse = models.InspectionElevation
+type getRoofResponse    = services.GetRoofResponse
+type saveRoofInput      = services.SaveRoofInput
+type addDamageSpotInput = services.AddDamageSpotInput
+type roofResponse       = models.InspectionRoof
+type roofDamageSpotResp = models.RoofDamageSpot
 
 // inspectionServiceInterface is the narrow interface used by InspectionHandler.
 // It is satisfied by *services.InspectionService and by mockInspectionService in tests.
@@ -23,6 +28,10 @@ type inspectionServiceInterface interface {
 	SaveSetup(token string, input saveSetupInput) (*inspectionV2Response, error)
 	GetElevations(token string) ([]inspectionElevResponse, error)
 	SaveElevation(token string, side string, input saveElevationInput) (*inspectionElevResponse, error)
+	GetRoof(token string) (*getRoofResponse, error)
+	SaveRoof(token string, input saveRoofInput) (*roofResponse, error)
+	AddDamageSpot(token string, input addDamageSpotInput) (*roofDamageSpotResp, error)
+	DeleteDamageSpot(token string, spotID string) error
 }
 
 // InspectionHandler handles HTTP requests for the inspection v2 wizard.
@@ -186,4 +195,93 @@ func (h *InspectionHandler) SaveElevation(c *gin.Context) {
 		"success": true,
 		"data":    elevation,
 	})
+}
+
+// GetRoof handles GET /api/magic-links/:token/v2/inspection/roof.
+// Returns 200 with roof and damage_spots (roof is null when not started).
+func (h *InspectionHandler) GetRoof(c *gin.Context) {
+	token := c.Param("token")
+
+	resp, err := h.service.GetRoof(token)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to load roof: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": resp})
+}
+
+// SaveRoof handles PUT /api/magic-links/:token/v2/inspection/roof.
+// Returns 201 with the saved roof row.
+func (h *InspectionHandler) SaveRoof(c *gin.Context) {
+	token := c.Param("token")
+
+	var input saveRoofInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	roof, err := h.service.SaveRoof(token, input)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to save roof: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": roof})
+}
+
+// AddDamageSpot handles POST /api/magic-links/:token/v2/inspection/roof/damage-spots.
+// Returns 201 with the new damage spot.
+func (h *InspectionHandler) AddDamageSpot(c *gin.Context) {
+	token := c.Param("token")
+
+	var input addDamageSpotInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	spot, err := h.service.AddDamageSpot(token, input)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to add damage spot: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": spot})
+}
+
+// DeleteDamageSpot handles DELETE /api/magic-links/:token/v2/inspection/roof/damage-spots/:spotId.
+// Returns 204 on success, 404 when the spot does not exist or belongs to another inspection.
+func (h *InspectionHandler) DeleteDamageSpot(c *gin.Context) {
+	token := c.Param("token")
+	spotID := c.Param("spotId")
+
+	err := h.service.DeleteDamageSpot(token, spotID)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Damage spot not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to delete damage spot: " + err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
