@@ -120,6 +120,8 @@ type RoofDamageSpot struct {
 // It implements driver.Valuer (for writes) and sql.Scanner (for reads).
 type JSONStringSlice []string
 
+// Value serializes to a JSON string for Postgres JSONB storage.
+// Both nil and empty slice serialize to "[]"; they round-trip back as a non-nil empty slice.
 func (j JSONStringSlice) Value() (driver.Value, error) {
 	if j == nil {
 		return "[]", nil
