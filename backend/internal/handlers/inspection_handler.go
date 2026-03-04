@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -275,7 +277,7 @@ func (h *InspectionHandler) DeleteDamageSpot(c *gin.Context) {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
 			return
 		}
-		if strings.Contains(err.Error(), "not found") {
+		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Damage spot not found"})
 			return
 		}
