@@ -757,3 +757,419 @@ func (s *InspectionService) DeleteDamageSpot(token string, spotID string) error 
 	}
 	return nil
 }
+
+// ── Rooms ─────────────────────────────────────────────────────────────────────
+
+// CreateRoomInput is the request body for POST /inspection/rooms.
+type CreateRoomInput struct {
+	Name             string                 `json:"name"`
+	LengthFt         *float64               `json:"length_ft"`
+	WidthFt          *float64               `json:"width_ft"`
+	HeightFt         *float64               `json:"height_ft"`
+	DamagedMaterials models.JSONStringSlice `json:"damaged_materials"`
+	Notes            *string                `json:"notes"`
+}
+
+// UpdateRoomInput is the request body for PUT /inspection/rooms/:roomId.
+type UpdateRoomInput struct {
+	Name             string                 `json:"name"`
+	LengthFt         *float64               `json:"length_ft"`
+	WidthFt          *float64               `json:"width_ft"`
+	HeightFt         *float64               `json:"height_ft"`
+	DamagedMaterials models.JSONStringSlice `json:"damaged_materials"`
+	Notes            *string                `json:"notes"`
+}
+
+// AddRoomPhotoInput is the request body for POST /inspection/rooms/:roomId/photos.
+type AddRoomPhotoInput struct {
+	PhotoDocumentID *string `json:"photo_document_id"`
+	Caption         *string `json:"caption"`
+	SortOrder       int     `json:"sort_order"`
+}
+
+// GetRooms loads all rooms (with photos) for the inspection identified by token.
+// Returns an empty slice when no rooms exist yet.
+func (s *InspectionService) GetRooms(token string) ([]models.InspectionRoom, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return []models.InspectionRoom{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	rows, err := s.db.Query(`
+		SELECT id, inspection_id, name, length_ft, width_ft, height_ft,
+		       damaged_materials, notes, sort_order, created_at, updated_at
+		FROM inspection_room
+		WHERE inspection_id = $1
+		ORDER BY sort_order, created_at
+	`, inspectionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query rooms: %w", err)
+	}
+	defer rows.Close()
+
+	rooms := []models.InspectionRoom{}
+	roomIndex := map[string]int{}
+	for rows.Next() {
+		var r models.InspectionRoom
+		r.Photos = []models.InspectionRoomPhoto{}
+		if err = rows.Scan(
+			&r.ID, &r.InspectionID, &r.Name,
+			&r.LengthFt, &r.WidthFt, &r.HeightFt,
+			&r.DamagedMaterials, &r.Notes, &r.SortOrder,
+			&r.CreatedAt, &r.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan room: %w", err)
+		}
+		roomIndex[r.ID] = len(rooms)
+		rooms = append(rooms, r)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(rooms) == 0 {
+		return rooms, nil
+	}
+
+	// Load all photos for these rooms in a single query.
+	photoRows, err := s.db.Query(`
+		SELECT id, room_id, photo_id, photo_url, caption, sort_order, created_at
+		FROM inspection_room_photo
+		WHERE room_id IN (
+		    SELECT id FROM inspection_room WHERE inspection_id = $1
+		)
+		ORDER BY sort_order, created_at
+	`, inspectionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query room photos: %w", err)
+	}
+	defer photoRows.Close()
+
+	for photoRows.Next() {
+		var p models.InspectionRoomPhoto
+		if err = photoRows.Scan(
+			&p.ID, &p.RoomID, &p.PhotoID, &p.PhotoURL,
+			&p.Caption, &p.SortOrder, &p.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan room photo: %w", err)
+		}
+		if idx, ok := roomIndex[p.RoomID]; ok {
+			rooms[idx].Photos = append(rooms[idx].Photos, p)
+		}
+	}
+	return rooms, photoRows.Err()
+}
+
+// CreateRoom inserts a new room for this inspection and advances current_step to 5.
+func (s *InspectionService) CreateRoom(token string, input CreateRoomInput) (*models.InspectionRoom, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("inspection not found for this magic link: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	now := time.Now()
+	newID := uuid.New().String()
+
+	// Default damaged_materials to empty slice if nil.
+	if input.DamagedMaterials == nil {
+		input.DamagedMaterials = models.JSONStringSlice{}
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var r models.InspectionRoom
+	err = tx.QueryRow(`
+		INSERT INTO inspection_room
+		    (id, inspection_id, name, length_ft, width_ft, height_ft,
+		     damaged_materials, notes, sort_order, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8,
+		        (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM inspection_room WHERE inspection_id = $2),
+		        $9, $9)
+		RETURNING id, inspection_id, name, length_ft, width_ft, height_ft,
+		          damaged_materials, notes, sort_order, created_at, updated_at
+	`,
+		newID, inspectionID, input.Name,
+		input.LengthFt, input.WidthFt, input.HeightFt,
+		input.DamagedMaterials, input.Notes,
+		now,
+	).Scan(
+		&r.ID, &r.InspectionID, &r.Name,
+		&r.LengthFt, &r.WidthFt, &r.HeightFt,
+		&r.DamagedMaterials, &r.Notes, &r.SortOrder,
+		&r.CreatedAt, &r.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert room: %w", err)
+	}
+	r.Photos = []models.InspectionRoomPhoto{}
+
+	// Advance step to 5 now that at least one room exists.
+	if _, err = tx.Exec(
+		`UPDATE inspection_v2 SET current_step = 5, updated_at = $1 WHERE id = $2 AND current_step < 5`,
+		now, inspectionID,
+	); err != nil {
+		return nil, fmt.Errorf("failed to advance inspection step: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit room create: %w", err)
+	}
+	return &r, nil
+}
+
+// UpdateRoom modifies name/dimensions/materials/notes for an existing room.
+// Returns an error wrapping sql.ErrNoRows when the room is not found or belongs to another inspection.
+func (s *InspectionService) UpdateRoom(token string, roomID string, input UpdateRoomInput) (*models.InspectionRoom, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	if input.DamagedMaterials == nil {
+		input.DamagedMaterials = models.JSONStringSlice{}
+	}
+
+	var r models.InspectionRoom
+	err = s.db.QueryRow(`
+		UPDATE inspection_room
+		SET name              = $2,
+		    length_ft         = $3,
+		    width_ft          = $4,
+		    height_ft         = $5,
+		    damaged_materials = $6::jsonb,
+		    notes             = $7,
+		    updated_at        = $8
+		WHERE id = $1
+		  AND inspection_id = (
+		      SELECT iv2.id FROM inspection_v2 iv2
+		      JOIN magic_link ml ON ml.id = iv2.magic_link_id
+		      WHERE ml.token = $9
+		  )
+		RETURNING id, inspection_id, name, length_ft, width_ft, height_ft,
+		          damaged_materials, notes, sort_order, created_at, updated_at
+	`,
+		roomID, input.Name,
+		input.LengthFt, input.WidthFt, input.HeightFt,
+		input.DamagedMaterials, input.Notes,
+		time.Now(), token,
+	).Scan(
+		&r.ID, &r.InspectionID, &r.Name,
+		&r.LengthFt, &r.WidthFt, &r.HeightFt,
+		&r.DamagedMaterials, &r.Notes, &r.SortOrder,
+		&r.CreatedAt, &r.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("room not found: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to update room: %w", err)
+	}
+
+	// Load photos for the updated room.
+	photoRows, err := s.db.Query(`
+		SELECT id, room_id, photo_id, photo_url, caption, sort_order, created_at
+		FROM inspection_room_photo
+		WHERE room_id = $1
+		ORDER BY sort_order, created_at
+	`, r.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load room photos after update: %w", err)
+	}
+	defer photoRows.Close()
+	r.Photos = []models.InspectionRoomPhoto{}
+	for photoRows.Next() {
+		var p models.InspectionRoomPhoto
+		if err = photoRows.Scan(
+			&p.ID, &p.RoomID, &p.PhotoID, &p.PhotoURL,
+			&p.Caption, &p.SortOrder, &p.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan photo after update: %w", err)
+		}
+		r.Photos = append(r.Photos, p)
+	}
+	return &r, photoRows.Err()
+}
+
+// DeleteRoom removes a room by ID, verifying it belongs to this inspection.
+// Returns an error wrapping sql.ErrNoRows when the room does not exist or belongs to another inspection.
+func (s *InspectionService) DeleteRoom(token string, roomID string) error {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	result, err := s.db.Exec(`
+		DELETE FROM inspection_room
+		WHERE id = $1
+		  AND inspection_id = (
+		      SELECT iv2.id FROM inspection_v2 iv2
+		      JOIN magic_link ml ON ml.id = iv2.magic_link_id
+		      WHERE ml.token = $2
+		  )
+	`, roomID, token)
+	if err != nil {
+		return fmt.Errorf("failed to delete room: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("room not found: %w", sql.ErrNoRows)
+	}
+	return nil
+}
+
+// AddRoomPhoto attaches a damage-evidence photo to a room.
+// The room must belong to this inspection; returns an error otherwise.
+func (s *InspectionService) AddRoomPhoto(token string, roomID string, input AddRoomPhotoInput) (*models.InspectionRoomPhoto, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("inspection not found for this magic link: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	// Verify room belongs to this inspection.
+	var exists int
+	err = s.db.QueryRow(
+		`SELECT COUNT(1) FROM inspection_room WHERE id = $1 AND inspection_id = $2`,
+		roomID, inspectionID,
+	).Scan(&exists)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify room ownership: %w", err)
+	}
+	if exists == 0 {
+		return nil, fmt.Errorf("room not found: %w", sql.ErrNoRows)
+	}
+
+	// Resolve photo URL if a document ID was provided.
+	var photoURL *string
+	if input.PhotoDocumentID != nil {
+		var url string
+		if err = s.db.QueryRow(
+			`SELECT file_url FROM documents WHERE id = $1`,
+			*input.PhotoDocumentID,
+		).Scan(&url); err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to resolve photo URL: %w", err)
+		}
+		if err == nil {
+			photoURL = &url
+		}
+	}
+
+	newID := uuid.New().String()
+	var p models.InspectionRoomPhoto
+	err = s.db.QueryRow(`
+		INSERT INTO inspection_room_photo
+		    (id, room_id, photo_id, photo_url, caption, sort_order, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, room_id, photo_id, photo_url, caption, sort_order, created_at
+	`,
+		newID, roomID, input.PhotoDocumentID, photoURL,
+		input.Caption, input.SortOrder, time.Now(),
+	).Scan(
+		&p.ID, &p.RoomID, &p.PhotoID, &p.PhotoURL,
+		&p.Caption, &p.SortOrder, &p.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert room photo: %w", err)
+	}
+	return &p, nil
+}
+
+// DeleteRoomPhoto removes a photo by ID, verifying it belongs to a room in this inspection.
+// Returns an error wrapping sql.ErrNoRows when the photo does not exist.
+func (s *InspectionService) DeleteRoomPhoto(token string, photoID string) error {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("inspection not found: %w", err)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	result, err := s.db.Exec(`
+		DELETE FROM inspection_room_photo
+		WHERE id = $1
+		  AND room_id IN (
+		      SELECT id FROM inspection_room WHERE inspection_id = $2
+		  )
+	`, photoID, inspectionID)
+	if err != nil {
+		return fmt.Errorf("failed to delete room photo: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("room photo not found: %w", sql.ErrNoRows)
+	}
+	return nil
+}
