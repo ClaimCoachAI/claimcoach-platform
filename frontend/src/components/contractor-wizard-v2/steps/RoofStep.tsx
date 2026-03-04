@@ -254,8 +254,8 @@ export default function RoofStep({
     setLocalNotes(roof?.notes ?? '')
   }, [roof])
 
-  const allPhotosUploaded = PHOTO_SLOTS.every(
-    (s) => (roof?.[s.photoIdField] as string | null) !== null,
+  const allPhotosUploaded = roof !== null && PHOTO_SLOTS.every(
+    (s) => (roof[s.photoIdField] as string | null) !== null,
   )
   const isDisabled = loading || !allPhotosUploaded
   const anyDamage = Boolean(roof?.has_ridge_damage || roof?.has_valley_damage || roof?.has_flashing_damage)
