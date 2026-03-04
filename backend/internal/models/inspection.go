@@ -80,11 +80,11 @@ type InspectionRoof struct {
 	OverviewPhotoID   *string   `json:"overview_photo_id" db:"overview_photo_id"`
 	OverviewPhotoURL  *string   `json:"overview_photo_url,omitempty"` // populated via JOIN
 	SlopePhotoID      *string   `json:"slope_photo_id" db:"slope_photo_id"`
-	SlopePhotoURL     *string   `json:"slope_photo_url,omitempty"`
+	SlopePhotoURL     *string   `json:"slope_photo_url,omitempty"`    // populated via JOIN
 	ShinglesPhotoID   *string   `json:"shingles_photo_id" db:"shingles_photo_id"`
-	ShinglesPhotoURL  *string   `json:"shingles_photo_url,omitempty"`
+	ShinglesPhotoURL  *string   `json:"shingles_photo_url,omitempty"` // populated via JOIN
 	RidgePhotoID      *string   `json:"ridge_photo_id" db:"ridge_photo_id"`
-	RidgePhotoURL     *string   `json:"ridge_photo_url,omitempty"`
+	RidgePhotoURL     *string   `json:"ridge_photo_url,omitempty"`    // populated via JOIN
 	Pitch             *string   `json:"pitch" db:"pitch"`
 	ShingleType       *string   `json:"shingle_type" db:"shingle_type"`
 	Layers            *int      `json:"layers" db:"layers"`
