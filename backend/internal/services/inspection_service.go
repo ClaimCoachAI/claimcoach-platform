@@ -409,3 +409,351 @@ func (s *InspectionService) SaveElevation(token string, side string, input SaveE
 
 	return &e, nil
 }
+
+// ── Roof ──────────────────────────────────────────────────────────────────────
+
+// SaveRoofInput is the request body for upserting the roof inspection row.
+type SaveRoofInput struct {
+	OverviewPhotoID   *string  `json:"overview_photo_id"`
+	SlopePhotoID      *string  `json:"slope_photo_id"`
+	ShinglesPhotoID   *string  `json:"shingles_photo_id"`
+	RidgePhotoID      *string  `json:"ridge_photo_id"`
+	Pitch             *string  `json:"pitch"`
+	ShingleType       *string  `json:"shingle_type"`
+	Layers            *int     `json:"layers"`
+	Squares           *float64 `json:"squares"`
+	HasRidgeDamage    bool     `json:"has_ridge_damage"`
+	HasValleyDamage   bool     `json:"has_valley_damage"`
+	HasFlashingDamage bool     `json:"has_flashing_damage"`
+	DeckingCondition  *string  `json:"decking_condition"`
+	Notes             *string  `json:"notes"`
+}
+
+// AddDamageSpotInput is the request body for attaching one damage-spot photo.
+type AddDamageSpotInput struct {
+	PhotoDocumentID *string `json:"photo_document_id"`
+	Caption         *string `json:"caption"`
+	SortOrder       int     `json:"sort_order"`
+}
+
+// GetRoofResponse wraps the roof row and its damage spots.
+type GetRoofResponse struct {
+	Roof        *models.InspectionRoof  `json:"roof"`
+	DamageSpots []models.RoofDamageSpot `json:"damage_spots"`
+}
+
+// GetRoof loads the roof row (if any) and all damage spots for the inspection
+// identified by token. Returns a nil Roof and empty DamageSpots when not yet started.
+func (s *InspectionService) GetRoof(token string) (*GetRoofResponse, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return &GetRoofResponse{Roof: nil, DamageSpots: []models.RoofDamageSpot{}}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	resp := &GetRoofResponse{DamageSpots: []models.RoofDamageSpot{}}
+
+	var r models.InspectionRoof
+	err = s.db.QueryRow(`
+		SELECT r.id, r.inspection_id,
+		       r.overview_photo_id,  d1.file_url,
+		       r.slope_photo_id,     d2.file_url,
+		       r.shingles_photo_id,  d3.file_url,
+		       r.ridge_photo_id,     d4.file_url,
+		       r.pitch, r.shingle_type, r.layers, r.squares,
+		       r.has_ridge_damage, r.has_valley_damage, r.has_flashing_damage,
+		       r.decking_condition, r.notes,
+		       r.created_at, r.updated_at
+		FROM inspection_roof r
+		LEFT JOIN documents d1 ON d1.id = r.overview_photo_id
+		LEFT JOIN documents d2 ON d2.id = r.slope_photo_id
+		LEFT JOIN documents d3 ON d3.id = r.shingles_photo_id
+		LEFT JOIN documents d4 ON d4.id = r.ridge_photo_id
+		WHERE r.inspection_id = $1
+	`, inspectionID).Scan(
+		&r.ID, &r.InspectionID,
+		&r.OverviewPhotoID, &r.OverviewPhotoURL,
+		&r.SlopePhotoID, &r.SlopePhotoURL,
+		&r.ShinglesPhotoID, &r.ShinglesPhotoURL,
+		&r.RidgePhotoID, &r.RidgePhotoURL,
+		&r.Pitch, &r.ShingleType, &r.Layers, &r.Squares,
+		&r.HasRidgeDamage, &r.HasValleyDamage, &r.HasFlashingDamage,
+		&r.DeckingCondition, &r.Notes,
+		&r.CreatedAt, &r.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return resp, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query roof: %w", err)
+	}
+	resp.Roof = &r
+
+	rows, err := s.db.Query(`
+		SELECT id, roof_id, photo_id, photo_url, caption, sort_order, created_at
+		FROM inspection_roof_damage_spot
+		WHERE roof_id = $1
+		ORDER BY sort_order, created_at
+	`, r.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query damage spots: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var spot models.RoofDamageSpot
+		if err = rows.Scan(
+			&spot.ID, &spot.RoofID, &spot.PhotoID, &spot.PhotoURL,
+			&spot.Caption, &spot.SortOrder, &spot.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan damage spot: %w", err)
+		}
+		resp.DamageSpots = append(resp.DamageSpots, spot)
+	}
+	return resp, rows.Err()
+}
+
+// SaveRoof upserts the roof row for the inspection identified by token.
+// Uses a CTE with four LEFT JOINs to return photo URLs in a single roundtrip.
+// Advances current_step to 4 once all four named photo IDs are non-null.
+func (s *InspectionService) SaveRoof(token string, input SaveRoofInput) (*models.InspectionRoof, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("inspection not found for this magic link: %w", sql.ErrNoRows)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	now := time.Now()
+	newID := uuid.New().String()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var r models.InspectionRoof
+	err = tx.QueryRow(`
+		WITH upserted AS (
+			INSERT INTO inspection_roof (
+				id, inspection_id,
+				overview_photo_id, slope_photo_id, shingles_photo_id, ridge_photo_id,
+				pitch, shingle_type, layers, squares,
+				has_ridge_damage, has_valley_damage, has_flashing_damage,
+				decking_condition, notes,
+				created_at, updated_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16)
+			ON CONFLICT (inspection_id) DO UPDATE
+			SET overview_photo_id   = EXCLUDED.overview_photo_id,
+			    slope_photo_id      = EXCLUDED.slope_photo_id,
+			    shingles_photo_id   = EXCLUDED.shingles_photo_id,
+			    ridge_photo_id      = EXCLUDED.ridge_photo_id,
+			    pitch               = EXCLUDED.pitch,
+			    shingle_type        = EXCLUDED.shingle_type,
+			    layers              = EXCLUDED.layers,
+			    squares             = EXCLUDED.squares,
+			    has_ridge_damage    = EXCLUDED.has_ridge_damage,
+			    has_valley_damage   = EXCLUDED.has_valley_damage,
+			    has_flashing_damage = EXCLUDED.has_flashing_damage,
+			    decking_condition   = EXCLUDED.decking_condition,
+			    notes               = EXCLUDED.notes,
+			    updated_at          = EXCLUDED.updated_at
+			RETURNING *
+		)
+		SELECT u.id, u.inspection_id,
+		       u.overview_photo_id,  d1.file_url,
+		       u.slope_photo_id,     d2.file_url,
+		       u.shingles_photo_id,  d3.file_url,
+		       u.ridge_photo_id,     d4.file_url,
+		       u.pitch, u.shingle_type, u.layers, u.squares,
+		       u.has_ridge_damage, u.has_valley_damage, u.has_flashing_damage,
+		       u.decking_condition, u.notes,
+		       u.created_at, u.updated_at
+		FROM upserted u
+		LEFT JOIN documents d1 ON d1.id = u.overview_photo_id
+		LEFT JOIN documents d2 ON d2.id = u.slope_photo_id
+		LEFT JOIN documents d3 ON d3.id = u.shingles_photo_id
+		LEFT JOIN documents d4 ON d4.id = u.ridge_photo_id
+	`,
+		newID, inspectionID,
+		input.OverviewPhotoID, input.SlopePhotoID, input.ShinglesPhotoID, input.RidgePhotoID,
+		input.Pitch, input.ShingleType, input.Layers, input.Squares,
+		input.HasRidgeDamage, input.HasValleyDamage, input.HasFlashingDamage,
+		input.DeckingCondition, input.Notes,
+		now,
+	).Scan(
+		&r.ID, &r.InspectionID,
+		&r.OverviewPhotoID, &r.OverviewPhotoURL,
+		&r.SlopePhotoID, &r.SlopePhotoURL,
+		&r.ShinglesPhotoID, &r.ShinglesPhotoURL,
+		&r.RidgePhotoID, &r.RidgePhotoURL,
+		&r.Pitch, &r.ShingleType, &r.Layers, &r.Squares,
+		&r.HasRidgeDamage, &r.HasValleyDamage, &r.HasFlashingDamage,
+		&r.DeckingCondition, &r.Notes,
+		&r.CreatedAt, &r.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert roof: %w", err)
+	}
+
+	// Advance to step 4 once all four named photos are confirmed.
+	if r.OverviewPhotoID != nil && r.SlopePhotoID != nil &&
+		r.ShinglesPhotoID != nil && r.RidgePhotoID != nil {
+		if _, err = tx.Exec(
+			`UPDATE inspection_v2 SET current_step = 4, updated_at = $1
+			 WHERE id = $2 AND current_step < 4`,
+			now, inspectionID,
+		); err != nil {
+			return nil, fmt.Errorf("failed to advance inspection step: %w", err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit roof save: %w", err)
+	}
+
+	return &r, nil
+}
+
+// AddDamageSpot attaches a damage-evidence photo to the roof for this inspection.
+// Returns an error if the roof row does not yet exist (caller must SaveRoof first).
+func (s *InspectionService) AddDamageSpot(token string, input AddDamageSpotInput) (*models.RoofDamageSpot, error) {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return nil, fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("inspection not found for this magic link: %w", sql.ErrNoRows)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	var roofID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_roof WHERE inspection_id = $1`,
+		inspectionID,
+	).Scan(&roofID)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("roof record not found: save the roof first")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up roof: %w", err)
+	}
+
+	// Resolve photo_url if a document ID was provided.
+	var photoURL *string
+	if input.PhotoDocumentID != nil {
+		var url string
+		if err = s.db.QueryRow(
+			`SELECT file_url FROM documents WHERE id = $1`,
+			*input.PhotoDocumentID,
+		).Scan(&url); err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to resolve photo URL: %w", err)
+		}
+		if err == nil {
+			photoURL = &url
+		}
+	}
+
+	newID := uuid.New().String()
+	var spot models.RoofDamageSpot
+	err = s.db.QueryRow(`
+		INSERT INTO inspection_roof_damage_spot
+		    (id, roof_id, photo_id, photo_url, caption, sort_order, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, roof_id, photo_id, photo_url, caption, sort_order, created_at
+	`,
+		newID, roofID, input.PhotoDocumentID, photoURL,
+		input.Caption, input.SortOrder, time.Now(),
+	).Scan(
+		&spot.ID, &spot.RoofID, &spot.PhotoID, &spot.PhotoURL,
+		&spot.Caption, &spot.SortOrder, &spot.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to insert damage spot: %w", err)
+	}
+	return &spot, nil
+}
+
+// DeleteDamageSpot removes a damage spot by ID, verifying it belongs to this inspection.
+// Returns an error wrapping sql.ErrNoRows if the spot does not exist or belongs to another inspection.
+func (s *InspectionService) DeleteDamageSpot(token string, spotID string) error {
+	validation, err := s.magicLinkSvc.ValidateToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to validate token: %w", err)
+	}
+	if !validation.Valid {
+		return fmt.Errorf("invalid or expired token: %s", validation.Reason)
+	}
+
+	var inspectionID string
+	err = s.db.QueryRow(
+		`SELECT id FROM inspection_v2 WHERE magic_link_id = $1`,
+		validation.MagicLinkID,
+	).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("inspection not found: %w", sql.ErrNoRows)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to look up inspection: %w", err)
+	}
+
+	result, err := s.db.Exec(`
+		DELETE FROM inspection_roof_damage_spot
+		WHERE id = $1
+		  AND roof_id IN (
+		      SELECT id FROM inspection_roof WHERE inspection_id = $2
+		  )
+	`, spotID, inspectionID)
+	if err != nil {
+		return fmt.Errorf("failed to delete damage spot: %w", err)
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("damage spot not found: %w", sql.ErrNoRows)
+	}
+	return nil
+}
