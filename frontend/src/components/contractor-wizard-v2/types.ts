@@ -51,3 +51,45 @@ export interface ElevationData {
   doors_count: number | null
   notes: string | null
 }
+
+// ── Roof ──────────────────────────────────────────────────────────────────────
+
+export type Pitch = 'flat' | '2_12' | '4_12' | '6_12' | '8_12' | '10_12' | '12_12_plus'
+
+export type RoofShingleType = '3tab' | 'architectural' | 'metal' | 'tile' | 'tpo' | 'other'
+
+export type DeckingCondition = 'good' | 'soft_spots' | 'needs_replace'
+
+/** The four required named photo slots on the roof. */
+export type RoofPhotoSlot = 'overview' | 'slope' | 'shingles' | 'ridge'
+
+export interface RoofDamageSpot {
+  id: string
+  roof_id: string
+  photo_id: string | null
+  photo_url: string | null
+  caption: string | null
+  sort_order: number
+}
+
+export interface RoofData {
+  id?: string
+  inspection_id?: string
+  overview_photo_id: string | null
+  overview_photo_url: string | null
+  slope_photo_id: string | null
+  slope_photo_url: string | null
+  shingles_photo_id: string | null
+  shingles_photo_url: string | null
+  ridge_photo_id: string | null
+  ridge_photo_url: string | null
+  pitch: Pitch | null
+  shingle_type: RoofShingleType | null
+  layers: number | null
+  squares: number | null
+  has_ridge_damage: boolean
+  has_valley_damage: boolean
+  has_flashing_damage: boolean
+  decking_condition: DeckingCondition | null
+  notes: string | null
+}
