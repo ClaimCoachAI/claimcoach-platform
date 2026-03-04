@@ -1,6 +1,11 @@
 package models
 
-import "time"
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 type InspectionV2 struct {
 	ID            string                   `json:"id" db:"id"`
@@ -102,6 +107,64 @@ type InspectionRoof struct {
 type RoofDamageSpot struct {
 	ID        string    `json:"id" db:"id"`
 	RoofID    string    `json:"roof_id" db:"roof_id"`
+	PhotoID   *string   `json:"photo_id" db:"photo_id"`
+	PhotoURL  *string   `json:"photo_url" db:"photo_url"`
+	Caption   *string   `json:"caption" db:"caption"`
+	SortOrder int       `json:"sort_order" db:"sort_order"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
+
+// ── Rooms ─────────────────────────────────────────────────────────────────────
+
+// JSONStringSlice is a []string that reads/writes as a JSONB array in Postgres.
+// It implements driver.Valuer (for writes) and sql.Scanner (for reads).
+type JSONStringSlice []string
+
+func (j JSONStringSlice) Value() (driver.Value, error) {
+	if j == nil {
+		return "[]", nil
+	}
+	b, err := json.Marshal(j)
+	if err != nil {
+		return nil, fmt.Errorf("JSONStringSlice.Value: %w", err)
+	}
+	return string(b), nil
+}
+
+func (j *JSONStringSlice) Scan(src interface{}) error {
+	switch v := src.(type) {
+	case []byte:
+		return json.Unmarshal(v, j)
+	case string:
+		return json.Unmarshal([]byte(v), j)
+	case nil:
+		*j = JSONStringSlice{}
+		return nil
+	default:
+		return fmt.Errorf("JSONStringSlice.Scan: unsupported type %T", src)
+	}
+}
+
+// InspectionRoom is one room recorded during the interior inspection step.
+type InspectionRoom struct {
+	ID               string               `json:"id" db:"id"`
+	InspectionID     string               `json:"inspection_id" db:"inspection_id"`
+	Name             string               `json:"name" db:"name"`
+	LengthFt         *float64             `json:"length_ft" db:"length_ft"`
+	WidthFt          *float64             `json:"width_ft" db:"width_ft"`
+	HeightFt         *float64             `json:"height_ft" db:"height_ft"`
+	DamagedMaterials JSONStringSlice      `json:"damaged_materials" db:"damaged_materials"`
+	Notes            *string              `json:"notes" db:"notes"`
+	SortOrder        int                  `json:"sort_order" db:"sort_order"`
+	CreatedAt        time.Time            `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at" db:"updated_at"`
+	Photos           []InspectionRoomPhoto `json:"photos"`
+}
+
+// InspectionRoomPhoto is one damage-evidence photo attached to a room.
+type InspectionRoomPhoto struct {
+	ID        string    `json:"id" db:"id"`
+	RoomID    string    `json:"room_id" db:"room_id"`
 	PhotoID   *string   `json:"photo_id" db:"photo_id"`
 	PhotoURL  *string   `json:"photo_url" db:"photo_url"`
 	Caption   *string   `json:"caption" db:"caption"`
