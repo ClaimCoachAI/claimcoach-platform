@@ -125,6 +125,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	// Inspection V2 routes (public - no auth required)
 	r.GET("/api/magic-links/:token/v2/inspection", inspectionHandler.GetSetup)
 	r.POST("/api/magic-links/:token/v2/inspection", inspectionHandler.SaveSetup)
+	r.GET("/api/magic-links/:token/v2/inspection/elevations", inspectionHandler.GetElevations)
+	r.PUT("/api/magic-links/:token/v2/inspection/elevations/:side", inspectionHandler.SaveElevation)
 
 	// Protected routes
 	api := r.Group("/api")
