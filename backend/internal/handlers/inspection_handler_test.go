@@ -487,6 +487,7 @@ func TestInspectionHandler_AddRoomPhoto_Returns201OnSuccess(t *testing.T) {
 }
 
 func TestInspectionHandler_SubmitInspection_Returns200OnSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
 	now := time.Now()
 	mock := &mockInspectionService{
 		submitInspectionFn: func(token string) (*submitInspectionResponse, error) {
@@ -512,6 +513,7 @@ func TestInspectionHandler_SubmitInspection_Returns200OnSuccess(t *testing.T) {
 }
 
 func TestInspectionHandler_SubmitInspection_Returns401ForInvalidToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
 	mock := &mockInspectionService{
 		submitInspectionFn: func(token string) (*submitInspectionResponse, error) {
 			return nil, fmt.Errorf("invalid or expired token: %s", token)
@@ -527,6 +529,7 @@ func TestInspectionHandler_SubmitInspection_Returns401ForInvalidToken(t *testing
 }
 
 func TestInspectionHandler_SubmitInspection_Returns404WhenNoInspection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
 	mock := &mockInspectionService{
 		submitInspectionFn: func(token string) (*submitInspectionResponse, error) {
 			return nil, fmt.Errorf("inspection not found: %w", sql.ErrNoRows)
