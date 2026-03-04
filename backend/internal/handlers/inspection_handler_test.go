@@ -454,6 +454,7 @@ func TestInspectionHandler_DeleteRoom_Returns404ForUnknownRoom(t *testing.T) {
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
+	assert.Contains(t, resp["error"], "not found")
 }
 
 func TestInspectionHandler_AddRoomPhoto_Returns201OnSuccess(t *testing.T) {
