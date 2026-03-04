@@ -93,3 +93,58 @@ export interface RoofData {
   decking_condition: DeckingCondition | null
   notes: string | null
 }
+
+// ── Rooms ─────────────────────────────────────────────────────────────────────
+
+export const DAMAGED_MATERIALS = [
+  'Drywall',
+  'Flooring',
+  'Baseboards',
+  'Ceiling',
+  'Trim',
+] as const
+
+export type DamagedMaterial = (typeof DAMAGED_MATERIALS)[number]
+
+export interface InspectionRoomPhoto {
+  id: string
+  room_id: string
+  photo_id: string | null
+  photo_url: string | null
+  caption: string | null
+  sort_order: number
+  created_at: string
+}
+
+export interface InspectionRoom {
+  id: string
+  inspection_id: string
+  name: string
+  length_ft: number | null
+  width_ft: number | null
+  height_ft: number | null
+  damaged_materials: DamagedMaterial[]
+  notes: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+  photos: InspectionRoomPhoto[]
+}
+
+export interface CreateRoomInput {
+  name: string
+  length_ft?: number | null
+  width_ft?: number | null
+  height_ft?: number | null
+  damaged_materials?: DamagedMaterial[]
+  notes?: string | null
+}
+
+export interface UpdateRoomInput {
+  name: string
+  length_ft: number | null
+  width_ft: number | null
+  height_ft: number | null
+  damaged_materials: DamagedMaterial[]
+  notes: string | null
+}
