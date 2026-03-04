@@ -23,6 +23,13 @@ type addDamageSpotInput = services.AddDamageSpotInput
 type roofResponse       = models.InspectionRoof
 type roofDamageSpotResp = models.RoofDamageSpot
 
+type getRoomsResponse  = []models.InspectionRoom
+type createRoomInput   = services.CreateRoomInput
+type updateRoomInput   = services.UpdateRoomInput
+type addRoomPhotoInput = services.AddRoomPhotoInput
+type roomResponse      = models.InspectionRoom
+type roomPhotoResponse = models.InspectionRoomPhoto
+
 // inspectionServiceInterface is the narrow interface used by InspectionHandler.
 // It is satisfied by *services.InspectionService and by mockInspectionService in tests.
 type inspectionServiceInterface interface {
@@ -34,6 +41,12 @@ type inspectionServiceInterface interface {
 	SaveRoof(token string, input saveRoofInput) (*roofResponse, error)
 	AddDamageSpot(token string, input addDamageSpotInput) (*roofDamageSpotResp, error)
 	DeleteDamageSpot(token string, spotID string) error
+	GetRooms(token string) ([]roomResponse, error)
+	CreateRoom(token string, input createRoomInput) (*roomResponse, error)
+	UpdateRoom(token string, roomID string, input updateRoomInput) (*roomResponse, error)
+	DeleteRoom(token string, roomID string) error
+	AddRoomPhoto(token string, roomID string, input addRoomPhotoInput) (*roomPhotoResponse, error)
+	DeleteRoomPhoto(token string, photoID string) error
 }
 
 // InspectionHandler handles HTTP requests for the inspection v2 wizard.
@@ -282,6 +295,152 @@ func (h *InspectionHandler) DeleteDamageSpot(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to delete damage spot: " + err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// GetRooms handles GET /api/magic-links/:token/v2/inspection/rooms.
+// Returns 200 with all rooms and their photos (empty array when none).
+func (h *InspectionHandler) GetRooms(c *gin.Context) {
+	token := c.Param("token")
+
+	rooms, err := h.service.GetRooms(token)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to load rooms: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": rooms})
+}
+
+// CreateRoom handles POST /api/magic-links/:token/v2/inspection/rooms.
+// Returns 201 with the new room (photos is always an empty array).
+func (h *InspectionHandler) CreateRoom(c *gin.Context) {
+	token := c.Param("token")
+
+	var input createRoomInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	room, err := h.service.CreateRoom(token, input)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to create room: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": room})
+}
+
+// UpdateRoom handles PUT /api/magic-links/:token/v2/inspection/rooms/:roomId.
+// Returns 200 with the updated room (including its photos).
+func (h *InspectionHandler) UpdateRoom(c *gin.Context) {
+	token := c.Param("token")
+	roomID := c.Param("roomId")
+
+	var input updateRoomInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	room, err := h.service.UpdateRoom(token, roomID, input)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Room not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to update room: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": room})
+}
+
+// DeleteRoom handles DELETE /api/magic-links/:token/v2/inspection/rooms/:roomId.
+// Returns 204 on success, 404 when the room does not exist or belongs to another inspection.
+func (h *InspectionHandler) DeleteRoom(c *gin.Context) {
+	token := c.Param("token")
+	roomID := c.Param("roomId")
+
+	err := h.service.DeleteRoom(token, roomID)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Room not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to delete room: " + err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// AddRoomPhoto handles POST /api/magic-links/:token/v2/inspection/rooms/:roomId/photos.
+// Returns 201 with the new photo row.
+func (h *InspectionHandler) AddRoomPhoto(c *gin.Context) {
+	token := c.Param("token")
+	roomID := c.Param("roomId")
+
+	var input addRoomPhotoInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	photo, err := h.service.AddRoomPhoto(token, roomID, input)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Room not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to add room photo: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": photo})
+}
+
+// DeleteRoomPhoto handles DELETE /api/magic-links/:token/v2/inspection/rooms/:roomId/photos/:photoId.
+// Returns 204 on success, 404 when the photo does not exist or belongs to another inspection.
+func (h *InspectionHandler) DeleteRoomPhoto(c *gin.Context) {
+	token := c.Param("token")
+	photoID := c.Param("photoId")
+
+	err := h.service.DeleteRoomPhoto(token, photoID)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Room photo not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to delete room photo: " + err.Error()})
 		return
 	}
 
