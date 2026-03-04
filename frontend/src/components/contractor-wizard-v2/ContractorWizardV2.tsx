@@ -4,6 +4,7 @@ import QuickSetupStep from './steps/QuickSetupStep'
 import ElevationsStep from './steps/ElevationsStep'
 import RoofStep from './steps/RoofStep'
 import RoomsStep from './steps/RoomsStep'
+import DataCheckStep from './steps/DataCheckStep'
 
 interface ContractorWizardV2Props {
   token: string
@@ -87,10 +88,20 @@ export default function ContractorWizardV2({ token }: ContractorWizardV2Props) {
           onBack={() => state.setCurrentStep(state.computePrevStep(4))}
         />
       )}
-      {state.currentStep > 4 && (
-        <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 700 }}>Step 5 coming soon</h2>
-        </div>
+      {state.currentStep === 5 && (
+        <DataCheckStep
+          quickSetup={state.quickSetup}
+          elevations={state.elevations}
+          roof={state.roof}
+          roofDamageSpots={state.roofDamageSpots}
+          rooms={state.rooms}
+          elevationLoading={state.elevationLoading}
+          roofLoading={state.roofLoading}
+          roomsLoading={state.roomsLoading}
+          submittedAt={state.submittedAt}
+          onSubmit={state.submitInspection}
+          onBack={() => state.setCurrentStep(state.computePrevStep(5))}
+        />
       )}
     </div>
   )
