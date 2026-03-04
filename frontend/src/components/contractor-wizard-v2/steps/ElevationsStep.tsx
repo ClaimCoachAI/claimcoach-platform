@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react'
+import React, { useRef, useState, useCallback, useEffect } from 'react'
 import type { ElevationData, ElevationSide, SidingType } from '../types'
 import { usePhotoUpload } from '../usePhotoUpload'
 
@@ -590,6 +590,16 @@ function DamageFields({
   )
   const [localNotes, setLocalNotes] = useState<string>(elevation?.notes ?? '')
 
+  // Sync local state when server refreshes the elevation prop (e.g. after debounced save response)
+  useEffect(() => {
+    setLocalSidingReplaceSf(elevation?.siding_replace_sf != null ? String(elevation.siding_replace_sf) : '')
+    setLocalSidingPaintSf(elevation?.siding_paint_sf != null ? String(elevation.siding_paint_sf) : '')
+    setLocalGutterLf(elevation?.gutter_lf != null ? String(elevation.gutter_lf) : '')
+    setLocalWindows(elevation?.windows_count != null ? String(elevation.windows_count) : '')
+    setLocalDoors(elevation?.doors_count != null ? String(elevation.doors_count) : '')
+    setLocalNotes(elevation?.notes ?? '')
+  }, [elevation])
+
   const inputStyle: React.CSSProperties = {
     width: '100%',
     height: 44,
@@ -883,7 +893,7 @@ export default function ElevationsStep({
   )
   const isDisabled = loading || !allSidesHavePhoto
 
-  const hasDamage = activeElevation?.has_damage ?? false
+  const hasDamage: boolean | null = activeElevation !== undefined ? activeElevation.has_damage : null
 
   return (
     <div style={styles.container}>
@@ -948,7 +958,7 @@ export default function ElevationsStep({
             <div style={{ display: 'flex', gap: 10 }}>
               {(['yes', 'no'] as const).map((opt) => {
                 const isYes = opt === 'yes'
-                const isActive = isYes ? hasDamage : !hasDamage
+                const isActive = hasDamage === null ? false : isYes ? hasDamage : !hasDamage
                 return (
                   <button
                     key={opt}
