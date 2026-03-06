@@ -121,3 +121,26 @@ func (h *PropertyHandler) Update(c *gin.Context) {
 		"data":    property,
 	})
 }
+
+func (h *PropertyHandler) Delete(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	propertyID := c.Param("id")
+
+	err := h.service.DeleteProperty(propertyID, user.OrganizationID)
+	if err != nil {
+		if err.Error() == "property not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   "Property not found",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to delete property: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusNoContent, nil)
+}

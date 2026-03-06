@@ -235,3 +235,21 @@ func (s *PropertyService) UpdateProperty(id string, organizationID string, input
 
 	return &property, nil
 }
+
+func (s *PropertyService) DeleteProperty(id string, organizationID string) error {
+	result, err := s.db.Exec(
+		`DELETE FROM properties WHERE id = $1 AND organization_id = $2`,
+		id, organizationID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete property: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check delete result: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("property not found")
+	}
+	return nil
+}

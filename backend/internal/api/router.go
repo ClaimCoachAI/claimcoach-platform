@@ -164,6 +164,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		api.GET("/properties", propertyHandler.List)
 		api.GET("/properties/:id", propertyHandler.Get)
 		api.PATCH("/properties/:id", propertyHandler.Update)
+		api.DELETE("/properties/:id", propertyHandler.Delete)
 
 		// Policy routes (use same param name :id to avoid gin routing conflicts)
 		policyHandler := handlers.NewPolicyHandler(policyService)
