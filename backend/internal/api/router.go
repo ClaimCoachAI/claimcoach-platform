@@ -128,11 +128,13 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	r.GET("/api/magic-links/:token/v2/inspection/elevations", inspectionHandler.GetElevations)
 	r.PUT("/api/magic-links/:token/v2/inspection/elevations/:side", inspectionHandler.SaveElevation)
 
-	// Roof routes
-	r.GET("/api/magic-links/:token/v2/inspection/roof", inspectionHandler.GetRoof)
-	r.PUT("/api/magic-links/:token/v2/inspection/roof", inspectionHandler.SaveRoof)
-	r.POST("/api/magic-links/:token/v2/inspection/roof/damage-spots", inspectionHandler.AddDamageSpot)
-	r.DELETE("/api/magic-links/:token/v2/inspection/roof/damage-spots/:spotId", inspectionHandler.DeleteDamageSpot)
+	// Roof section routes (multi-section)
+	r.GET("/api/magic-links/:token/v2/inspection/roof-sections", inspectionHandler.ListRoofSections)
+	r.POST("/api/magic-links/:token/v2/inspection/roof-sections", inspectionHandler.CreateRoofSection)
+	r.PATCH("/api/magic-links/:token/v2/inspection/roof-sections/:roofId", inspectionHandler.UpdateRoofSection)
+	r.DELETE("/api/magic-links/:token/v2/inspection/roof-sections/:roofId", inspectionHandler.DeleteRoofSection)
+	r.POST("/api/magic-links/:token/v2/inspection/roof-sections/:roofId/damage-spots", inspectionHandler.AddRoofSectionDamageSpot)
+	r.DELETE("/api/magic-links/:token/v2/inspection/roof-sections/:roofId/damage-spots/:spotId", inspectionHandler.DeleteRoofSectionDamageSpot)
 
 	// Rooms routes
 	r.GET("/api/magic-links/:token/v2/inspection/rooms", inspectionHandler.GetRooms)

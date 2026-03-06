@@ -20,10 +20,12 @@ type mockInspectionService struct {
 	saveSetupFn       func(token string, input saveSetupInput) (*inspectionV2Response, error)
 	getElevationsFn   func(token string) ([]inspectionElevResponse, error)
 	saveElevationFn   func(token string, side string, input saveElevationInput) (*inspectionElevResponse, error)
-	getRoofFn         func(token string) (*getRoofResponse, error)
-	saveRoofFn        func(token string, input saveRoofInput) (*roofResponse, error)
-	addDamageSpotFn   func(token string, input addDamageSpotInput) (*roofDamageSpotResp, error)
-	deleteDamageSpotFn func(token string, spotID string) error
+	listRoofSectionsFn         func(token string) ([]roofSectionResponse, error)
+	createRoofSectionFn        func(token string, input createRoofSectionInput) (*roofSectionResponse, error)
+	updateRoofSectionFn        func(token string, roofID string, input updateRoofSectionInput) (*roofSectionResponse, error)
+	deleteRoofSectionFn        func(token string, roofID string) error
+	addRoofSectionDamageSpotFn func(token string, roofID string, input addDamageSpotInput) (*roofDamageSpotResp, error)
+	deleteRoofSectionDamageSpotFn func(token string, roofID string, spotID string) error
 	getRoomsFn        func(token string) ([]roomResponse, error)
 	createRoomFn      func(token string, input createRoomInput) (*roomResponse, error)
 	updateRoomFn      func(token string, roomID string, input updateRoomInput) (*roomResponse, error)
@@ -49,17 +51,41 @@ func (m *mockInspectionService) SaveElevation(token string, side string, input s
 	return m.saveElevationFn(token, side, input)
 }
 
-func (m *mockInspectionService) GetRoof(token string) (*getRoofResponse, error) {
-	return m.getRoofFn(token)
+func (m *mockInspectionService) ListRoofSections(token string) ([]roofSectionResponse, error) {
+	if m.listRoofSectionsFn != nil {
+		return m.listRoofSectionsFn(token)
+	}
+	return nil, nil
 }
-func (m *mockInspectionService) SaveRoof(token string, input saveRoofInput) (*roofResponse, error) {
-	return m.saveRoofFn(token, input)
+func (m *mockInspectionService) CreateRoofSection(token string, input createRoofSectionInput) (*roofSectionResponse, error) {
+	if m.createRoofSectionFn != nil {
+		return m.createRoofSectionFn(token, input)
+	}
+	return nil, nil
 }
-func (m *mockInspectionService) AddDamageSpot(token string, input addDamageSpotInput) (*roofDamageSpotResp, error) {
-	return m.addDamageSpotFn(token, input)
+func (m *mockInspectionService) UpdateRoofSection(token string, roofID string, input updateRoofSectionInput) (*roofSectionResponse, error) {
+	if m.updateRoofSectionFn != nil {
+		return m.updateRoofSectionFn(token, roofID, input)
+	}
+	return nil, nil
 }
-func (m *mockInspectionService) DeleteDamageSpot(token string, spotID string) error {
-	return m.deleteDamageSpotFn(token, spotID)
+func (m *mockInspectionService) DeleteRoofSection(token string, roofID string) error {
+	if m.deleteRoofSectionFn != nil {
+		return m.deleteRoofSectionFn(token, roofID)
+	}
+	return nil
+}
+func (m *mockInspectionService) AddRoofSectionDamageSpot(token string, roofID string, input addDamageSpotInput) (*roofDamageSpotResp, error) {
+	if m.addRoofSectionDamageSpotFn != nil {
+		return m.addRoofSectionDamageSpotFn(token, roofID, input)
+	}
+	return nil, nil
+}
+func (m *mockInspectionService) DeleteRoofSectionDamageSpot(token string, roofID string, spotID string) error {
+	if m.deleteRoofSectionDamageSpotFn != nil {
+		return m.deleteRoofSectionDamageSpotFn(token, roofID, spotID)
+	}
+	return nil
 }
 func (m *mockInspectionService) GetRooms(token string) ([]roomResponse, error) {
 	return m.getRoomsFn(token)
@@ -250,40 +276,39 @@ func TestInspectionHandler_SaveElevation_Returns401ForInvalidToken(t *testing.T)
 	assert.Contains(t, resp["error"], "Invalid or expired magic link")
 }
 
-func TestInspectionHandler_GetRoof_ReturnsNullRoofWhenNone(t *testing.T) {
+func TestInspectionHandler_ListRoofSections_ReturnsEmptySlice(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockInspectionService{
-		getRoofFn: func(token string) (*getRoofResponse, error) {
-			return &getRoofResponse{Roof: nil, DamageSpots: []roofDamageSpotResp{}}, nil
+		listRoofSectionsFn: func(token string) ([]roofSectionResponse, error) {
+			return []roofSectionResponse{}, nil
 		},
 	}
 	handler := NewInspectionHandler(mock)
 	r := gin.New()
-	r.GET("/api/magic-links/:token/v2/inspection/roof", handler.GetRoof)
-	req, _ := http.NewRequest("GET", "/api/magic-links/test-token/v2/inspection/roof", nil)
+	r.GET("/api/magic-links/:token/v2/inspection/roof-sections", handler.ListRoofSections)
+	req, _ := http.NewRequest("GET", "/api/magic-links/test-token/v2/inspection/roof-sections", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 	var body map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &body)
-	data := body["data"].(map[string]interface{})
-	assert.Nil(t, data["roof"])
-	assert.NotNil(t, data["damage_spots"])
+	data := body["data"].([]interface{})
+	assert.Len(t, data, 0)
 }
 
-func TestInspectionHandler_SaveRoof_Returns201OnSuccess(t *testing.T) {
+func TestInspectionHandler_CreateRoofSection_Returns201OnSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockInspectionService{
-		saveRoofFn: func(token string, input saveRoofInput) (*roofResponse, error) {
-			return &roofResponse{ID: "roof-uuid-123", InspectionID: "insp-uuid-456"}, nil
+		createRoofSectionFn: func(token string, input createRoofSectionInput) (*roofSectionResponse, error) {
+			return &roofSectionResponse{ID: "roof-uuid-123", InspectionID: "insp-uuid-456"}, nil
 		},
 	}
 	handler := NewInspectionHandler(mock)
 	r := gin.New()
-	r.PUT("/api/magic-links/:token/v2/inspection/roof", handler.SaveRoof)
-	payload := map[string]interface{}{"has_ridge_damage": false, "has_valley_damage": false, "has_flashing_damage": false}
+	r.POST("/api/magic-links/:token/v2/inspection/roof-sections", handler.CreateRoofSection)
+	payload := map[string]interface{}{"has_ridge_damage": false}
 	body, _ := json.Marshal(payload)
-	req, _ := http.NewRequest("PUT", "/api/magic-links/test-token/v2/inspection/roof", bytes.NewBuffer(body))
+	req, _ := http.NewRequest("POST", "/api/magic-links/test-token/v2/inspection/roof-sections", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -294,20 +319,20 @@ func TestInspectionHandler_SaveRoof_Returns201OnSuccess(t *testing.T) {
 	assert.Equal(t, "roof-uuid-123", data["id"])
 }
 
-func TestInspectionHandler_AddDamageSpot_Returns201OnSuccess(t *testing.T) {
+func TestInspectionHandler_AddRoofSectionDamageSpot_Returns201OnSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	caption := "NW valley crack"
 	mock := &mockInspectionService{
-		addDamageSpotFn: func(token string, input addDamageSpotInput) (*roofDamageSpotResp, error) {
+		addRoofSectionDamageSpotFn: func(token string, roofID string, input addDamageSpotInput) (*roofDamageSpotResp, error) {
 			return &roofDamageSpotResp{ID: "spot-uuid-789", Caption: &caption}, nil
 		},
 	}
 	handler := NewInspectionHandler(mock)
 	r := gin.New()
-	r.POST("/api/magic-links/:token/v2/inspection/roof/damage-spots", handler.AddDamageSpot)
+	r.POST("/api/magic-links/:token/v2/inspection/roof-sections/:roofId/damage-spots", handler.AddRoofSectionDamageSpot)
 	payload := map[string]interface{}{"caption": caption}
 	body, _ := json.Marshal(payload)
-	req, _ := http.NewRequest("POST", "/api/magic-links/test-token/v2/inspection/roof/damage-spots", bytes.NewBuffer(body))
+	req, _ := http.NewRequest("POST", "/api/magic-links/test-token/v2/inspection/roof-sections/roof-uuid-123/damage-spots", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -318,31 +343,31 @@ func TestInspectionHandler_AddDamageSpot_Returns201OnSuccess(t *testing.T) {
 	assert.Equal(t, "spot-uuid-789", data["id"])
 }
 
-func TestInspectionHandler_DeleteDamageSpot_Returns204OnSuccess(t *testing.T) {
+func TestInspectionHandler_DeleteRoofSectionDamageSpot_Returns204OnSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockInspectionService{
-		deleteDamageSpotFn: func(token string, spotID string) error { return nil },
+		deleteRoofSectionDamageSpotFn: func(token string, roofID string, spotID string) error { return nil },
 	}
 	handler := NewInspectionHandler(mock)
 	r := gin.New()
-	r.DELETE("/api/magic-links/:token/v2/inspection/roof/damage-spots/:spotId", handler.DeleteDamageSpot)
-	req, _ := http.NewRequest("DELETE", "/api/magic-links/test-token/v2/inspection/roof/damage-spots/spot-uuid-789", nil)
+	r.DELETE("/api/magic-links/:token/v2/inspection/roof-sections/:roofId/damage-spots/:spotId", handler.DeleteRoofSectionDamageSpot)
+	req, _ := http.NewRequest("DELETE", "/api/magic-links/test-token/v2/inspection/roof-sections/roof-uuid-123/damage-spots/spot-uuid-789", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNoContent, w.Code)
 }
 
-func TestInspectionHandler_DeleteDamageSpot_Returns404ForUnknownSpot(t *testing.T) {
+func TestInspectionHandler_DeleteRoofSectionDamageSpot_Returns404ForUnknownSpot(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mock := &mockInspectionService{
-		deleteDamageSpotFn: func(token string, spotID string) error {
+		deleteRoofSectionDamageSpotFn: func(token string, roofID string, spotID string) error {
 			return fmt.Errorf("damage spot not found: %w", sql.ErrNoRows)
 		},
 	}
 	handler := NewInspectionHandler(mock)
 	r := gin.New()
-	r.DELETE("/api/magic-links/:token/v2/inspection/roof/damage-spots/:spotId", handler.DeleteDamageSpot)
-	req, _ := http.NewRequest("DELETE", "/api/magic-links/test-token/v2/inspection/roof/damage-spots/nonexistent", nil)
+	r.DELETE("/api/magic-links/:token/v2/inspection/roof-sections/:roofId/damage-spots/:spotId", handler.DeleteRoofSectionDamageSpot)
+	req, _ := http.NewRequest("DELETE", "/api/magic-links/test-token/v2/inspection/roof-sections/roof-uuid-123/damage-spots/nonexistent", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)

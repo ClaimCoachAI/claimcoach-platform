@@ -17,11 +17,12 @@ type saveSetupInput = services.SaveSetupInput
 type inspectionV2Response = models.InspectionV2
 type saveElevationInput     = services.SaveElevationInput
 type inspectionElevResponse = models.InspectionElevation
-type getRoofResponse    = services.GetRoofResponse
-type saveRoofInput      = services.SaveRoofInput
-type addDamageSpotInput = services.AddDamageSpotInput
-type roofResponse       = models.InspectionRoof
-type roofDamageSpotResp = models.RoofDamageSpot
+type listRoofSectionsResp   = []models.InspectionRoof
+type createRoofSectionInput = services.CreateRoofSectionInput
+type updateRoofSectionInput = services.UpdateRoofSectionInput
+type addDamageSpotInput     = services.AddDamageSpotInput
+type roofSectionResponse    = models.InspectionRoof
+type roofDamageSpotResp     = models.RoofDamageSpot
 
 type getRoomsResponse  = []models.InspectionRoom
 type createRoomInput   = services.CreateRoomInput
@@ -39,10 +40,12 @@ type inspectionServiceInterface interface {
 	SaveSetup(token string, input saveSetupInput) (*inspectionV2Response, error)
 	GetElevations(token string) ([]inspectionElevResponse, error)
 	SaveElevation(token string, side string, input saveElevationInput) (*inspectionElevResponse, error)
-	GetRoof(token string) (*getRoofResponse, error)
-	SaveRoof(token string, input saveRoofInput) (*roofResponse, error)
-	AddDamageSpot(token string, input addDamageSpotInput) (*roofDamageSpotResp, error)
-	DeleteDamageSpot(token string, spotID string) error
+	ListRoofSections(token string) ([]roofSectionResponse, error)
+	CreateRoofSection(token string, input createRoofSectionInput) (*roofSectionResponse, error)
+	UpdateRoofSection(token string, roofID string, input updateRoofSectionInput) (*roofSectionResponse, error)
+	DeleteRoofSection(token string, roofID string) error
+	AddRoofSectionDamageSpot(token string, roofID string, input addDamageSpotInput) (*roofDamageSpotResp, error)
+	DeleteRoofSectionDamageSpot(token string, roofID string, spotID string) error
 	GetRooms(token string) ([]roomResponse, error)
 	CreateRoom(token string, input createRoomInput) (*roomResponse, error)
 	UpdateRoom(token string, roomID string, input updateRoomInput) (*roomResponse, error)
@@ -215,80 +218,112 @@ func (h *InspectionHandler) SaveElevation(c *gin.Context) {
 	})
 }
 
-// GetRoof handles GET /api/magic-links/:token/v2/inspection/roof.
-// Returns 200 with roof and damage_spots (roof is null when not started).
-func (h *InspectionHandler) GetRoof(c *gin.Context) {
+// ListRoofSections handles GET /api/magic-links/:token/v2/inspection/roof-sections.
+func (h *InspectionHandler) ListRoofSections(c *gin.Context) {
 	token := c.Param("token")
-
-	resp, err := h.service.GetRoof(token)
+	sections, err := h.service.ListRoofSections(token)
 	if err != nil {
 		if isTokenError(err) {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to load roof: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": resp})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": sections})
 }
 
-// SaveRoof handles PUT /api/magic-links/:token/v2/inspection/roof.
-// Returns 201 with the saved roof row.
-func (h *InspectionHandler) SaveRoof(c *gin.Context) {
+// CreateRoofSection handles POST /api/magic-links/:token/v2/inspection/roof-sections.
+func (h *InspectionHandler) CreateRoofSection(c *gin.Context) {
 	token := c.Param("token")
-
-	var input saveRoofInput
+	var input createRoofSectionInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request body: " + err.Error()})
 		return
 	}
-
-	roof, err := h.service.SaveRoof(token, input)
+	section, err := h.service.CreateRoofSection(token, input)
 	if err != nil {
 		if isTokenError(err) {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to save roof: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}
-
-	c.JSON(http.StatusCreated, gin.H{"success": true, "data": roof})
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": section})
 }
 
-// AddDamageSpot handles POST /api/magic-links/:token/v2/inspection/roof/damage-spots.
-// Returns 201 with the new damage spot.
-func (h *InspectionHandler) AddDamageSpot(c *gin.Context) {
+// UpdateRoofSection handles PATCH /api/magic-links/:token/v2/inspection/roof-sections/:roofId.
+func (h *InspectionHandler) UpdateRoofSection(c *gin.Context) {
 	token := c.Param("token")
+	roofID := c.Param("roofId")
+	var input updateRoofSectionInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request body: " + err.Error()})
+		return
+	}
+	section, err := h.service.UpdateRoofSection(token, roofID, input)
+	if err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Roof section not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": section})
+}
 
+// DeleteRoofSection handles DELETE /api/magic-links/:token/v2/inspection/roof-sections/:roofId.
+func (h *InspectionHandler) DeleteRoofSection(c *gin.Context) {
+	token := c.Param("token")
+	roofID := c.Param("roofId")
+	if err := h.service.DeleteRoofSection(token, roofID); err != nil {
+		if isTokenError(err) {
+			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Roof section not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusNoContent, nil)
+}
+
+// AddRoofSectionDamageSpot handles POST /api/magic-links/:token/v2/inspection/roof-sections/:roofId/damage-spots.
+func (h *InspectionHandler) AddRoofSectionDamageSpot(c *gin.Context) {
+	token := c.Param("token")
+	roofID := c.Param("roofId")
 	var input addDamageSpotInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request body: " + err.Error()})
 		return
 	}
-
-	spot, err := h.service.AddDamageSpot(token, input)
+	spot, err := h.service.AddRoofSectionDamageSpot(token, roofID, input)
 	if err != nil {
 		if isTokenError(err) {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to add damage spot: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": spot})
 }
 
-// DeleteDamageSpot handles DELETE /api/magic-links/:token/v2/inspection/roof/damage-spots/:spotId.
-// Returns 204 on success, 404 when the spot does not exist or belongs to another inspection.
-func (h *InspectionHandler) DeleteDamageSpot(c *gin.Context) {
+// DeleteRoofSectionDamageSpot handles DELETE /api/magic-links/:token/v2/inspection/roof-sections/:roofId/damage-spots/:spotId.
+func (h *InspectionHandler) DeleteRoofSectionDamageSpot(c *gin.Context) {
 	token := c.Param("token")
+	roofID := c.Param("roofId")
 	spotID := c.Param("spotId")
-
-	err := h.service.DeleteDamageSpot(token, spotID)
-	if err != nil {
+	if err := h.service.DeleteRoofSectionDamageSpot(token, roofID, spotID); err != nil {
 		if isTokenError(err) {
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Invalid or expired magic link"})
 			return
@@ -297,11 +332,10 @@ func (h *InspectionHandler) DeleteDamageSpot(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Damage spot not found"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to delete damage spot: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
 		return
 	}
-
-	c.Status(http.StatusNoContent)
+	c.JSON(http.StatusNoContent, nil)
 }
 
 // GetRooms handles GET /api/magic-links/:token/v2/inspection/rooms.
