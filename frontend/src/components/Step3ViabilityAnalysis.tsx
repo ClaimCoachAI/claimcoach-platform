@@ -11,6 +11,7 @@ interface ScopeSheet {
 interface Step3ViabilityAnalysisProps {
   claim: Claim
   scopeSheet: ScopeSheet | null
+  hasInspectionV2?: boolean
 }
 
 type Phase = 'idle' | 'reading' | 'estimating' | 'analyzing' | 'complete' | 'error'
@@ -488,7 +489,7 @@ function ProgressTimeline({ currentPhase }: { currentPhase: Phase }) {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3ViabilityAnalysisProps) {
+export default function Step3ViabilityAnalysis({ claim, scopeSheet, hasInspectionV2 }: Step3ViabilityAnalysisProps) {
   const queryClient = useQueryClient()
   const [phase, setPhase]       = useState<Phase>('idle')
   const [analysis, setAnalysis] = useState<ViabilityAnalysis | null>(null)
@@ -496,7 +497,7 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet }: Step3Viabi
   const [estimateOpen, setEstimateOpen] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  const scopeSubmitted  = !!scopeSheet?.submitted_at
+  const scopeSubmitted  = !!scopeSheet?.submitted_at || !!hasInspectionV2
   const deductibleValue = claim.policy?.deductible_value ?? 0
 
   const runAnalysis = useCallback(async () => {

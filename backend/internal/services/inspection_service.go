@@ -1,8 +1,11 @@
 package services
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/claimcoach/backend/internal/models"
@@ -1295,10 +1298,286 @@ func (s *InspectionService) SubmitInspection(token string) (*models.InspectionV2
 	if err != nil {
 		return nil, fmt.Errorf("failed to submit inspection: %w", err)
 	}
+
+	// Synthesize a scope_sheet record from V2 data so the audit pipeline can function.
+	if synErr := s.synthesizeScopeSheetFromV2(context.Background(), insp.ID, insp.ClaimID); synErr != nil {
+		// Non-fatal: log but don't fail the submit
+		fmt.Printf("Warning: failed to synthesize scope sheet from V2 inspection: %v\n", synErr)
+	}
+
 	return &insp, nil
 }
 
+// synthesizeScopeSheetFromV2 creates a scope_sheets record from V2 inspection data.
+// This is called on submission so the audit pipeline (which requires a scope sheet) can function.
+// Idempotent: skips if a non-draft scope sheet already exists for this claim.
+func (s *InspectionService) synthesizeScopeSheetFromV2(ctx context.Context, inspectionID, claimID string) error {
+	// Skip if a scope sheet already exists (old wizard used, or already synthesized)
+	var exists bool
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM scope_sheets WHERE claim_id = $1 AND is_draft = false)`,
+		claimID,
+	).Scan(&exists); err != nil {
+		return fmt.Errorf("failed to check scope sheet existence: %w", err)
+	}
+	if exists {
+		return nil
+	}
+
+	areas := []models.ScopeArea{}
+	order := 0
+
+	// ── Roof sections ────────────────────────────────────────────────────────
+	roofRows, err := s.db.QueryContext(ctx, `
+		SELECT id, section_type, section_custom_name,
+		       pitch, squares, shingle_type,
+		       has_ridge_damage, has_valley_damage, has_flashing_damage,
+		       complexity, penetrations, notes,
+		       overview_photo_id, slope_photo_id, shingles_photo_id, ridge_photo_id
+		FROM inspection_roof
+		WHERE inspection_id = $1
+		ORDER BY sort_order, created_at
+	`, inspectionID)
+	if err != nil {
+		return fmt.Errorf("failed to query roof sections: %w", err)
+	}
+	defer roofRows.Close()
+
+	for roofRows.Next() {
+		var (
+			id, sectionType, sectionCustomName sql.NullString
+			pitch, shingleType                 sql.NullString
+			complexity, penetrations, notes    sql.NullString
+			ovPhotoID, slPhotoID, shPhotoID, ridPhotoID sql.NullString
+			squares                            sql.NullFloat64
+			hasRidge, hasValley, hasFlashing   bool
+		)
+		if err := roofRows.Scan(
+			&id, &sectionType, &sectionCustomName,
+			&pitch, &squares, &shingleType,
+			&hasRidge, &hasValley, &hasFlashing,
+			&complexity, &penetrations, &notes,
+			&ovPhotoID, &slPhotoID, &shPhotoID, &ridPhotoID,
+		); err != nil {
+			return fmt.Errorf("failed to scan roof row: %w", err)
+		}
+
+		category := "Roof Section"
+		if sectionCustomName.Valid && sectionCustomName.String != "" {
+			category = sectionCustomName.String
+		} else if sectionType.Valid && sectionType.String != "" {
+			category = strings.Title(strings.ReplaceAll(sectionType.String, "_", " "))
+		}
+
+		tags := []string{}
+		if hasRidge {
+			tags = append(tags, "Ridge_Damage")
+		}
+		if hasValley {
+			tags = append(tags, "Valley_Damage")
+		}
+		if hasFlashing {
+			tags = append(tags, "Flashing_Damage")
+		}
+		if shingleType.Valid && shingleType.String != "" {
+			tags = append(tags, "Shingles_Damaged")
+		}
+		if complexity.Valid && complexity.String != "" {
+			tags = append(tags, "Pitch_"+strings.Title(complexity.String))
+		}
+
+		dims := map[string]float64{}
+		if squares.Valid && squares.Float64 > 0 {
+			dims["squares"] = squares.Float64
+		}
+
+		photoIDs := []string{}
+		for _, p := range []sql.NullString{ovPhotoID, slPhotoID, shPhotoID, ridPhotoID} {
+			if p.Valid && p.String != "" {
+				photoIDs = append(photoIDs, p.String)
+			}
+		}
+
+		areaID := uuid.New().String()
+		if id.Valid {
+			areaID = id.String
+		}
+
+		areas = append(areas, models.ScopeArea{
+			ID: areaID, Category: category, CategoryKey: "roof",
+			Order: order, Tags: tags, Dimensions: dims,
+			PhotoIDs: photoIDs, Notes: notes.String,
+		})
+		order++
+	}
+	if err := roofRows.Err(); err != nil {
+		return fmt.Errorf("roof rows error: %w", err)
+	}
+
+	// ── Elevations ──────────────────────────────────────────────────────────
+	elevRows, err := s.db.QueryContext(ctx, `
+		SELECT id, side, has_damage,
+		       COALESCE(siding_replace_sf, 0), COALESCE(siding_paint_sf, 0), COALESCE(gutter_lf, 0),
+		       COALESCE(windows_count, 0), COALESCE(doors_count, 0),
+		       COALESCE(notes, ''), photo_document_id
+		FROM inspection_elevation
+		WHERE inspection_id = $1
+		ORDER BY CASE side WHEN 'front' THEN 1 WHEN 'right' THEN 2 WHEN 'back' THEN 3 WHEN 'left' THEN 4 END
+	`, inspectionID)
+	if err != nil {
+		return fmt.Errorf("failed to query elevations: %w", err)
+	}
+	defer elevRows.Close()
+
+	for elevRows.Next() {
+		var (
+			id, side, notes sql.NullString
+			photoID         sql.NullString
+			hasDamage       bool
+			sidingReplaceSF, sidingPaintSF, gutterLF float64
+			windowsCount, doorsCount                 int
+		)
+		if err := elevRows.Scan(
+			&id, &side, &hasDamage,
+			&sidingReplaceSF, &sidingPaintSF, &gutterLF,
+			&windowsCount, &doorsCount,
+			&notes, &photoID,
+		); err != nil {
+			return fmt.Errorf("failed to scan elevation row: %w", err)
+		}
+		if !hasDamage {
+			continue // Only include damaged elevations in the estimate
+		}
+
+		sideName := "Elevation"
+		if side.Valid {
+			sideName = strings.Title(side.String) + " Elevation"
+		}
+
+		tags := []string{"Exterior_Damage"}
+		dims := map[string]float64{}
+		if sidingReplaceSF > 0 {
+			dims["siding_replace_sf"] = sidingReplaceSF
+			tags = append(tags, "Siding_Damaged")
+		}
+		if sidingPaintSF > 0 {
+			dims["siding_paint_sf"] = sidingPaintSF
+		}
+		if gutterLF > 0 {
+			dims["gutter_lf"] = gutterLF
+			tags = append(tags, "Gutter_Damage")
+		}
+		if windowsCount > 0 {
+			dims["windows_count"] = float64(windowsCount)
+		}
+		if doorsCount > 0 {
+			dims["doors_count"] = float64(doorsCount)
+		}
+
+		photoIDs := []string{}
+		if photoID.Valid && photoID.String != "" {
+			photoIDs = append(photoIDs, photoID.String)
+		}
+
+		areaID := uuid.New().String()
+		if id.Valid {
+			areaID = id.String
+		}
+
+		areas = append(areas, models.ScopeArea{
+			ID: areaID, Category: sideName, CategoryKey: "exterior",
+			Order: order, Tags: tags, Dimensions: dims,
+			PhotoIDs: photoIDs, Notes: notes.String,
+		})
+		order++
+	}
+	if err := elevRows.Err(); err != nil {
+		return fmt.Errorf("elevation rows error: %w", err)
+	}
+
+	// ── Rooms ────────────────────────────────────────────────────────────────
+	roomRows, err := s.db.QueryContext(ctx, `
+		SELECT r.id, r.name,
+		       COALESCE(r.length_ft, 0), COALESCE(r.width_ft, 0), COALESCE(r.height_ft, 0),
+		       r.damaged_materials, COALESCE(r.notes, ''),
+		       COALESCE(json_agg(p.photo_id) FILTER (WHERE p.photo_id IS NOT NULL), '[]'::json)
+		FROM inspection_room r
+		LEFT JOIN inspection_room_photo p ON p.room_id = r.id
+		WHERE r.inspection_id = $1
+		GROUP BY r.id, r.name, r.length_ft, r.width_ft, r.height_ft, r.damaged_materials, r.notes, r.sort_order
+		ORDER BY r.sort_order, r.created_at
+	`, inspectionID)
+	if err != nil {
+		return fmt.Errorf("failed to query rooms: %w", err)
+	}
+	defer roomRows.Close()
+
+	for roomRows.Next() {
+		var (
+			id, name, notes     string
+			lengthFt, widthFt, heightFt float64
+			damagedMaterials    models.JSONStringSlice
+			photoIDsJSON        []byte
+		)
+		if err := roomRows.Scan(
+			&id, &name, &lengthFt, &widthFt, &heightFt,
+			&damagedMaterials, &notes, &photoIDsJSON,
+		); err != nil {
+			return fmt.Errorf("failed to scan room row: %w", err)
+		}
+
+		dims := map[string]float64{}
+		if lengthFt > 0 {
+			dims["length"] = lengthFt
+		}
+		if widthFt > 0 {
+			dims["width"] = widthFt
+		}
+		if lengthFt > 0 && widthFt > 0 {
+			dims["square_footage"] = lengthFt * widthFt
+		}
+		if heightFt > 0 {
+			dims["ceiling_height"] = heightFt
+		}
+
+		tags := []string(damagedMaterials)
+
+		var photoIDsList []string
+		if err := json.Unmarshal(photoIDsJSON, &photoIDsList); err != nil {
+			photoIDsList = []string{}
+		}
+
+		areas = append(areas, models.ScopeArea{
+			ID: id, Category: name, CategoryKey: "interior",
+			Order: order, Tags: tags, Dimensions: dims,
+			PhotoIDs: photoIDsList, Notes: notes,
+		})
+		order++
+	}
+	if err := roomRows.Err(); err != nil {
+		return fmt.Errorf("room rows error: %w", err)
+	}
+
+	// ── Insert synthetic scope sheet ─────────────────────────────────────────
+	areasJSON, err := json.Marshal(areas)
+	if err != nil {
+		return fmt.Errorf("failed to marshal areas: %w", err)
+	}
+	now := time.Now()
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO scope_sheets (id, claim_id, areas, triage_selections, general_notes,
+		                          is_draft, submitted_at, created_at, updated_at)
+		VALUES ($1, $2, $3, '[]'::jsonb, NULL, false, $4, $4, $4)
+		ON CONFLICT DO NOTHING
+	`, uuid.New().String(), claimID, areasJSON, now)
+	if err != nil {
+		return fmt.Errorf("failed to insert synthetic scope sheet: %w", err)
+	}
+	return nil
+}
+
 // GetSubmittedByClaimID returns the submitted inspection_v2 for a given claim, or nil if none exists.
+// Also ensures a synthetic scope sheet exists so the audit pipeline can run.
 func (s *InspectionService) GetSubmittedByClaimID(claimID string) (*models.InspectionV2, error) {
 	var insp models.InspectionV2
 	err := s.db.QueryRow(`
@@ -1321,5 +1600,11 @@ func (s *InspectionService) GetSubmittedByClaimID(claimID string) (*models.Inspe
 	if err != nil {
 		return nil, fmt.Errorf("failed to get inspection: %w", err)
 	}
+
+	// Backfill scope sheet for already-submitted inspections that pre-date auto-synthesis.
+	if synErr := s.synthesizeScopeSheetFromV2(context.Background(), insp.ID, insp.ClaimID); synErr != nil {
+		fmt.Printf("Warning: failed to synthesize scope sheet on read: %v\n", synErr)
+	}
+
 	return &insp, nil
 }

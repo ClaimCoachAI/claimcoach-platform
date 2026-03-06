@@ -634,6 +634,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           <Step3ViabilityAnalysis
             claim={claim}
             scopeSheet={scopeSheet ?? null}
+            hasInspectionV2={!!inspectionV2}
           />
         )
 
