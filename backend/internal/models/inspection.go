@@ -99,6 +99,12 @@ type InspectionRoof struct {
 	HasFlashingDamage bool      `json:"has_flashing_damage" db:"has_flashing_damage"`
 	DeckingCondition  *string   `json:"decking_condition" db:"decking_condition"`
 	Notes             *string   `json:"notes" db:"notes"`
+	// Section identity (added in migration 000023)
+	SectionType       *string   `json:"section_type" db:"section_type"`
+	SectionCustomName *string   `json:"section_custom_name" db:"section_custom_name"`
+	Penetrations      *string   `json:"penetrations" db:"penetrations"`
+	Complexity        *string   `json:"complexity" db:"complexity"`
+	SortOrder         int       `json:"sort_order" db:"sort_order"`
 	CreatedAt         time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
 }
