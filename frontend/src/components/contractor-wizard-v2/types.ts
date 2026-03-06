@@ -61,6 +61,10 @@ export type RoofShingleType = '3tab' | 'architectural' | 'metal' | 'tile' | 'tpo
 
 export type DeckingCondition = 'good' | 'soft_spots' | 'needs_replace'
 
+export type RoofSectionType = 'main_house' | 'garage' | 'patio' | 'carport' | 'flat_roof' | 'other'
+export type PenetrationRange = '0_3' | '4_7' | '8_plus'
+export type RoofComplexity = 'simple' | 'moderate' | 'complex'
+
 /** The four required named photo slots on the roof. */
 export type RoofPhotoSlot = 'overview' | 'slope' | 'shingles' | 'ridge'
 
@@ -93,6 +97,16 @@ export interface RoofData {
   has_flashing_damage: boolean
   decking_condition: DeckingCondition | null
   notes: string | null
+  section_type: RoofSectionType | null
+  section_custom_name: string | null
+  penetrations: PenetrationRange | null
+  complexity: RoofComplexity | null
+  sort_order: number
+}
+
+export interface CreateRoofSectionInput {
+  section_type: RoofSectionType | null
+  section_custom_name: string | null
 }
 
 // ── Rooms ─────────────────────────────────────────────────────────────────────
