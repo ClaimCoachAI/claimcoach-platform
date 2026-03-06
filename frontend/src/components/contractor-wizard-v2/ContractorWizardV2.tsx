@@ -63,15 +63,15 @@ export default function ContractorWizardV2({ token }: ContractorWizardV2Props) {
       {state.currentStep === 3 && (
         <RoofStep
           token={state.token}
-          roof={state.roof}
-          damageSpots={state.roofDamageSpots}
-          onSaveRoof={state.saveRoof}
-          onAddDamageSpot={state.addDamageSpot}
-          onDeleteDamageSpot={state.deleteDamageSpot}
+          roofSections={state.roofSections}
+          roofLoading={state.roofLoading}
+          onCreateRoofSection={state.createRoofSection}
+          onUpdateRoofSection={state.updateRoofSection}
+          onDeleteRoofSection={state.deleteRoofSection}
+          onAddDamageSpot={state.addRoofSectionDamageSpot}
+          onDeleteDamageSpot={state.deleteRoofSectionDamageSpot}
           onContinue={() => state.setCurrentStep(state.computeNextStep(3))}
           onBack={() => state.setCurrentStep(state.computePrevStep(3))}
-          loading={state.roofLoading}
-          error={state.error}
         />
       )}
 
@@ -92,8 +92,7 @@ export default function ContractorWizardV2({ token }: ContractorWizardV2Props) {
         <DataCheckStep
           quickSetup={state.quickSetup}
           elevations={state.elevations}
-          roof={state.roof}
-          roofDamageSpots={state.roofDamageSpots}
+          roofSections={state.roofSections}
           rooms={state.rooms}
           elevationLoading={state.elevationLoading}
           roofLoading={state.roofLoading}

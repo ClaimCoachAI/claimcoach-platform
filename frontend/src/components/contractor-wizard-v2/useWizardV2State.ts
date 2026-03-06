@@ -9,11 +9,13 @@ import type {
   ElevationSide,
   RoofData,
   RoofDamageSpot,
+  CreateRoofSectionInput,
   InspectionRoom,
   InspectionRoomPhoto,
   CreateRoomInput,
   UpdateRoomInput,
 } from './types'
+
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
@@ -32,12 +34,13 @@ export interface WizardV2State {
   elevations: ElevationData[]
   elevationLoading: boolean
   saveElevation: (side: ElevationSide, data: Partial<ElevationData>) => Promise<void>
-  roof: RoofData | null
-  roofDamageSpots: RoofDamageSpot[]
+  roofSections: RoofData[]
   roofLoading: boolean
-  saveRoof: (data: Partial<RoofData>) => Promise<void>
-  addDamageSpot: (photoDocumentId: string | null, caption: string | null) => Promise<RoofDamageSpot | null>
-  deleteDamageSpot: (spotId: string) => Promise<void>
+  createRoofSection: (input: CreateRoofSectionInput) => Promise<RoofData | null>
+  updateRoofSection: (roofId: string, data: Partial<RoofData>) => void
+  deleteRoofSection: (roofId: string) => Promise<void>
+  addRoofSectionDamageSpot: (roofId: string, photoDocumentId: string | null, caption: string | null) => Promise<RoofDamageSpot | null>
+  deleteRoofSectionDamageSpot: (roofId: string, spotId: string) => Promise<void>
   computeNextStep: (from: WizardStep) => WizardStep
   computePrevStep: (from: WizardStep) => WizardStep
   rooms: InspectionRoom[]
@@ -74,10 +77,10 @@ export function useWizardV2State(token: string): WizardV2State {
   const [elevations, setElevations] = useState<ElevationData[]>([])
   const [elevationLoading, setElevationLoading] = useState(false)
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
-  const [roof, setRoof] = useState<RoofData | null>(null)
-  const [roofDamageSpots, setRoofDamageSpots] = useState<RoofDamageSpot[]>([])
+  const [roofSections, setRoofSections] = useState<RoofData[]>([])
   const [roofLoading, setRoofLoading] = useState(false)
-  const roofDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const roofDebounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const pendingRoofUpdates = useRef<Map<string, Partial<RoofData>>>(new Map())
   const [rooms, setRooms] = useState<InspectionRoom[]>([])
   const [roomsLoading, setRoomsLoading] = useState(false)
   const [submittedAt, setSubmittedAt] = useState<string | null>(null)
@@ -149,15 +152,100 @@ export function useWizardV2State(token: string): WizardV2State {
     return steps[idx - 1]
   }, [quickSetup.area_selection])
 
-  const loadRoof = useCallback(async () => {
+  const loadRoofSections = useCallback(async () => {
+    setRoofLoading(true)
     try {
-      const { data } = await axios.get<{ success: boolean; data: { roof: RoofData | null; damage_spots: RoofDamageSpot[] } }>(
-        `${API}/api/magic-links/${token}/v2/inspection/roof`
+      const { data } = await axios.get<{ success: boolean; data: RoofData[] }>(
+        `${API}/api/magic-links/${token}/v2/inspection/roof-sections`
       )
-      setRoof(data.data.roof)
-      setRoofDamageSpots(data.data.damage_spots)
+      setRoofSections(data.data ?? [])
     } catch {
-      // non-fatal: roof stays at current state
+      // non-fatal
+    } finally {
+      setRoofLoading(false)
+    }
+  }, [token])
+
+  const createRoofSection = useCallback(async (input: CreateRoofSectionInput): Promise<RoofData | null> => {
+    try {
+      const { data } = await axios.post<{ success: boolean; data: RoofData }>(
+        `${API}/api/magic-links/${token}/v2/inspection/roof-sections`,
+        input
+      )
+      const section = data.data
+      setRoofSections(prev => [...prev, section])
+      return section
+    } catch {
+      return null
+    }
+  }, [token])
+
+  const updateRoofSection = useCallback((roofId: string, updates: Partial<RoofData>) => {
+    // Merge pending updates
+    const current = pendingRoofUpdates.current.get(roofId) ?? {}
+    pendingRoofUpdates.current.set(roofId, { ...current, ...updates })
+
+    // Optimistic update
+    setRoofSections(prev => prev.map(r => r.id === roofId ? { ...r, ...updates } : r))
+
+    // Debounce per section
+    const existing = roofDebounceTimers.current.get(roofId)
+    if (existing) clearTimeout(existing)
+    const timer = setTimeout(async () => {
+      roofDebounceTimers.current.delete(roofId)
+      const payload = pendingRoofUpdates.current.get(roofId)
+      pendingRoofUpdates.current.delete(roofId)
+      try {
+        const { data } = await axios.patch<{ success: boolean; data: RoofData }>(
+          `${API}/api/magic-links/${token}/v2/inspection/roof-sections/${roofId}`,
+          payload
+        )
+        setRoofSections(prev => prev.map(r => r.id === roofId ? data.data : r))
+      } catch {
+        // non-fatal
+      }
+    }, 800)
+    roofDebounceTimers.current.set(roofId, timer)
+  }, [token])
+
+  const deleteRoofSection = useCallback(async (roofId: string) => {
+    const existing = roofDebounceTimers.current.get(roofId)
+    if (existing) {
+      clearTimeout(existing)
+      roofDebounceTimers.current.delete(roofId)
+    }
+    pendingRoofUpdates.current.delete(roofId)
+    setRoofSections(prev => prev.filter(r => r.id !== roofId))
+    try {
+      await axios.delete(`${API}/api/magic-links/${token}/v2/inspection/roof-sections/${roofId}`)
+    } catch {
+      // non-fatal
+    }
+  }, [token])
+
+  const addRoofSectionDamageSpot = useCallback(async (
+    roofId: string,
+    photoDocumentId: string | null,
+    caption: string | null,
+  ): Promise<RoofDamageSpot | null> => {
+    try {
+      const { data } = await axios.post<{ success: boolean; data: RoofDamageSpot }>(
+        `${API}/api/magic-links/${token}/v2/inspection/roof-sections/${roofId}/damage-spots`,
+        { photo_document_id: photoDocumentId, caption, sort_order: 0 }
+      )
+      return data.data
+    } catch {
+      return null
+    }
+  }, [token])
+
+  const deleteRoofSectionDamageSpot = useCallback(async (roofId: string, spotId: string) => {
+    try {
+      await axios.delete(
+        `${API}/api/magic-links/${token}/v2/inspection/roof-sections/${roofId}/damage-spots/${spotId}`
+      )
+    } catch {
+      // non-fatal
     }
   }, [token])
 
@@ -278,71 +366,16 @@ export function useWizardV2State(token: string): WizardV2State {
     }
   }, [token])
 
-  const saveRoof = useCallback(async (data: Partial<RoofData>) => {
-    // 800ms debounce — cancel any pending save
-    if (roofDebounceTimer.current) clearTimeout(roofDebounceTimer.current)
-    roofDebounceTimer.current = setTimeout(async () => {
-      setRoofLoading(true)
-      try {
-        const merged: RoofData = {
-          overview_photo_id: null, overview_photo_url: null,
-          slope_photo_id: null, slope_photo_url: null,
-          shingles_photo_id: null, shingles_photo_url: null,
-          ridge_photo_id: null, ridge_photo_url: null,
-          pitch: null, shingle_type: null, layers: null, squares: null,
-          has_ridge_damage: false, has_valley_damage: false, has_flashing_damage: false,
-          decking_condition: null, notes: null,
-          ...roof,
-          ...data,
-        }
-        const { data: res } = await axios.put<{ success: boolean; data: RoofData }>(
-          `${API}/api/magic-links/${token}/v2/inspection/roof`,
-          merged
-        )
-        setRoof(res.data)
-      } catch {
-        // non-fatal
-      } finally {
-        setRoofLoading(false)
-      }
-    }, 800)
-  }, [token, roof])
-
-  const addDamageSpot = useCallback(async (
-    photoDocumentId: string | null,
-    caption: string | null,
-  ): Promise<RoofDamageSpot | null> => {
-    try {
-      const { data } = await axios.post<{ success: boolean; data: RoofDamageSpot }>(
-        `${API}/api/magic-links/${token}/v2/inspection/roof/damage-spots`,
-        { photo_document_id: photoDocumentId, caption, sort_order: roofDamageSpots.length }
-      )
-      setRoofDamageSpots(prev => [...prev, data.data])
-      return data.data
-    } catch {
-      return null
-    }
-  }, [token, roofDamageSpots.length])
-
-  const deleteDamageSpot = useCallback(async (spotId: string) => {
-    try {
-      await axios.delete(`${API}/api/magic-links/${token}/v2/inspection/roof/damage-spots/${spotId}`)
-      setRoofDamageSpots(prev => prev.filter(s => s.id !== spotId))
-    } catch {
-      // non-fatal
-    }
-  }, [token])
-
   useEffect(() => {
     if (currentStep === 2) loadElevations()
-    if (currentStep === 3) loadRoof()
+    if (currentStep === 3) loadRoofSections()
     if (currentStep === 4) loadRooms()
     if (currentStep === 5) {
       loadElevations()
-      loadRoof()
+      loadRoofSections()
       loadRooms()
     }
-  }, [currentStep, loadElevations, loadRoof, loadRooms])
+  }, [currentStep, loadElevations, loadRoofSections, loadRooms])
 
   const saveElevation = useCallback(async (side: ElevationSide, data: Partial<ElevationData>) => {
     // Debounce per-side: cancel any pending save for this side
@@ -416,12 +449,13 @@ export function useWizardV2State(token: string): WizardV2State {
     elevations,
     elevationLoading,
     saveElevation,
-    roof,
-    roofDamageSpots,
+    roofSections,
     roofLoading,
-    saveRoof,
-    addDamageSpot,
-    deleteDamageSpot,
+    createRoofSection,
+    updateRoofSection,
+    deleteRoofSection,
+    addRoofSectionDamageSpot,
+    deleteRoofSectionDamageSpot,
     computeNextStep,
     computePrevStep,
     rooms,

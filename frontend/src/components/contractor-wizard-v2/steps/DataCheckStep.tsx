@@ -4,7 +4,6 @@ import type {
   ElevationData,
   ElevationSide,
   RoofData,
-  RoofDamageSpot,
   InspectionRoom,
 } from '../types'
 
@@ -13,8 +12,7 @@ import type {
 interface DataCheckStepProps {
   quickSetup: QuickSetupData
   elevations: ElevationData[]
-  roof: RoofData | null
-  roofDamageSpots: RoofDamageSpot[]
+  roofSections: RoofData[]
   rooms: InspectionRoom[]
   elevationLoading: boolean
   roofLoading: boolean
@@ -106,8 +104,7 @@ function Row({ label, value, warn }: { label: string; value: string; warn?: bool
 export default function DataCheckStep({
   quickSetup,
   elevations,
-  roof,
-  roofDamageSpots,
+  roofSections,
   rooms,
   elevationLoading,
   roofLoading,
@@ -266,28 +263,24 @@ export default function DataCheckStep({
 
         {/* Roof */}
         {include_roof && (
-          <SectionCard title="Roof">
-            {roof ? (
-              <>
-                <Row
-                  label={roof.shingle_type ?? 'Unknown shingle'}
-                  value={roof.squares ? `${roof.squares} sq` : '—'}
-                />
-                <Row
-                  label="Photos"
-                  value={[
-                    roof.overview_photo_id && 'overview',
-                    roof.slope_photo_id && 'slope',
-                    roof.shingles_photo_id && 'shingles',
-                    roof.ridge_photo_id && 'ridge',
-                  ].filter(Boolean).join(', ') || 'none'}
-                />
-                {roofDamageSpots.length > 0 && (
-                  <Row label="Damage spots" value={`${roofDamageSpots.length}`} />
-                )}
-              </>
+          <SectionCard title={`Roof (${roofSections.length} section${roofSections.length !== 1 ? 's' : ''})`}>
+            {roofSections.length === 0 ? (
+              <Row label="No roof sections" value="—" warn />
             ) : (
-              <Row label="No roof data" value="—" warn />
+              roofSections.map((section) => {
+                const photoCount = [section.overview_photo_id, section.slope_photo_id, section.shingles_photo_id, section.ridge_photo_id].filter(Boolean).length
+                const label = (section.section_type === 'other' && section.section_custom_name)
+                  ? section.section_custom_name
+                  : (section.section_type?.replace('_', ' ') ?? 'Section')
+                return (
+                  <Row
+                    key={section.id}
+                    label={label}
+                    value={`${photoCount}/4 photos`}
+                    warn={photoCount < 4}
+                  />
+                )
+              })
             )}
           </SectionCard>
         )}
