@@ -49,6 +49,22 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     retry: false,
   })
 
+  // V2 inspection query (for claims using the new contractor wizard)
+  const { data: inspectionV2, isLoading: loadingInspectionV2 } = useQuery({
+    queryKey: ['inspection-v2', claim.id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${claim.id}/inspection`)
+        return response.data.data
+      } catch (error: any) {
+        if (error.response?.status === 404) return null
+        return null
+      }
+    },
+    enabled: !!claim.id,
+    retry: false,
+  })
+
   // Contractor photos query
   const { data: contractorPhotos = [] } = useQuery<ContractorPhoto[]>({
     queryKey: ['claim-documents', claim.id],
@@ -364,7 +380,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
   // Calculate status flags
   const hasMagicLink = claim.contractor_email !== null
-  const hasScopeSheet = scopeSheet !== null
+  const hasScopeSheet = scopeSheet !== null || inspectionV2 !== null
 
   const renderStepContent = (stepNum: number) => {
     if (activeStep !== stepNum) return null
@@ -503,7 +519,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
             )}
 
             {/* Contractor Status */}
-            {loadingScopeSheet ? (
+            {(loadingScopeSheet || loadingInspectionV2) ? (
               <div className="mt-3 animate-pulse">
                 <div className="h-8 w-48 bg-slate-200 rounded-full"></div>
               </div>
@@ -515,6 +531,25 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                     hasScopeSheet={hasScopeSheet}
                   />
                 </div>
+
+                {hasScopeSheet && !scopeSheet && inspectionV2 && (
+                  <div className="mt-4 p-4 rounded-xl border border-emerald-200 bg-emerald-50">
+                    <p className="text-sm font-semibold text-emerald-800 mb-1">
+                      Inspection submitted via wizard
+                    </p>
+                    {inspectionV2.property_type && (
+                      <p className="text-sm text-emerald-700">
+                        Property type: <span className="capitalize">{inspectionV2.property_type}</span>
+                        {inspectionV2.stories ? ` · ${inspectionV2.stories} stor${inspectionV2.stories === 1 ? 'y' : 'ies'}` : ''}
+                      </p>
+                    )}
+                    {inspectionV2.submitted_at && (
+                      <p className="text-sm text-emerald-600 mt-0.5">
+                        Submitted {new Date(inspectionV2.submitted_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {hasScopeSheet && scopeSheet && (
                   <>

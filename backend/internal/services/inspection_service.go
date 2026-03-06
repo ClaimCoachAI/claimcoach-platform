@@ -1297,3 +1297,29 @@ func (s *InspectionService) SubmitInspection(token string) (*models.InspectionV2
 	}
 	return &insp, nil
 }
+
+// GetSubmittedByClaimID returns the submitted inspection_v2 for a given claim, or nil if none exists.
+func (s *InspectionService) GetSubmittedByClaimID(claimID string) (*models.InspectionV2, error) {
+	var insp models.InspectionV2
+	err := s.db.QueryRow(`
+		SELECT iv2.id, iv2.claim_id, iv2.magic_link_id, iv2.property_type, iv2.stories,
+		       iv2.status, iv2.current_step, iv2.submitted_at, iv2.created_at, iv2.updated_at
+		FROM inspection_v2 iv2
+		JOIN magic_links ml ON ml.id = iv2.magic_link_id
+		WHERE ml.claim_id = $1 AND iv2.submitted_at IS NOT NULL
+		ORDER BY iv2.submitted_at DESC
+		LIMIT 1
+	`, claimID).Scan(
+		&insp.ID, &insp.ClaimID, &insp.MagicLinkID,
+		&insp.PropertyType, &insp.Stories,
+		&insp.Status, &insp.CurrentStep,
+		&insp.SubmittedAt, &insp.CreatedAt, &insp.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inspection: %w", err)
+	}
+	return &insp, nil
+}

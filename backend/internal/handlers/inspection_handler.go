@@ -53,6 +53,7 @@ type inspectionServiceInterface interface {
 	AddRoomPhoto(token string, roomID string, input addRoomPhotoInput) (*roomPhotoResponse, error)
 	DeleteRoomPhoto(token string, photoID string) error
 	SubmitInspection(token string) (*submitInspectionResponse, error)
+	GetSubmittedByClaimID(claimID string) (*models.InspectionV2, error)
 }
 
 // InspectionHandler handles HTTP requests for the inspection v2 wizard.
@@ -500,6 +501,24 @@ func (h *InspectionHandler) SubmitInspection(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to submit inspection: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": insp})
+}
+
+// GetByClaimID handles GET /api/claims/:id/inspection (protected route).
+// Returns the submitted inspection_v2 for the claim, or 404 if none exists.
+func (h *InspectionHandler) GetByClaimID(c *gin.Context) {
+	claimID := c.Param("id")
+
+	insp, err := h.service.GetSubmittedByClaimID(claimID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to get inspection: " + err.Error()})
+		return
+	}
+	if insp == nil {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "No submitted inspection found"})
 		return
 	}
 

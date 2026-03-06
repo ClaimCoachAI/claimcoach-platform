@@ -216,6 +216,9 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		// Scope Sheet routes (protected - requires auth)
 		api.GET("/claims/:id/scope-sheet", scopeSheetHandler.GetByClaimID)
 
+		// Inspection V2 routes (protected - requires auth)
+		api.GET("/claims/:id/inspection", inspectionHandler.GetByClaimID)
+
 		// Audit routes (protected - requires auth)
 		api.POST("/claims/:id/audit/generate", auditHandler.GenerateIndustryEstimate)
 		api.POST("/claims/:id/audit/viability", auditHandler.AnalyzeClaimViability)
