@@ -59,6 +59,15 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	// Initialize LLM client (Claude for all AI features)
 	llmClient := llm.NewClaudeClient(cfg.AnthropicAPIKey, cfg.AnthropicModel, 120)
 
+	// OpenAI client for live pricing search (optional — nil means graceful fallback to training data)
+	var searchClient services.LLMClient
+	if cfg.OpenAIAPIKey != "" {
+		searchClient = llm.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel, cfg.OpenAITimeout)
+		log.Println("✓ OpenAI live pricing search enabled")
+	} else {
+		log.Println("⚠ OpenAI live pricing search disabled (OPENAI_API_KEY not set)")
+	}
+
 	// Initialize services needed for both public and protected routes
 	propertyService := services.NewPropertyService(db)
 	policyService := services.NewPolicyService(db, storageClient, propertyService)
@@ -86,7 +95,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	inspectionHandler := handlers.NewInspectionHandler(inspectionService)
 	scopeSheetService := services.NewScopeSheetService(db)
 	scopeSheetHandler := handlers.NewScopeSheetHandler(scopeSheetService, magicLinkService, claimService)
-	auditService := services.NewAuditService(db, llmClient, scopeSheetService)
+	auditService := services.NewAuditService(db, llmClient, searchClient, scopeSheetService)
 	auditHandler := handlers.NewAuditHandler(auditService)
 	legalPackageService := services.NewLegalPackageService(db, storageClient, auditService)
 	legalPackageHandler := handlers.NewLegalPackageHandler(legalPackageService)

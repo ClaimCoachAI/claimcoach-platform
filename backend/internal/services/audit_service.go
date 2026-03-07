@@ -23,14 +23,16 @@ type LLMClient interface {
 type AuditService struct {
 	db           *sql.DB
 	llmClient    LLMClient
+	searchClient LLMClient // OpenAI client for live pricing — nil means fall back to training data
 	scopeService *ScopeSheetService
 }
 
 // NewAuditService creates a new AuditService instance
-func NewAuditService(db *sql.DB, llmClient LLMClient, scopeService *ScopeSheetService) *AuditService {
+func NewAuditService(db *sql.DB, llmClient LLMClient, searchClient LLMClient, scopeService *ScopeSheetService) *AuditService {
 	return &AuditService{
 		db:           db,
 		llmClient:    llmClient,
+		searchClient: searchClient,
 		scopeService: scopeService,
 	}
 }
@@ -46,16 +48,41 @@ func (s *AuditService) GenerateIndustryEstimate(ctx context.Context, claimID, us
 		return "", fmt.Errorf("scope sheet not found for claim %s", claimID)
 	}
 
-	// 2. Build the prompt from the scope sheet
-	userPrompt := s.buildEstimatePrompt(scopeSheet)
+	// 2. Collect all unique damage tags across areas for the pricing query
+	var allTags []string
+	seen := map[string]bool{}
+	for _, area := range scopeSheet.Areas {
+		for _, tag := range area.Tags {
+			if !seen[tag] {
+				allTags = append(allTags, tag)
+				seen[tag] = true
+			}
+		}
+	}
 
-	// 3. Prepare messages for the LLM
+	// 3. Fetch property address for regional pricing query (non-fatal if missing)
+	var propertyAddress string
+	_ = s.db.QueryRowContext(ctx, `
+		SELECT p.legal_address
+		FROM claims c
+		INNER JOIN properties p ON c.property_id = p.id
+		WHERE c.id = $1
+	`, claimID).Scan(&propertyAddress)
+
+	// 4. Fetch live pricing via OpenAI web search — required, no fallback
+	pricingContext, err := s.fetchLivePricing(ctx, allTags, propertyAddress)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch live regional pricing: %w", err)
+	}
+
+	// 5. Build the prompt from the scope sheet
+	userPrompt := s.buildEstimatePrompt(scopeSheet, pricingContext)
+
+	// 6. Prepare messages for the LLM
 	messages := []llm.Message{
 		{
-			Role: "system",
-			Content: `You are an expert construction estimator specializing in insurance claims.
-Your task is to produce accurate, industry-standard repair estimates.
-Always respond with valid JSON only, no additional text or explanations.`,
+			Role:    "system",
+			Content: `You are an expert Public Adjuster and Master Xactimate Estimator. Your goal is to maximize the justifiable Replacement Cost Value (RCV) for the policyholder based on the provided scope of work. Do not blindly inflate prices, but you MUST include all necessary line items, code upgrades, and standard industry waste factors that an insurance carrier owes for. Always respond with valid JSON only, no additional text or explanations.`,
 		},
 		{
 			Role:    "user",
@@ -63,13 +90,13 @@ Always respond with valid JSON only, no additional text or explanations.`,
 		},
 	}
 
-	// 4. Call the LLM API — use high token limit since estimate JSON can be large
+	// 7. Call the LLM API — use high token limit since estimate JSON can be large
 	response, err := s.llmClient.Chat(ctx, messages, 0.2, 8000)
 	if err != nil {
 		return "", fmt.Errorf("LLM API call failed: %w", err)
 	}
 
-	// 5. Extract and validate the response
+	// 8. Extract and validate the response
 	if len(response.Choices) == 0 {
 		return "", fmt.Errorf("LLM returned no choices")
 	}
@@ -82,32 +109,101 @@ Always respond with valid JSON only, no additional text or explanations.`,
 		return "", fmt.Errorf("the AI returned a malformed estimate — please try again: %w", err)
 	}
 
-	// 6. Create audit report record
+	// 9. Create audit report record
 	reportID, err := s.saveAuditReport(ctx, claimID, scopeSheet.ID, userID, estimateJSON)
 	if err != nil {
 		return "", fmt.Errorf("failed to save audit report: %w", err)
 	}
 
-	// 7. Log API usage
+	// 10. Log API usage
 	err = s.logAPIUsage(ctx, orgID, response)
 	if err != nil {
-		// Log the error but don't fail the request
 		log.Printf("Warning: failed to log API usage: %v", err)
 	}
 
 	return reportID, nil
 }
 
+// fetchLivePricing queries OpenAI with web search for current regional repair pricing.
+// Returns a hard error on any failure — callers must not proceed without live pricing data.
+func (s *AuditService) fetchLivePricing(ctx context.Context, damageTags []string, propertyAddress string) (string, error) {
+	if s.searchClient == nil {
+		return "", fmt.Errorf("live pricing search is unavailable: OPENAI_API_KEY is not configured")
+	}
+
+	city, state := parseAddressLocation(propertyAddress)
+
+	query := fmt.Sprintf(
+		"What are current %d contractor repair prices in %s, %s for the following damage types: %s? "+
+			"Provide cost per square foot or linear foot for materials and labor separately. "+
+			"Include Xactimate-standard line items where possible. Cite local sources if available.",
+		time.Now().Year(),
+		city, state,
+		strings.Join(damageTags, ", "),
+	)
+
+	messages := []llm.Message{{Role: "user", Content: query}}
+
+	type searchableClient interface {
+		SearchChat(ctx context.Context, messages []llm.Message, temperature float64, maxTokens int, city, state string) (*llm.ChatResponse, error)
+	}
+
+	var (
+		resp *llm.ChatResponse
+		err  error
+	)
+	if sc, ok := s.searchClient.(searchableClient); ok {
+		resp, err = sc.SearchChat(ctx, messages, 1.0, 800, city, state)
+	} else {
+		resp, err = s.searchClient.Chat(ctx, messages, 1.0, 800)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("OpenAI pricing search failed: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("OpenAI pricing search returned an empty response")
+	}
+
+	return resp.Choices[0].Message.Content, nil
+}
+
+// parseAddressLocation extracts city and state from a US address string.
+// Handles common formats like "123 Street, City, TX 79927" or "City, TX".
+func parseAddressLocation(address string) (city, state string) {
+	parts := strings.Split(address, ",")
+	n := len(parts)
+	if n < 2 {
+		return "", address // return raw address as city fallback
+	}
+	// Last segment: "TX 79927" or "TX"
+	lastPart := strings.TrimSpace(parts[n-1])
+	fields := strings.Fields(lastPart)
+	if len(fields) == 0 {
+		return "", ""
+	}
+	candidate := fields[0]
+	// Only accept 2-letter uppercase state abbreviations
+	if len(candidate) == 2 && candidate == strings.ToUpper(candidate) {
+		state = candidate
+		city = strings.TrimSpace(parts[n-2])
+		return city, state
+	}
+	return "", ""
+}
+
 // buildEstimatePrompt creates a structured prompt from the JSONB scope sheet areas
-func (s *AuditService) buildEstimatePrompt(scope *models.ScopeSheet) string {
+func (s *AuditService) buildEstimatePrompt(scope *models.ScopeSheet, pricingContext string) string {
 	var builder strings.Builder
 
-	builder.WriteString("Based on the following scope sheet data and current industry pricing, ")
-	builder.WriteString("produce a detailed repair estimate in JSON format.\n\n")
+	builder.WriteString("LIVE PRICING DATA (current web search results — use these prices as your baseline):\n")
+	builder.WriteString(pricingContext)
+	builder.WriteString("\n\n")
+
 	builder.WriteString("SCOPE SHEET DATA:\n")
 
 	for _, area := range scope.Areas {
-		builder.WriteString(fmt.Sprintf("\n- Area: %s\n", area.Category))
+		builder.WriteString(fmt.Sprintf("- Area: %s\n", area.Category))
 
 		if len(area.Tags) > 0 {
 			builder.WriteString(fmt.Sprintf("  Damage tags: %s\n", strings.Join(area.Tags, ", ")))
@@ -133,28 +229,34 @@ func (s *AuditService) buildEstimatePrompt(scope *models.ScopeSheet) string {
 		builder.WriteString(fmt.Sprintf("\nGENERAL NOTES: %s\n", *scope.GeneralNotes))
 	}
 
+	builder.WriteString("\nESTIMATING RULES - APPLY STRICTLY:\n")
+	builder.WriteString("1. Xactimate Format: Output all line items using standard Xactimate Category and Selector codes (e.g., RFG 300S for laminated shingles, RFG STEEP for steep charges, DMO DUMP for dumpsters).\n")
+	builder.WriteString("2. Pricing: Use the LIVE PRICING DATA provided above as your baseline for all unit costs.\n")
+	builder.WriteString("3. Required Add-ons (Do not miss these if the scope implies a replacement):\n")
+	builder.WriteString("   - Always include a 15% waste factor for architectural shingles (or 10% for 3-tab) calculated on top of the raw square footage.\n")
+	builder.WriteString("   - Always add \"Steep\" (RFG STEEP) and \"High\" (RFG HIGH) labor charges if the roof notes imply 2+ stories or >6/12 pitch.\n")
+	builder.WriteString("   - Always include Starter Shingles, Ridge Cap, Ice & Water Shield, and Drip Edge for full roof replacements.\n")
+	builder.WriteString("   - Always include setup, tear-off (e.g., RFG DMO), and debris removal/dumpster fees.\n")
+	builder.WriteString("4. O&P: Overhead & Profit must be calculated at exactly 20% (10% Overhead, 10% Profit) of the subtotal.\n")
 	builder.WriteString("\nRESPONSE FORMAT:\n")
 	builder.WriteString("Return ONLY a JSON object with this exact structure:\n")
 	builder.WriteString("{\n")
 	builder.WriteString("  \"line_items\": [\n")
 	builder.WriteString("    {\n")
+	builder.WriteString("      \"xactimate_code\": \"Category & Selector (e.g., RFG 300S)\",\n")
 	builder.WriteString("      \"description\": \"Item description\",\n")
-	builder.WriteString("      \"quantity\": number,\n")
-	builder.WriteString("      \"unit\": \"unit type (e.g., SF, LF, EA)\",\n")
-	builder.WriteString("      \"unit_cost\": number,\n")
-	builder.WriteString("      \"total\": number,\n")
-	builder.WriteString("      \"category\": \"category name (e.g., Roofing, Exterior Trim)\"\n")
+	builder.WriteString("      \"quantity\": <number>,\n")
+	builder.WriteString("      \"unit\": \"unit type (e.g., SQ, LF, EA, MO)\",\n")
+	builder.WriteString("      \"unit_cost\": <number>,\n")
+	builder.WriteString("      \"total\": <number>,\n")
+	builder.WriteString("      \"category\": \"category name (e.g., Roofing, Debris Removal)\",\n")
+	builder.WriteString("      \"justification\": \"<1-sentence explanation of why this item is justifiable>\"\n")
 	builder.WriteString("    }\n")
 	builder.WriteString("  ],\n")
-	builder.WriteString("  \"subtotal\": number,\n")
-	builder.WriteString("  \"overhead_profit\": number (typically 20% of subtotal),\n")
-	builder.WriteString("  \"total\": number\n")
-	builder.WriteString("}\n\n")
-	builder.WriteString("Use current 2026 industry-standard pricing for materials and labor. ")
-	builder.WriteString("For each damage tag, include all relevant line items with accurate quantities ")
-	builder.WriteString("derived from the dimensions provided. Tags like 'Pitch_Steep' should trigger ")
-	builder.WriteString("appropriate steep-slope labor charges. Tags like 'Shingles_Damaged' should ")
-	builder.WriteString("include tear-off, underlayment, and shingle replacement line items.")
+	builder.WriteString("  \"subtotal\": <number>,\n")
+	builder.WriteString("  \"overhead_profit\": <number>,\n")
+	builder.WriteString("  \"total\": <number>\n")
+	builder.WriteString("}\n")
 
 	return builder.String()
 }

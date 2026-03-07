@@ -26,6 +26,11 @@ type Config struct {
 	AnthropicAPIKey string
 	AnthropicModel  string
 
+	// OpenAI API (for live pricing web search)
+	OpenAIAPIKey  string
+	OpenAIModel   string
+	OpenAITimeout int // seconds
+
 	// SendGrid Email Service (optional - falls back to mock if not provided)
 	SendGridAPIKey    string
 	SendGridFromEmail string
@@ -51,7 +56,10 @@ func Load() (*Config, error) {
 		PerplexityTimeout:    getEnvIntOrDefault("PERPLEXITY_TIMEOUT", 60),
 		PerplexityMaxRetries: getEnvIntOrDefault("PERPLEXITY_MAX_RETRIES", 3),
 		AnthropicAPIKey:      os.Getenv("ANTHROPIC_API_KEY"),
-		AnthropicModel:       getEnvOrDefault("ANTHROPIC_MODEL", "claude-opus-4-6"),
+		AnthropicModel:       getEnvOrDefault("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+		OpenAIAPIKey:         os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:          getEnvOrDefault("OPENAI_MODEL", "gpt-4o-mini-search-preview"),
+		OpenAITimeout:        getEnvIntOrDefault("OPENAI_TIMEOUT", 30),
 		SendGridAPIKey:       os.Getenv("SENDGRID_API_KEY"),
 		SendGridFromEmail:    getEnvOrDefault("SENDGRID_FROM_EMAIL", "claims@claimcoach.ai"),
 		SendGridFromName:     getEnvOrDefault("SENDGRID_FROM_NAME", "ClaimCoach AI"),
@@ -76,6 +84,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.AnthropicAPIKey == "" {
 		log.Println("⚠️  ANTHROPIC_API_KEY not set - PDF parsing will be unavailable")
+	}
+	if cfg.OpenAIAPIKey == "" {
+		log.Println("⚠️  OPENAI_API_KEY not set - live pricing search will be unavailable (estimates will use training data)")
 	}
 	if cfg.PerplexityTimeout <= 0 {
 		return nil, fmt.Errorf("PERPLEXITY_TIMEOUT must be positive, got %d", cfg.PerplexityTimeout)

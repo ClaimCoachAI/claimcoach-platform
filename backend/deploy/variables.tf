@@ -59,6 +59,13 @@ variable "anthropic_api_key" {
   default     = ""
 }
 
+variable "openai_api_key" {
+  description = "OpenAI API key for live pricing web search (optional - falls back to training data)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "sendgrid_api_key" {
   description = "SendGrid API key for email (optional - falls back to mock)"
   type        = string

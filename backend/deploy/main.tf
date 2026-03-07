@@ -115,6 +115,9 @@ resource "aws_lambda_function" "api" {
       PERPLEXITY_API_KEY  = var.perplexity_api_key
       ANTHROPIC_API_KEY   = var.anthropic_api_key
       ANTHROPIC_MODEL     = "claude-sonnet-4-6"
+      OPENAI_API_KEY      = var.openai_api_key
+      OPENAI_MODEL        = "gpt-4o-mini-search-preview"
+      OPENAI_TIMEOUT      = "30"
       SENDGRID_API_KEY    = var.sendgrid_api_key
       SENDGRID_FROM_EMAIL = var.sendgrid_from_email
       SENDGRID_FROM_NAME  = var.sendgrid_from_name
