@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -11,9 +12,11 @@ import (
 	"github.com/claimcoach/backend/internal/api"
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/claimcoach/backend/internal/database"
+	"github.com/claimcoach/backend/internal/services"
 )
 
 var ginLambda *ginadapter.GinLambdaV2
+var auditService *services.AuditService
 
 func init() {
 	cfg, err := config.Load()
@@ -30,15 +33,41 @@ func init() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	router, err := api.NewRouter(cfg, db)
+	router, svc, err := api.NewRouter(cfg, db)
 	if err != nil {
 		log.Fatalf("Failed to create router: %v", err)
 	}
 
 	ginLambda = ginadapter.NewV2(router)
+	auditService = svc
 }
 
-func handler(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+// asyncJobEvent is the payload sent when the Lambda invokes itself asynchronously.
+type asyncJobEvent struct {
+	JobType       string `json:"job_type"`
+	AuditReportID string `json:"audit_report_id"`
+	ClaimID       string `json:"claim_id"`
+	UserID        string `json:"user_id"`
+	OrgID         string `json:"org_id"`
+}
+
+func handler(ctx context.Context, raw json.RawMessage) (interface{}, error) {
+	// Detect async job invocation by checking for job_type field
+	var job asyncJobEvent
+	if err := json.Unmarshal(raw, &job); err == nil && job.JobType == "process_audit_estimate" {
+		log.Printf("Processing async audit job: audit_report_id=%s claim_id=%s", job.AuditReportID, job.ClaimID)
+		if err := auditService.ProcessEstimateJob(ctx, job.AuditReportID, job.ClaimID, job.UserID, job.OrgID); err != nil {
+			log.Printf("ProcessEstimateJob failed: %v", err)
+			// Error is already recorded in DB — no need to propagate
+		}
+		return nil, nil
+	}
+
+	// Otherwise treat as an API Gateway V2 HTTP request
+	var req events.APIGatewayV2HTTPRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return nil, err
+	}
 	return ginLambda.ProxyWithContext(ctx, req)
 }
 

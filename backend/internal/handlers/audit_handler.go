@@ -12,7 +12,8 @@ import (
 
 // AuditServiceInterface defines the interface for audit operations
 type AuditServiceInterface interface {
-	GenerateIndustryEstimate(ctx context.Context, claimID, userID, orgID string) (string, error)
+	SubmitEstimateJob(ctx context.Context, claimID, userID, orgID string) (string, error)
+	GetJobStatus(ctx context.Context, auditReportID, orgID string) (*models.AuditReport, error)
 	GetAuditReportByClaimID(ctx context.Context, claimID, orgID string) (*models.AuditReport, error)
 	AnalyzeClaimViability(ctx context.Context, claimID, orgID string) (*services.ViabilityAnalysis, error)
 	RunPMBrainAnalysis(ctx context.Context, auditReportID, userID, orgID string) (*services.PMBrainAnalysis, error)
@@ -28,47 +29,66 @@ func NewAuditHandler(service AuditServiceInterface) *AuditHandler {
 	return &AuditHandler{service: service}
 }
 
-// GenerateIndustryEstimate generates an industry-standard estimate from scope sheet
+// GenerateIndustryEstimate submits an async estimate job and returns the job ID immediately.
+// The client should poll GET /claims/:id/audit/status/:jobId until status is completed or failed.
 // POST /api/claims/:id/audit/generate
 func (h *AuditHandler) GenerateIndustryEstimate(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
 	claimID := c.Param("id")
 
-	auditReportID, err := h.service.GenerateIndustryEstimate(c.Request.Context(), claimID, user.ID, user.OrganizationID)
+	jobID, err := h.service.SubmitEstimateJob(c.Request.Context(), claimID, user.ID, user.OrganizationID)
 	if err != nil {
-		// Handle specific errors
-		if err.Error() == "scope sheet not found for claim "+claimID {
+		if strings.Contains(err.Error(), "scope sheet not found") {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
 				"error":   "Scope sheet not found. Please submit scope sheet first.",
 			})
 			return
 		}
-
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"error":   "Failed to generate industry estimate: " + err.Error(),
+			"error":   "Failed to start estimate generation: " + err.Error(),
 		})
 		return
 	}
 
-	// Get the audit report to return in response
-	auditReport, err := h.service.GetAuditReportByClaimID(c.Request.Context(), claimID, user.OrganizationID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error":   "Failed to retrieve audit report: " + err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusAccepted, gin.H{
 		"success": true,
 		"data": gin.H{
-			"audit_report_id": auditReportID,
-			"audit_report":    auditReport,
+			"job_id": jobID,
+			"status": "processing",
 		},
 	})
+}
+
+// GetJobStatus returns the current status of an async estimate job.
+// GET /api/claims/:id/audit/status/:jobId
+func (h *AuditHandler) GetJobStatus(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	jobID := c.Param("jobId")
+
+	report, err := h.service.GetJobStatus(c.Request.Context(), jobID, user.OrganizationID)
+	if err != nil {
+		if err.Error() == "audit report not found" {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Job not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	resp := gin.H{
+		"status":          report.Status,
+		"audit_report_id": report.ID,
+	}
+	if report.Status == "completed" {
+		resp["audit_report"] = report
+	}
+	if report.Status == "failed" && report.ErrorMessage != nil {
+		resp["error"] = *report.ErrorMessage
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": resp})
 }
 
 // GetAuditReport retrieves the audit report for a claim

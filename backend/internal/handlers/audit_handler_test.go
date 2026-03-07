@@ -9,6 +9,7 @@ import (
 
 	"github.com/claimcoach/backend/internal/llm"
 	"github.com/claimcoach/backend/internal/models"
+	"github.com/claimcoach/backend/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -19,9 +20,17 @@ type MockAuditService struct {
 	mock.Mock
 }
 
-func (m *MockAuditService) GenerateIndustryEstimate(ctx context.Context, claimID, userID, orgID string) (string, error) {
+func (m *MockAuditService) SubmitEstimateJob(ctx context.Context, claimID, userID, orgID string) (string, error) {
 	args := m.Called(ctx, claimID, userID, orgID)
 	return args.String(0), args.Error(1)
+}
+
+func (m *MockAuditService) GetJobStatus(ctx context.Context, auditReportID, orgID string) (*models.AuditReport, error) {
+	args := m.Called(ctx, auditReportID, orgID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.AuditReport), args.Error(1)
 }
 
 func (m *MockAuditService) GetAuditReportByClaimID(ctx context.Context, claimID, orgID string) (*models.AuditReport, error) {
@@ -32,22 +41,30 @@ func (m *MockAuditService) GetAuditReportByClaimID(ctx context.Context, claimID,
 	return args.Get(0).(*models.AuditReport), args.Error(1)
 }
 
-func (m *MockAuditService) CompareEstimates(ctx context.Context, auditReportID string, userID string, orgID string) error {
-	args := m.Called(ctx, auditReportID, userID, orgID)
-	return args.Error(0)
+func (m *MockAuditService) AnalyzeClaimViability(ctx context.Context, claimID, orgID string) (*services.ViabilityAnalysis, error) {
+	args := m.Called(ctx, claimID, orgID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*services.ViabilityAnalysis), args.Error(1)
 }
 
-func (m *MockAuditService) GenerateRebuttal(ctx context.Context, auditReportID string, userID string, orgID string) (string, error) {
+func (m *MockAuditService) RunPMBrainAnalysis(ctx context.Context, auditReportID, userID, orgID string) (*services.PMBrainAnalysis, error) {
+	args := m.Called(ctx, auditReportID, userID, orgID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*services.PMBrainAnalysis), args.Error(1)
+}
+
+func (m *MockAuditService) GenerateDisputeLetter(ctx context.Context, auditReportID, userID, orgID string) (string, error) {
 	args := m.Called(ctx, auditReportID, userID, orgID)
 	return args.String(0), args.Error(1)
 }
 
-func (m *MockAuditService) GetRebuttal(ctx context.Context, rebuttalID string, orgID string) (*models.Rebuttal, error) {
-	args := m.Called(ctx, rebuttalID, orgID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*models.Rebuttal), args.Error(1)
+func (m *MockAuditService) GenerateOwnerPitch(ctx context.Context, auditReportID, userID, orgID string) (string, error) {
+	args := m.Called(ctx, auditReportID, userID, orgID)
+	return args.String(0), args.Error(1)
 }
 
 func (m *MockAuditService) Chat(ctx context.Context, messages []llm.Message, temperature float64, maxTokens int) (*llm.ChatResponse, error) {

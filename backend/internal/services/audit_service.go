@@ -23,17 +23,19 @@ type LLMClient interface {
 type AuditService struct {
 	db           *sql.DB
 	llmClient    LLMClient
-	searchClient LLMClient // OpenAI client for live pricing — nil means fall back to training data
+	searchClient LLMClient    // OpenAI client for live pricing — nil means fall back to training data
 	scopeService *ScopeSheetService
+	asyncInvoker AsyncInvoker // nil in local dev — falls back to synchronous processing
 }
 
 // NewAuditService creates a new AuditService instance
-func NewAuditService(db *sql.DB, llmClient LLMClient, searchClient LLMClient, scopeService *ScopeSheetService) *AuditService {
+func NewAuditService(db *sql.DB, llmClient LLMClient, searchClient LLMClient, scopeService *ScopeSheetService, asyncInvoker AsyncInvoker) *AuditService {
 	return &AuditService{
 		db:           db,
 		llmClient:    llmClient,
 		searchClient: searchClient,
 		scopeService: scopeService,
+		asyncInvoker: asyncInvoker,
 	}
 }
 
@@ -294,6 +296,218 @@ func (s *AuditService) saveAuditReport(ctx context.Context, claimID, scopeSheetI
 	}
 
 	return returnedID, nil
+}
+
+// createProcessingAuditReport inserts a new audit_report with status=processing (no estimate yet).
+func (s *AuditService) createProcessingAuditReport(ctx context.Context, claimID, scopeSheetID, userID string) (string, error) {
+	reportID := uuid.New().String()
+	now := time.Now()
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO audit_reports (
+			id, claim_id, scope_sheet_id,
+			status, created_by_user_id, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, reportID, claimID, scopeSheetID, models.AuditStatusProcessing, userID, now, now)
+	if err != nil {
+		return "", fmt.Errorf("failed to insert processing audit report: %w", err)
+	}
+	return reportID, nil
+}
+
+// updateAuditReportCompleted sets generated_estimate and status=completed on an existing record.
+func (s *AuditService) updateAuditReportCompleted(ctx context.Context, reportID, estimateJSON string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE audit_reports
+		SET generated_estimate = $1, status = $2, updated_at = $3
+		WHERE id = $4
+	`, estimateJSON, models.AuditStatusCompleted, time.Now(), reportID)
+	return err
+}
+
+// updateAuditReportFailed sets status=failed and records the error message.
+func (s *AuditService) updateAuditReportFailed(ctx context.Context, reportID, errMsg string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE audit_reports
+		SET status = $1, error_message = $2, updated_at = $3
+		WHERE id = $4
+	`, models.AuditStatusFailed, errMsg, time.Now(), reportID)
+	return err
+}
+
+// SubmitEstimateJob creates an audit_report record with status=processing and invokes the
+// background Lambda to do the LLM work. Returns the job ID (audit_report_id) immediately.
+// In local dev (no asyncInvoker), it falls back to synchronous processing.
+func (s *AuditService) SubmitEstimateJob(ctx context.Context, claimID, userID, orgID string) (string, error) {
+	// Validate scope sheet exists before creating the record
+	scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get scope sheet: %w", err)
+	}
+	if scopeSheet == nil {
+		return "", fmt.Errorf("scope sheet not found for claim %s", claimID)
+	}
+
+	// Create the audit report row with status=processing
+	reportID, err := s.createProcessingAuditReport(ctx, claimID, scopeSheet.ID, userID)
+	if err != nil {
+		return "", err
+	}
+
+	if s.asyncInvoker != nil {
+		// Lambda: fire async invocation and return immediately (no 29s timeout risk)
+		payload := AsyncJobPayload{
+			JobType:       "process_audit_estimate",
+			AuditReportID: reportID,
+			ClaimID:       claimID,
+			UserID:        userID,
+			OrgID:         orgID,
+		}
+		if err := s.asyncInvoker.InvokeAsync(ctx, payload); err != nil {
+			_ = s.updateAuditReportFailed(context.Background(), reportID, err.Error())
+			return "", fmt.Errorf("failed to invoke background processing: %w", err)
+		}
+		return reportID, nil
+	}
+
+	// Local dev fallback: run synchronously (no 29s limit from API Gateway in local dev)
+	if err := s.ProcessEstimateJob(context.Background(), reportID, claimID, userID, orgID); err != nil {
+		log.Printf("Warning: ProcessEstimateJob failed: %v", err)
+	}
+	return reportID, nil
+}
+
+// ProcessEstimateJob runs the full OpenAI + Claude pipeline and updates the audit_report record.
+// Called by the async Lambda invocation handler.
+func (s *AuditService) ProcessEstimateJob(ctx context.Context, auditReportID, claimID, userID, orgID string) error {
+	// 1. Get scope sheet
+	scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
+	if err != nil || scopeSheet == nil {
+		msg := "failed to get scope sheet"
+		if err != nil {
+			msg = err.Error()
+		}
+		_ = s.updateAuditReportFailed(ctx, auditReportID, msg)
+		return fmt.Errorf("%s", msg)
+	}
+
+	// 2. Collect damage tags
+	var allTags []string
+	seen := map[string]bool{}
+	for _, area := range scopeSheet.Areas {
+		for _, tag := range area.Tags {
+			if !seen[tag] {
+				allTags = append(allTags, tag)
+				seen[tag] = true
+			}
+		}
+	}
+
+	// 3. Fetch property address
+	var propertyAddress string
+	_ = s.db.QueryRowContext(ctx, `
+		SELECT p.legal_address
+		FROM claims c
+		INNER JOIN properties p ON c.property_id = p.id
+		WHERE c.id = $1
+	`, claimID).Scan(&propertyAddress)
+
+	// 4. Live pricing via OpenAI
+	pricingContext, err := s.fetchLivePricing(ctx, allTags, propertyAddress)
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to fetch live pricing: %v", err)
+		_ = s.updateAuditReportFailed(ctx, auditReportID, errMsg)
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	// 5. Build prompt and call Claude
+	userPrompt := s.buildEstimatePrompt(scopeSheet, pricingContext)
+	messages := []llm.Message{
+		{
+			Role:    "system",
+			Content: `You are an expert Public Adjuster and Master Xactimate Estimator. Your goal is to maximize the justifiable Replacement Cost Value (RCV) for the policyholder based on the provided scope of work. Do not blindly inflate prices, but you MUST include all necessary line items, code upgrades, and standard industry waste factors that an insurance carrier owes for. Always respond with valid JSON only, no additional text or explanations.`,
+		},
+		{Role: "user", Content: userPrompt},
+	}
+
+	response, err := s.llmClient.Chat(ctx, messages, 0.2, 8000)
+	if err != nil {
+		errMsg := fmt.Sprintf("LLM API call failed: %v", err)
+		_ = s.updateAuditReportFailed(ctx, auditReportID, errMsg)
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	if len(response.Choices) == 0 {
+		errMsg := "LLM returned no choices"
+		_ = s.updateAuditReportFailed(ctx, auditReportID, errMsg)
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	// 6. Validate JSON
+	estimateJSON := extractJSON(response.Choices[0].Message.Content)
+	var validationCheck map[string]interface{}
+	if err := json.Unmarshal([]byte(estimateJSON), &validationCheck); err != nil {
+		errMsg := fmt.Sprintf("AI returned malformed estimate: %v", err)
+		_ = s.updateAuditReportFailed(ctx, auditReportID, errMsg)
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	// 7. Persist completed estimate
+	if err := s.updateAuditReportCompleted(ctx, auditReportID, estimateJSON); err != nil {
+		return fmt.Errorf("failed to save completed estimate: %w", err)
+	}
+
+	// 8. Log API usage
+	if err := s.logAPIUsage(ctx, orgID, response); err != nil {
+		log.Printf("Warning: failed to log API usage: %v", err)
+	}
+
+	return nil
+}
+
+// GetJobStatus returns the current audit_report record for polling.
+// Verifies org ownership before returning.
+func (s *AuditService) GetJobStatus(ctx context.Context, auditReportID, orgID string) (*models.AuditReport, error) {
+	query := `
+		SELECT ar.id, ar.claim_id, ar.scope_sheet_id, ar.carrier_estimate_id,
+		       ar.generated_estimate, ar.comparison_data, ar.total_contractor_estimate,
+		       ar.total_carrier_estimate, ar.total_delta, ar.status, ar.error_message,
+		       ar.created_by_user_id, ar.created_at, ar.updated_at, ar.viability_analysis,
+		       ar.pm_brain_analysis, ar.dispute_letter, ar.owner_pitch
+		FROM audit_reports ar
+		INNER JOIN claims c ON ar.claim_id = c.id
+		INNER JOIN properties p ON c.property_id = p.id
+		WHERE ar.id = $1 AND p.organization_id = $2
+	`
+
+	var report models.AuditReport
+	err := s.db.QueryRowContext(ctx, query, auditReportID, orgID).Scan(
+		&report.ID,
+		&report.ClaimID,
+		&report.ScopeSheetID,
+		&report.CarrierEstimateID,
+		&report.GeneratedEstimate,
+		&report.ComparisonData,
+		&report.TotalContractorEstimate,
+		&report.TotalCarrierEstimate,
+		&report.TotalDelta,
+		&report.Status,
+		&report.ErrorMessage,
+		&report.CreatedByUserID,
+		&report.CreatedAt,
+		&report.UpdatedAt,
+		&report.ViabilityAnalysis,
+		&report.PMBrainAnalysis,
+		&report.DisputeLetter,
+		&report.OwnerPitch,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("audit report not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get audit report: %w", err)
+	}
+	return &report, nil
 }
 
 // GetAuditReportByClaimID retrieves the audit report for a claim with ownership verification

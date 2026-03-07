@@ -79,9 +79,31 @@ export const getCarrierEstimates = async (claimId: string) => {
 }
 
 // Audit API methods
+
+// generateIndustryEstimate submits an async estimate job and polls until it completes.
+// Returns the same shape as before: { audit_report_id, audit_report, status }
 export const generateIndustryEstimate = async (claimId: string) => {
-  const response = await api.post(`/api/claims/${claimId}/audit/generate`)
-  return response.data.data
+  // Start the job — returns { job_id, status: "processing" } immediately
+  const startResponse = await api.post(`/api/claims/${claimId}/audit/generate`)
+  const { job_id } = startResponse.data.data
+
+  // Poll every 3 seconds until the job completes or fails (max 3 minutes)
+  const maxAttempts = 60
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise(r => setTimeout(r, 3000))
+    const statusResponse = await api.get(`/api/claims/${claimId}/audit/status/${job_id}`)
+    const result = statusResponse.data.data
+
+    if (result.status === 'completed') {
+      return { audit_report_id: result.audit_report_id, audit_report: result.audit_report, status: result.status }
+    }
+    if (result.status === 'failed') {
+      throw new Error(result.error || 'Estimate generation failed. Please try again.')
+    }
+    // still processing — continue polling
+  }
+
+  throw new Error('Estimate generation timed out. Please try again.')
 }
 
 export const analyzeClaimViability = async (claimId: string) => {

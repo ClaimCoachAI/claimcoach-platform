@@ -68,6 +68,23 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# IAM Policy for Lambda to invoke itself asynchronously (for background audit jobs)
+resource "aws_iam_role_policy" "lambda_self_invoke" {
+  name = "${var.project_name}-lambda-self-invoke"
+  role = aws_iam_role.lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "lambda:InvokeFunction"
+        Resource = aws_lambda_function.api.arn
+      }
+    ]
+  })
+}
+
 # CloudWatch Log Group for Lambda
 resource "aws_cloudwatch_log_group" "lambda_logs" {
   name              = "/aws/lambda/${var.project_name}-prod-api"

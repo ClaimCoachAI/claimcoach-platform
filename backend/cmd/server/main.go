@@ -37,7 +37,7 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	router, err := api.NewRouter(cfg, db)
+	router, _, err := api.NewRouter(cfg, db)
 	if err != nil {
 		log.Fatalf("Failed to create router: %v", err)
 	}

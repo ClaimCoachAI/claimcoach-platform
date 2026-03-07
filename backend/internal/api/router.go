@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -17,7 +18,7 @@ import (
 	"github.com/claimcoach/backend/internal/storage"
 )
 
-func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
+func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditService, error) {
 	r := gin.Default()
 
 	// Parse allowed origins
@@ -44,7 +45,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		cfg.SupabaseJWTSecret,
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Supabase Storage client
@@ -53,7 +54,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 		cfg.SupabaseServiceKey,
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Initialize LLM client (Claude for all AI features)
@@ -95,7 +96,16 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 	inspectionHandler := handlers.NewInspectionHandler(inspectionService)
 	scopeSheetService := services.NewScopeSheetService(db)
 	scopeSheetHandler := handlers.NewScopeSheetHandler(scopeSheetService, magicLinkService, claimService)
-	auditService := services.NewAuditService(db, llmClient, searchClient, scopeSheetService)
+	asyncInvoker, err := services.NewLambdaAsyncInvoker(context.Background())
+	if err != nil {
+		log.Printf("⚠ Failed to create Lambda async invoker: %v (will run synchronously)", err)
+	}
+	if asyncInvoker != nil {
+		log.Println("✓ Lambda async invoker enabled")
+	} else {
+		log.Println("⚠ Lambda async invoker disabled (running synchronously)")
+	}
+	auditService := services.NewAuditService(db, llmClient, searchClient, scopeSheetService, asyncInvoker)
 	auditHandler := handlers.NewAuditHandler(auditService)
 	legalPackageService := services.NewLegalPackageService(db, storageClient, auditService)
 	legalPackageHandler := handlers.NewLegalPackageHandler(legalPackageService)
@@ -230,6 +240,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 		// Audit routes (protected - requires auth)
 		api.POST("/claims/:id/audit/generate", auditHandler.GenerateIndustryEstimate)
+		api.GET("/claims/:id/audit/status/:jobId", auditHandler.GetJobStatus)
 		api.POST("/claims/:id/audit/viability", auditHandler.AnalyzeClaimViability)
 		api.GET("/claims/:id/audit", auditHandler.GetAuditReport)
 		api.POST("/claims/:id/audit/:auditId/pm-brain", auditHandler.RunPMBrain)
@@ -265,5 +276,5 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, error) {
 
 	}
 
-	return r, nil
+	return r, auditService, nil
 }
