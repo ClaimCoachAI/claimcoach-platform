@@ -1281,9 +1281,28 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
                     fontWeight: 700,
                     cursor: 'pointer',
                     fontSize: 15,
+                    marginBottom: 10,
                   }}
                 >
                   ✓ Owner Has Approved — Proceed to Attorney Contact
+                </button>
+                <button
+                  onClick={() => completeMutation.mutate()}
+                  disabled={completeMutation.isPending}
+                  style={{
+                    width: '100%',
+                    padding: '12px 24px',
+                    background: 'transparent',
+                    color: '#64748b',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 8,
+                    fontWeight: 600,
+                    cursor: completeMutation.isPending ? 'not-allowed' : 'pointer',
+                    fontSize: 14,
+                    opacity: completeMutation.isPending ? 0.7 : 1,
+                  }}
+                >
+                  {completeMutation.isPending ? 'Saving…' : 'Owner Declined Legal Escalation — Skip to Next Step'}
                 </button>
               </div>
             ) : !attorneyContacted ? (
