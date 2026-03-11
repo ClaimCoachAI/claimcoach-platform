@@ -1,0 +1,35 @@
+name: Morning Health Check
+
+on:
+  schedule:
+    - cron: "0 14 * * *" # 9am ET (UTC-5) / 10am EDT (UTC-4) — runs at 14:00 UTC year-round
+  workflow_dispatch:
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build healthcheck binary
+        working-directory: backend
+        run: go build -o /tmp/healthcheck ./cmd/healthcheck/
+
+      - name: Run health check
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          API_URL: ${{ secrets.VITE_API_URL }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        run: /tmp/healthcheck
