@@ -137,6 +137,9 @@ export default function PolicyCard({
     if (backendError.includes('CarrierName')) {
       return 'Insurance Carrier is required'
     }
+    if (backendError.includes('Exclusions')) {
+      return 'Exclusions are required'
+    }
     return backendError
   }
 
@@ -390,9 +393,9 @@ export default function PolicyCard({
 
             <div className="form-group-full">
               <label htmlFor="exclusions" className="form-label">
-                Exclusions
+                Exclusions <span className="required">*</span>
               </label>
-              <textarea id="exclusions" name="exclusions"
+              <textarea id="exclusions" name="exclusions" required
                 value={formData.exclusions}
                 onChange={(e) => setFormData(prev => ({ ...prev, exclusions: e.target.value }))}
                 className="form-input"
