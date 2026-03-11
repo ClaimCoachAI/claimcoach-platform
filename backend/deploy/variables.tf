@@ -60,7 +60,7 @@ variable "anthropic_api_key" {
 }
 
 variable "openai_api_key" {
-  description = "OpenAI API key for live pricing web search (optional - falls back to training data)"
+  description = "OpenAI API key for live pricing web search (required — estimates fail without it)"
   type        = string
   sensitive   = true
   default     = ""

@@ -60,7 +60,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 	// Initialize LLM client (Claude for all AI features)
 	llmClient := llm.NewClaudeClient(cfg.AnthropicAPIKey, cfg.AnthropicModel, 120)
 
-	// OpenAI client for live pricing search (optional — nil means graceful fallback to training data)
+	// OpenAI client for live pricing search (required — estimate jobs hard-fail without it)
 	var searchClient services.LLMClient
 	if cfg.OpenAIAPIKey != "" {
 		searchClient = llm.NewOpenAIClient(cfg.OpenAIAPIKey, cfg.OpenAIModel, cfg.OpenAITimeout)
