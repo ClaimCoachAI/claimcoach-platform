@@ -92,7 +92,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 
 	magicLinkService := services.NewMagicLinkService(db, cfg, storageClient, claimService, emailService)
 	magicLinkHandler := handlers.NewMagicLinkHandler(magicLinkService)
-	inspectionService := services.NewInspectionService(db, magicLinkService)
+	inspectionService := services.NewInspectionService(db, magicLinkService, storageClient)
 	inspectionHandler := handlers.NewInspectionHandler(inspectionService)
 	scopeSheetService := services.NewScopeSheetService(db)
 	scopeSheetHandler := handlers.NewScopeSheetHandler(scopeSheetService, magicLinkService, claimService)

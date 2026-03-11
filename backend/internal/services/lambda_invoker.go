@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -59,10 +60,20 @@ func (i *LambdaAsyncInvoker) InvokeAsync(ctx context.Context, payload AsyncJobPa
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
+	log.Printf("LambdaAsyncInvoker: invoking function %s with job_type=%s, audit_report_id=%s",
+		i.functionName, payload.JobType, payload.AuditReportID)
+
 	_, err = i.client.Invoke(ctx, &lambdasvc.InvokeInput{
 		FunctionName:   aws.String(i.functionName),
 		InvocationType: types.InvocationTypeEvent, // async — no response, no 29s limit
 		Payload:        body,
 	})
-	return err
+
+	if err != nil {
+		log.Printf("LambdaAsyncInvoker: failed to invoke function %s: %v", i.functionName, err)
+		return fmt.Errorf("lambda invoke failed: %w", err)
+	}
+
+	log.Printf("LambdaAsyncInvoker: successfully invoked function %s", i.functionName)
+	return nil
 }

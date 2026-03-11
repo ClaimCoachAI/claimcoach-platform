@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/claimcoach/backend/internal/models"
+	"github.com/claimcoach/backend/internal/storage"
 	"github.com/google/uuid"
 )
 
@@ -16,13 +17,15 @@ import (
 type InspectionService struct {
 	db            *sql.DB
 	magicLinkSvc  *MagicLinkService
+	storage       *storage.SupabaseStorage
 }
 
 // NewInspectionService creates a new InspectionService.
-func NewInspectionService(db *sql.DB, magicLinkSvc *MagicLinkService) *InspectionService {
+func NewInspectionService(db *sql.DB, magicLinkSvc *MagicLinkService, storage *storage.SupabaseStorage) *InspectionService {
 	return &InspectionService{
 		db:           db,
 		magicLinkSvc: magicLinkSvc,
+		storage:      storage,
 	}
 }
 
@@ -484,6 +487,15 @@ func scanRoofRow(row interface {
 	)
 }
 
+// convertFileURLToPublic converts an internal file URL to a public URL if it exists
+func (s *InspectionService) convertFileURLToPublic(fileURL *string) *string {
+	if fileURL == nil || *fileURL == "" {
+		return nil
+	}
+	publicURL := s.storage.GetPublicURL(*fileURL)
+	return &publicURL
+}
+
 // ListRoofSections returns all roof sections for the inspection identified by token,
 // ordered by sort_order then created_at. Returns an empty slice when none exist.
 func (s *InspectionService) ListRoofSections(token string) ([]models.InspectionRoof, error) {
@@ -527,6 +539,11 @@ func (s *InspectionService) ListRoofSections(token string) ([]models.InspectionR
 		if err = scanRoofRow(rows, &r); err != nil {
 			return nil, fmt.Errorf("failed to scan roof section: %w", err)
 		}
+		// Convert internal file URLs to public URLs
+		r.OverviewPhotoURL = s.convertFileURLToPublic(r.OverviewPhotoURL)
+		r.SlopePhotoURL = s.convertFileURLToPublic(r.SlopePhotoURL)
+		r.ShinglesPhotoURL = s.convertFileURLToPublic(r.ShinglesPhotoURL)
+		r.RidgePhotoURL = s.convertFileURLToPublic(r.RidgePhotoURL)
 		sections = append(sections, r)
 	}
 	return sections, rows.Err()
@@ -697,6 +714,13 @@ func (s *InspectionService) UpdateRoofSection(token string, roofID string, input
 	if err != nil {
 		return nil, fmt.Errorf("failed to update roof section: %w", err)
 	}
+
+	// Convert internal file URLs to public URLs
+	r.OverviewPhotoURL = s.convertFileURLToPublic(r.OverviewPhotoURL)
+	r.SlopePhotoURL = s.convertFileURLToPublic(r.SlopePhotoURL)
+	r.ShinglesPhotoURL = s.convertFileURLToPublic(r.ShinglesPhotoURL)
+	r.RidgePhotoURL = s.convertFileURLToPublic(r.RidgePhotoURL)
+
 	return &r, nil
 }
 
@@ -770,15 +794,17 @@ func (s *InspectionService) AddRoofSectionDamageSpot(token string, roofID string
 	// Resolve photo URL if a document ID was provided.
 	var photoURL *string
 	if input.PhotoDocumentID != nil {
-		var url string
+		var filePath string
 		if err = s.db.QueryRow(
 			`SELECT file_url FROM documents WHERE id = $1`,
 			*input.PhotoDocumentID,
-		).Scan(&url); err != nil && err != sql.ErrNoRows {
-			return nil, fmt.Errorf("failed to resolve photo URL: %w", err)
+		).Scan(&filePath); err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to resolve photo file path: %w", err)
 		}
 		if err == nil {
-			photoURL = &url
+			// Generate a public URL for the photo
+			publicURL := s.storage.GetPublicURL(filePath)
+			photoURL = &publicURL
 		}
 	}
 
@@ -1190,15 +1216,17 @@ func (s *InspectionService) AddRoomPhoto(token string, roomID string, input AddR
 	// Resolve photo URL if a document ID was provided.
 	var photoURL *string
 	if input.PhotoDocumentID != nil {
-		var url string
+		var filePath string
 		if err = s.db.QueryRow(
 			`SELECT file_url FROM documents WHERE id = $1`,
 			*input.PhotoDocumentID,
-		).Scan(&url); err != nil && err != sql.ErrNoRows {
-			return nil, fmt.Errorf("failed to resolve photo URL: %w", err)
+		).Scan(&filePath); err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to resolve photo file path: %w", err)
 		}
 		if err == nil {
-			photoURL = &url
+			// Generate a public URL for the photo
+			publicURL := s.storage.GetPublicURL(filePath)
+			photoURL = &publicURL
 		}
 	}
 
