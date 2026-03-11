@@ -2,7 +2,7 @@ name: Morning Health Check
 
 on:
   schedule:
-    - cron: "0 14 * * *" # 9am ET (UTC-5) / 10am EDT (UTC-4) — runs at 14:00 UTC year-round
+    - cron: "0 11 * * *" # 6am CDT (UTC-5, Mar–Nov) / 5am CST (UTC-6, Nov–Mar)
   workflow_dispatch:
 
 jobs:
