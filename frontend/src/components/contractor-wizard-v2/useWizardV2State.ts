@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import axios from 'axios'
+import { useWizardNavigation } from './useWizardNavigation'
 import type {
   WizardStep,
   QuickSetupData,
@@ -53,6 +54,10 @@ export interface WizardV2State {
   deleteRoomPhoto: (roomId: string, photoId: string) => Promise<void>
   submittedAt: string | null
   submitInspection: () => Promise<boolean>
+  // Navigation helpers
+  navigateToStep: (step: WizardStep) => void
+  canNavigate: () => boolean
+  isNavigating: boolean
 }
 
 const defaultAreaSelection = {
@@ -86,6 +91,15 @@ export function useWizardV2State(token: string): WizardV2State {
   const [submittedAt, setSubmittedAt] = useState<string | null>(null)
   const roomDebounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const pendingRoomUpdates = useRef<Map<string, UpdateRoomInput>>(new Map())
+
+  // Use custom navigation hook to prevent race conditions
+  const { navigateToStep, canNavigate, isNavigating } = useWizardNavigation(
+    currentStep,
+    (step: number) => {
+      setCurrentStep(step as WizardStep)
+    },
+    loading || elevationLoading || roofLoading || roomsLoading
+  )
 
   useEffect(() => {
     const load = async () => {
@@ -366,6 +380,33 @@ export function useWizardV2State(token: string): WizardV2State {
     }
   }, [token])
 
+  // Poll for step changes from backend (e.g., auto-advance when all photos uploaded)
+  useEffect(() => {
+    if (!inspectionId) return
+
+    const checkStepChanges = async () => {
+      try {
+        const { data } = await axios.get<{ success: boolean; data: { current_step: number } }>(
+          `${API}/api/magic-links/${token}/v2/inspection`
+        )
+        const backendStep = data.data.current_step
+        if (backendStep !== currentStep && backendStep > currentStep) {
+          console.log(`Backend advanced step from ${currentStep} to ${backendStep}`)
+          // Allow navigation if not currently navigating
+          if (canNavigate()) {
+            navigateToStep(backendStep as WizardStep)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check for step changes:', error)
+      }
+    }
+
+    // Check every 5 seconds
+    const interval = setInterval(checkStepChanges, 5000)
+    return () => clearInterval(interval)
+  }, [token, inspectionId, currentStep, canNavigate, navigateToStep])
+
   useEffect(() => {
     if (currentStep === 2) loadElevations()
     if (currentStep === 3) loadRoofSections()
@@ -384,25 +425,42 @@ export function useWizardV2State(token: string): WizardV2State {
     }
     debounceTimers.current[side] = setTimeout(async () => {
       setElevationLoading(true)
-      try {
-        const { data: res } = await axios.put<{ success: boolean; data: ElevationData }>(
-          `${API}/api/magic-links/${token}/v2/inspection/elevations/${side}`,
-          data
-        )
-        setElevations(prev => {
-          const idx = prev.findIndex(e => e.side === side)
-          if (idx >= 0) {
-            const updated = [...prev]
-            updated[idx] = res.data
-            return updated
+      let retries = 0
+      const maxRetries = 3
+
+      while (retries < maxRetries) {
+        try {
+          const { data: res } = await axios.put<{ success: boolean; data: ElevationData }>(
+            `${API}/api/magic-links/${token}/v2/inspection/elevations/${side}`,
+            data
+          )
+          setElevations(prev => {
+            const idx = prev.findIndex(e => e.side === side)
+            if (idx >= 0) {
+              const updated = [...prev]
+              updated[idx] = res.data
+              return updated
+            }
+            return [...prev, res.data]
+          })
+          // Success - exit the retry loop
+          break
+        } catch (error) {
+          retries++
+          console.error(`Failed to save elevation for side ${side} (attempt ${retries}/${maxRetries}):`, error)
+
+          if (retries >= maxRetries) {
+            // Max retries reached - show error to user
+            setError(`Failed to save changes for ${side} side. Please try again.`)
+            // Clear error after 5 seconds
+            setTimeout(() => setError(null), 5000)
+          } else {
+            // Wait before retry (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, 1000 * retries))
           }
-          return [...prev, res.data]
-        })
-      } catch {
-        // non-fatal: field state stays, retry possible
-      } finally {
-        setElevationLoading(false)
+        }
       }
+      setElevationLoading(false)
     }, 800)
   }, [token])
 
@@ -468,5 +526,9 @@ export function useWizardV2State(token: string): WizardV2State {
     deleteRoomPhoto,
     submittedAt,
     submitInspection,
+    // Navigation helpers
+    navigateToStep,
+    canNavigate,
+    isNavigating,
   }
 }

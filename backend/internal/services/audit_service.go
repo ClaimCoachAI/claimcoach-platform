@@ -130,6 +130,7 @@ func (s *AuditService) GenerateIndustryEstimate(ctx context.Context, claimID, us
 // Returns a hard error on any failure — callers must not proceed without live pricing data.
 func (s *AuditService) fetchLivePricing(ctx context.Context, damageTags []string, propertyAddress string) (string, error) {
 	if s.searchClient == nil {
+		log.Printf("ERROR: fetchLivePricing failed - OPENAI_API_KEY not configured")
 		return "", fmt.Errorf("live pricing search is unavailable: OPENAI_API_KEY is not configured")
 	}
 
@@ -339,14 +340,20 @@ func (s *AuditService) updateAuditReportFailed(ctx context.Context, reportID, er
 // background Lambda to do the LLM work. Returns the job ID (audit_report_id) immediately.
 // In local dev (no asyncInvoker), it falls back to synchronous processing.
 func (s *AuditService) SubmitEstimateJob(ctx context.Context, claimID, userID, orgID string) (string, error) {
+	log.Printf("SubmitEstimateJob starting for claimID=%s, userID=%s", claimID, userID)
+
 	// Validate scope sheet exists before creating the record
 	scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
 	if err != nil {
+		log.Printf("ERROR: SubmitEstimateJob failed to get scope sheet for claim %s: %v", claimID, err)
 		return "", fmt.Errorf("failed to get scope sheet: %w", err)
 	}
 	if scopeSheet == nil {
+		log.Printf("ERROR: SubmitEstimateJob - no scope sheet found for claim %s", claimID)
 		return "", fmt.Errorf("scope sheet not found for claim %s", claimID)
 	}
+
+	log.Printf("SubmitEstimateJob - scope sheet found with ID=%s", scopeSheet.ID)
 
 	// Create the audit report row with status=processing
 	reportID, err := s.createProcessingAuditReport(ctx, claimID, scopeSheet.ID, userID)
@@ -356,6 +363,7 @@ func (s *AuditService) SubmitEstimateJob(ctx context.Context, claimID, userID, o
 
 	if s.asyncInvoker != nil {
 		// Lambda: fire async invocation and return immediately (no 29s timeout risk)
+		log.Printf("SubmitEstimateJob - invoking async Lambda for reportID=%s", reportID)
 		payload := AsyncJobPayload{
 			JobType:       "process_audit_estimate",
 			AuditReportID: reportID,
@@ -364,9 +372,11 @@ func (s *AuditService) SubmitEstimateJob(ctx context.Context, claimID, userID, o
 			OrgID:         orgID,
 		}
 		if err := s.asyncInvoker.InvokeAsync(ctx, payload); err != nil {
+			log.Printf("ERROR: SubmitEstimateJob failed to invoke async Lambda for reportID=%s: %v", reportID, err)
 			_ = s.updateAuditReportFailed(context.Background(), reportID, err.Error())
 			return "", fmt.Errorf("failed to invoke background processing: %w", err)
 		}
+		log.Printf("SubmitEstimateJob - async Lambda invoked successfully for reportID=%s", reportID)
 		return reportID, nil
 	}
 
@@ -380,6 +390,8 @@ func (s *AuditService) SubmitEstimateJob(ctx context.Context, claimID, userID, o
 // ProcessEstimateJob runs the full OpenAI + Claude pipeline and updates the audit_report record.
 // Called by the async Lambda invocation handler.
 func (s *AuditService) ProcessEstimateJob(ctx context.Context, auditReportID, claimID, userID, orgID string) error {
+	log.Printf("ProcessEstimateJob starting for auditReportID=%s, claimID=%s", auditReportID, claimID)
+
 	// 1. Get scope sheet
 	scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
 	if err != nil || scopeSheet == nil {
@@ -387,6 +399,7 @@ func (s *AuditService) ProcessEstimateJob(ctx context.Context, auditReportID, cl
 		if err != nil {
 			msg = err.Error()
 		}
+		log.Printf("ERROR: ProcessEstimateJob failed to get scope sheet for auditReportID=%s: %s", auditReportID, msg)
 		_ = s.updateAuditReportFailed(ctx, auditReportID, msg)
 		return fmt.Errorf("%s", msg)
 	}
@@ -413,12 +426,15 @@ func (s *AuditService) ProcessEstimateJob(ctx context.Context, auditReportID, cl
 	`, claimID).Scan(&propertyAddress)
 
 	// 4. Live pricing via OpenAI
+	log.Printf("ProcessEstimateJob - fetching live pricing for auditReportID=%s, tags=%v, address=%s", auditReportID, allTags, propertyAddress)
 	pricingContext, err := s.fetchLivePricing(ctx, allTags, propertyAddress)
 	if err != nil {
 		errMsg := fmt.Sprintf("failed to fetch live pricing: %v", err)
+		log.Printf("ERROR: ProcessEstimateJob failed to fetch pricing for auditReportID=%s: %s", auditReportID, errMsg)
 		_ = s.updateAuditReportFailed(ctx, auditReportID, errMsg)
 		return fmt.Errorf("%s", errMsg)
 	}
+	log.Printf("ProcessEstimateJob - successfully fetched live pricing for auditReportID=%s", auditReportID)
 
 	// 5. Build prompt and call Claude
 	userPrompt := s.buildEstimatePrompt(scopeSheet, pricingContext)
@@ -430,12 +446,15 @@ func (s *AuditService) ProcessEstimateJob(ctx context.Context, auditReportID, cl
 		{Role: "user", Content: userPrompt},
 	}
 
+	log.Printf("ProcessEstimateJob - calling Claude LLM for auditReportID=%s", auditReportID)
 	response, err := s.llmClient.Chat(ctx, messages, 0.2, 8000)
 	if err != nil {
 		errMsg := fmt.Sprintf("LLM API call failed: %v", err)
+		log.Printf("ERROR: ProcessEstimateJob LLM call failed for auditReportID=%s: %s", auditReportID, errMsg)
 		_ = s.updateAuditReportFailed(ctx, auditReportID, errMsg)
 		return fmt.Errorf("%s", errMsg)
 	}
+	log.Printf("ProcessEstimateJob - Claude LLM responded successfully for auditReportID=%s", auditReportID)
 
 	if len(response.Choices) == 0 {
 		errMsg := "LLM returned no choices"
@@ -462,6 +481,7 @@ func (s *AuditService) ProcessEstimateJob(ctx context.Context, auditReportID, cl
 		log.Printf("Warning: failed to log API usage: %v", err)
 	}
 
+	log.Printf("ProcessEstimateJob completed successfully for auditReportID=%s", auditReportID)
 	return nil
 }
 

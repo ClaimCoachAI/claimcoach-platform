@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -400,6 +401,7 @@ func (s *InspectionService) SaveElevation(token string, side string, input SaveE
 		SELECT COUNT(*) FROM inspection_elevation
 		WHERE inspection_id = $1 AND photo_document_id IS NOT NULL
 	`, inspectionID).Scan(&sidesWithPhoto); countErr == nil && sidesWithPhoto == 4 {
+		log.Printf("SaveElevation: all 4 sides have photos for inspection %s, advancing to step 3", inspectionID)
 		if _, err = tx.Exec(
 			`UPDATE inspection_v2 SET current_step = 3, updated_at = $1
 			 WHERE id = $2 AND current_step < 3`,
@@ -407,6 +409,7 @@ func (s *InspectionService) SaveElevation(token string, side string, input SaveE
 		); err != nil {
 			return nil, fmt.Errorf("failed to advance inspection step: %w", err)
 		}
+		log.Printf("SaveElevation: successfully advanced inspection %s to step 3", inspectionID)
 	}
 
 	if err = tx.Commit(); err != nil {
