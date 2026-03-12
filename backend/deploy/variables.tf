@@ -85,6 +85,13 @@ variable "sendgrid_from_name" {
   default     = "ClaimCoach AI"
 }
 
+variable "slack_bot_token" {
+  description = "Slack bot token for error alerting (optional — alerts disabled if not set)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "claimcoach_email" {
   description = "Internal ClaimCoach email address"
   type        = string

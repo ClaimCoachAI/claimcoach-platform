@@ -68,6 +68,7 @@ jobs:
           TF_VAR_sendgrid_from_email: ${{ vars.SENDGRID_FROM_EMAIL }}
           TF_VAR_sendgrid_from_name: ${{ vars.SENDGRID_FROM_NAME }}
           TF_VAR_claimcoach_email: ${{ vars.CLAIMCOACH_EMAIL }}
+          TF_VAR_slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
         run: terraform apply -auto-approve
 
       - name: Output API URL

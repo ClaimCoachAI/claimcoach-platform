@@ -139,6 +139,7 @@ resource "aws_lambda_function" "api" {
       SENDGRID_FROM_EMAIL = var.sendgrid_from_email
       SENDGRID_FROM_NAME  = var.sendgrid_from_name
       CLAIMCOACH_EMAIL    = var.claimcoach_email
+      SLACK_BOT_TOKEN     = var.slack_bot_token
     }
   }
 

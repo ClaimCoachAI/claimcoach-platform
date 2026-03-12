@@ -37,6 +37,9 @@ type Config struct {
 	SendGridFromName  string
 	ClaimCoachEmail   string
 
+	// Slack alerting (optional — alerts silently skipped if not set)
+	SlackBotToken string
+
 	// Legal escalation threshold — claims with delta >= this amount trigger legal prompt
 	// Configurable via LEGAL_ESCALATION_THRESHOLD_DOLLARS env var (default: 10000)
 	LegalEscalationThreshold float64
@@ -63,7 +66,8 @@ func Load() (*Config, error) {
 		SendGridAPIKey:       os.Getenv("SENDGRID_API_KEY"),
 		SendGridFromEmail:    getEnvOrDefault("SENDGRID_FROM_EMAIL", "claims@claimcoach.ai"),
 		SendGridFromName:     getEnvOrDefault("SENDGRID_FROM_NAME", "ClaimCoach AI"),
-		ClaimCoachEmail:          getEnvOrDefault("CLAIMCOACH_EMAIL", "jesse@claimcoach.ai"),
+		ClaimCoachEmail:      getEnvOrDefault("CLAIMCOACH_EMAIL", "jesse@claimcoach.ai"),
+		SlackBotToken:        os.Getenv("SLACK_BOT_TOKEN"),
 		LegalEscalationThreshold: getEnvFloat64OrDefault("LEGAL_ESCALATION_THRESHOLD_DOLLARS", 10000),
 	}
 
@@ -87,6 +91,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.OpenAIAPIKey == "" {
 		log.Println("⚠️  OPENAI_API_KEY not set - live pricing search will be unavailable (estimates will use training data)")
+	}
+	if cfg.SlackBotToken == "" {
+		log.Println("⚠️  SLACK_BOT_TOKEN not set — Slack error alerts disabled")
 	}
 	if cfg.PerplexityTimeout <= 0 {
 		return nil, fmt.Errorf("PERPLEXITY_TIMEOUT must be positive, got %d", cfg.PerplexityTimeout)
