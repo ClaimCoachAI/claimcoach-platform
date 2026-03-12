@@ -19,6 +19,7 @@ interface CarrierEstimateData {
   id: string
   file_name: string
   parse_status: 'pending' | 'processing' | 'completed' | 'failed'
+  parse_error?: string
 }
 
 type Phase =
@@ -235,7 +236,7 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
     } catch { /* malformed JSON — stay on idle */ }
   }, [savedAuditReport, phase])
 
-  // Stop polling when parse completes or fails
+  // Fallback polling: stop when parse completes or fails (handles edge cases)
   useEffect(() => {
     if (!isPolling) return
     if (isParsed) {
@@ -244,10 +245,11 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
     }
     if (parseFailed) {
       setIsPolling(false)
-      setErrorMsg('Failed to parse PDF. Please try uploading a different file.')
+      const detail = latestEstimate?.parse_error
+      setErrorMsg(detail ? `Parse failed: ${detail}` : 'Failed to parse PDF. Please try again.')
       setPhase('idle')
     }
-  }, [isPolling, isParsed, parseFailed])
+  }, [isPolling, isParsed, parseFailed, latestEstimate?.parse_error])
 
   // If already parsed but we're still idle, skip to ready
   useEffect(() => {
@@ -286,20 +288,43 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
         throw new Error(`Failed to upload file to storage (${uploadResponse.status})`)
       }
       await api.post(`/api/claims/${claim.id}/carrier-estimate/${estimate_id}/confirm`)
+      // Parse is now synchronous — awaiting it means the PDF is fully parsed when this resolves.
+      // If the parse call throws (422), onError handles it.
       await parseCarrierEstimate(claim.id, estimate_id)
       return estimate_id
     },
     onSuccess: () => {
       setSelectedFile(null)
-      setPhase('parsing')
-      setIsPolling(true)
+      // Parse completed synchronously — go straight to ready, no polling needed.
       queryClient.invalidateQueries({ queryKey: ['carrier-estimates', claim.id] })
+      setPhase('ready')
     },
     onError: (err: unknown) => {
       const msg =
         (err as any)?.response?.data?.error ||
         (err instanceof Error ? err.message : null) ||
         'Failed to upload PDF. Please try again.'
+      setErrorMsg(msg)
+      setPhase('idle')
+    },
+  })
+
+  // ── Retry parse mutation (re-parse existing upload, no re-upload needed) ──
+  const retryParseMutation = useMutation({
+    mutationFn: async (estimateId: string) => {
+      setPhase('parsing')
+      setErrorMsg(null)
+      await parseCarrierEstimate(claim.id, estimateId)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['carrier-estimates', claim.id] })
+      setPhase('ready')
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as any)?.response?.data?.error ||
+        (err instanceof Error ? err.message : null) ||
+        'Failed to parse PDF. Please try again.'
       setErrorMsg(msg)
       setPhase('idle')
     },
@@ -463,6 +488,27 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
             }}
           >
             {errorMsg}
+            {parseFailed && latestEstimate && (
+              <button
+                type="button"
+                onClick={() => retryParseMutation.mutate(latestEstimate.id)}
+                disabled={retryParseMutation.isPending}
+                style={{
+                  display: 'block',
+                  marginTop: 10,
+                  padding: '8px 16px',
+                  background: '#dc2626',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: retryParseMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  fontSize: 13,
+                }}
+              >
+                {retryParseMutation.isPending ? 'Retrying…' : 'Retry Parsing (same file)'}
+              </button>
+            )}
           </div>
         )}
       </div>

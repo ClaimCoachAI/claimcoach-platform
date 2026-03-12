@@ -143,9 +143,20 @@ Rules:
 - category should be the work type (e.g., Roofing, Siding, Exterior, Interior, etc.)
 - Return ONLY valid JSON, no additional text or explanation`
 
-	responseText, err := s.pdfClient.ParsePDF(ctx, pdfContent, prompt, 4000)
-	if err != nil {
-		return nil, fmt.Errorf("LLM request failed: %w", err)
+	// Retry up to 3 times for transient LLM failures
+	var responseText string
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		responseText, lastErr = s.pdfClient.ParsePDF(ctx, pdfContent, prompt, 4000)
+		if lastErr == nil {
+			break
+		}
+		if attempt < 3 {
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("LLM request failed after 3 attempts: %w", lastErr)
 	}
 
 	// Extract JSON if there's surrounding text

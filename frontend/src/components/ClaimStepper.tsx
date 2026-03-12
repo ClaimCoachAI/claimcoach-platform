@@ -813,6 +813,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         return (
           <form onSubmit={handleStep5Submit} className="step-content step-form">
             {!isEditingAdjuster ? (
+              <>
               <div className="contractor-view-card">
                 <div className="contractor-view-fields">
                   <div className="contractor-view-field">
@@ -864,6 +865,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                   {step5Mutation.isPending ? 'Saving...' : 'Continue to Step 6 →'}
                 </button>
               )}
+              </>
             ) : (
               <>
                 <div className="claimcoach-notice">

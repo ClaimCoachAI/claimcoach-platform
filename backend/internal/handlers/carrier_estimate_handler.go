@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/claimcoach/backend/internal/models"
 	"github.com/claimcoach/backend/internal/services"
@@ -12,12 +14,14 @@ import (
 type CarrierEstimateHandler struct {
 	service       *services.CarrierEstimateService
 	parserService *services.PDFParserService
+	slack         ErrorAlertPoster
 }
 
-func NewCarrierEstimateHandler(service *services.CarrierEstimateService, parserService *services.PDFParserService) *CarrierEstimateHandler {
+func NewCarrierEstimateHandler(service *services.CarrierEstimateService, parserService *services.PDFParserService, slackSvc ErrorAlertPoster) *CarrierEstimateHandler {
 	return &CarrierEstimateHandler{
 		service:       service,
 		parserService: parserService,
+		slack:         slackSvc,
 	}
 }
 
@@ -140,34 +144,40 @@ func (h *CarrierEstimateHandler) ListCarrierEstimates(c *gin.Context) {
 	})
 }
 
-// ParseCarrierEstimate triggers parsing of a carrier estimate PDF
+// ParseCarrierEstimate parses a carrier estimate PDF synchronously
 // POST /api/claims/:id/carrier-estimate/:estimateId/parse
 func (h *CarrierEstimateHandler) ParseCarrierEstimate(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
 	claimID := c.Param("id")
 	estimateID := c.Param("estimateId")
 
-	// Trigger async parsing in a goroutine
-	go func() {
-		// Create a new context that won't be cancelled when the request ends
-		ctx := context.Background()
+	// Use a background context so the parse is not cancelled if the client disconnects,
+	// but bound to a 90-second deadline to stay within Lambda's execution window.
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
 
-		err := h.parserService.ParseCarrierEstimate(ctx, estimateID, user.OrganizationID)
-		if err != nil {
-			// Log the error - in production, you'd want proper logging
-			// For now, the error is stored in the database parse_error field
-			_ = err
-		}
-	}()
+	err := h.parserService.ParseCarrierEstimate(ctx, estimateID, user.OrganizationID)
+	if err != nil {
+		msg := fmt.Sprintf(
+			"🚨 *ClaimCoach — PDF Parse Failed*\nEstimate ID: %s\nError: %s\n_%s UTC_",
+			estimateID, err.Error(), time.Now().UTC().Format("2006-01-02 15:04"),
+		)
+		_ = h.slack.PostAlertWithFingerprint(msg, "pdf-parse|"+estimateID)
 
-	// Return immediately with 202 Accepted
-	c.JSON(http.StatusAccepted, gin.H{
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"success": false,
+			"error":   "Failed to parse PDF: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "Parsing started",
+		"message": "Parsing complete",
 		"data": gin.H{
 			"claim_id":    claimID,
 			"estimate_id": estimateID,
-			"status":      "processing",
+			"status":      "completed",
 		},
 	})
 }
