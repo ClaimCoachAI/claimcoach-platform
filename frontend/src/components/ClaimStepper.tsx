@@ -855,6 +855,15 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                   Edit
                 </button>
               </div>
+              {!claim.steps_completed?.includes(5) && (
+                <button
+                  type="submit"
+                  disabled={step5Mutation.isPending}
+                  style={{ marginTop: 16, width: '100%' }}
+                >
+                  {step5Mutation.isPending ? 'Saving...' : 'Continue to Step 6 →'}
+                </button>
+              )}
             ) : (
               <>
                 <div className="claimcoach-notice">
