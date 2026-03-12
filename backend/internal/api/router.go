@@ -14,7 +14,9 @@ import (
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/claimcoach/backend/internal/handlers"
 	"github.com/claimcoach/backend/internal/llm"
+	"github.com/claimcoach/backend/internal/middleware"
 	"github.com/claimcoach/backend/internal/services"
+	"github.com/claimcoach/backend/internal/slack"
 	"github.com/claimcoach/backend/internal/storage"
 )
 
@@ -37,6 +39,10 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		AllowHeaders:     []string{"Authorization", "Content-Type"},
 		AllowCredentials: true,
 	}))
+
+	// Slack error alerting (no-op if token not set)
+	slackSvc := slack.NewSlackService(cfg.SlackBotToken)
+	r.Use(middleware.ErrorReporter(slackSvc))
 
 	// Supabase client
 	supabase, err := auth.NewSupabaseClient(
@@ -122,6 +128,10 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+
+	// Error reporting (unauthenticated — frontend fires-and-forgets)
+	errorReporterHandler := handlers.NewErrorReporterHandler(slackSvc)
+	r.POST("/api/errors", errorReporterHandler.Report)
 
 	// Public auth endpoints (no auth required)
 	authHandler := handlers.NewAuthHandler(db, supabase)
@@ -221,7 +231,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		claudeClient := llm.NewClaudeClient(cfg.AnthropicAPIKey, cfg.AnthropicModel, 120)
 		carrierEstimateService := services.NewCarrierEstimateService(db, storageClient, claimService)
 		pdfParserService := services.NewPDFParserService(db, storageClient, claudeClient, claimService)
-		carrierEstimateHandler := handlers.NewCarrierEstimateHandler(carrierEstimateService, pdfParserService)
+		carrierEstimateHandler := handlers.NewCarrierEstimateHandler(carrierEstimateService, pdfParserService, slackSvc)
 
 		api.POST("/claims/:id/carrier-estimate/upload-url", carrierEstimateHandler.RequestUploadURL)
 		api.POST("/claims/:id/carrier-estimate/:estimateId/confirm", carrierEstimateHandler.ConfirmUpload)
