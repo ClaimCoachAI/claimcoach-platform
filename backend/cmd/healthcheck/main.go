@@ -1,14 +1,14 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/claimcoach/backend/internal/slack"
 )
 
 type checkResult struct {
@@ -46,7 +46,8 @@ func main() {
 	}
 
 	msg := formatSlackMessage(results, allOK)
-	if err := postToSlack(slackToken, "#ops", msg); err != nil {
+	svc := slack.NewSlackService(slackToken)
+	if err := svc.PostAlert(msg); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to post to Slack: %v\n", err)
 		os.Exit(1)
 	}
@@ -179,35 +180,4 @@ func formatSlackMessage(results []checkResult, allOK bool) string {
 	}
 
 	return sb.String()
-}
-
-func postToSlack(token, channel, text string) error {
-	payload, _ := json.Marshal(map[string]string{
-		"channel": channel,
-		"text":    text,
-	})
-	req, err := http.NewRequest(http.MethodPost, "https://slack.com/api/chat.postMessage", bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		OK    bool   `json:"ok"`
-		Error string `json:"error"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return err
-	}
-	if !result.OK {
-		return fmt.Errorf("slack API error: %s", result.Error)
-	}
-	return nil
 }
