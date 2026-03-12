@@ -244,6 +244,7 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
     }
     if (parseFailed) {
       setIsPolling(false)
+      setErrorMsg('Failed to parse PDF. Please try uploading a different file.')
       setPhase('idle')
     }
   }, [isPolling, isParsed, parseFailed])
@@ -276,11 +277,14 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
         mime_type: 'application/pdf',
       })
       const { upload_url, estimate_id } = urlRes.data.data
-      await fetch(upload_url, {
+      const uploadResponse = await fetch(upload_url, {
         method: 'PUT',
         body: file,
         headers: { 'Content-Type': 'application/pdf' },
       })
+      if (!uploadResponse.ok) {
+        throw new Error(`Failed to upload file to storage (${uploadResponse.status})`)
+      }
       await api.post(`/api/claims/${claim.id}/carrier-estimate/${estimate_id}/confirm`)
       await parseCarrierEstimate(claim.id, estimate_id)
       return estimate_id
@@ -292,7 +296,10 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
       queryClient.invalidateQueries({ queryKey: ['carrier-estimates', claim.id] })
     },
     onError: (err: unknown) => {
-      const msg = (err as any)?.response?.data?.error || 'Failed to upload PDF. Please try again.'
+      const msg =
+        (err as any)?.response?.data?.error ||
+        (err instanceof Error ? err.message : null) ||
+        'Failed to upload PDF. Please try again.'
       setErrorMsg(msg)
       setPhase('idle')
     },
