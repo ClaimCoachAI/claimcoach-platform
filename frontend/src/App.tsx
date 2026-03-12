@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, MutationCache, QueryCache } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { reportError, extractClaimId } from './lib/errorReporter'
 import Login from './pages/Login'
 import SignUp from './pages/SignUp'
 import ForgotPassword from './pages/ForgotPassword'
@@ -16,11 +17,32 @@ import ContractorUploadV2 from './pages/ContractorUploadV2'
 import LegalApprovalPage from './pages/LegalApprovalPage'
 
 const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      reportError({
+        source: 'mutation',
+        url: window.location.pathname,
+        errorMessage: String(error),
+        claimId: extractClaimId(window.location.pathname),
+      })
+    },
+  }),
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      if ((query.state.fetchFailureCount ?? 0) !== 1) return
+      reportError({
+        source: 'query',
+        url: window.location.pathname,
+        errorMessage: String(error),
+        claimId: extractClaimId(window.location.pathname),
+      })
+    },
+  }),
   defaultOptions: {
     queries: {
-      staleTime: 60 * 1000, // Data is fresh for 1 minute
-      retry: 1, // Retry failed requests once
-      refetchOnWindowFocus: false, // Don't refetch when window regains focus
+      staleTime: 60 * 1000,
+      retry: 1,
+      refetchOnWindowFocus: false,
     },
   },
 })

@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
+import { reportError, extractClaimId } from '../lib/errorReporter'
 
 interface Props {
   children: ReactNode
@@ -21,6 +22,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught:', error, errorInfo)
+    reportError({
+      source: 'crash',
+      url: window.location.pathname,
+      errorMessage: error.message,
+      claimId: extractClaimId(window.location.pathname),
+    })
   }
 
   render() {
