@@ -59,8 +59,10 @@ type LineItem struct {
 
 // ParsedEstimateData represents the structured data extracted from a PDF
 type ParsedEstimateData struct {
-	LineItems []LineItem `json:"line_items"`
-	Total     float64    `json:"total"`
+	DocumentType string     `json:"document_type"`
+	LineItems    []LineItem `json:"line_items"`
+	Total        float64    `json:"total"`
+	Notes        string     `json:"notes,omitempty"`
 }
 
 // ParseCarrierEstimate downloads and parses a carrier estimate PDF
@@ -119,10 +121,11 @@ func (s *PDFParserService) ParseCarrierEstimate(ctx context.Context, carrierEsti
 
 // parsePDFWithClaude sends the PDF directly to Claude for extraction and structuring
 func (s *PDFParserService) parsePDFWithClaude(ctx context.Context, pdfContent []byte) (*ParsedEstimateData, error) {
-	prompt := `Extract all line items from this carrier estimate PDF.
+	prompt := `You are analyzing an insurance document. It may be a carrier estimate, Explanation of Benefits (EOB), denial letter, coverage decision, or any other insurance-related document.
 
-Return a JSON object with this exact structure:
+Extract all available information and return a JSON object with this exact structure:
 {
+  "document_type": "string (e.g. Carrier Estimate, Denial Letter, EOB, Coverage Decision, Partial Payment, etc.)",
   "line_items": [
     {
       "description": "string",
@@ -133,14 +136,19 @@ Return a JSON object with this exact structure:
       "category": "string"
     }
   ],
-  "total": number
+  "total": number,
+  "notes": "string (summary of key findings, denial reasons, coverage decisions, or other important details not captured in line items)"
 }
 
 Rules:
-- Extract ALL line items, not just summaries
+- Identify the document type and set document_type accordingly
+- If line items exist (repair estimates, itemized costs, etc.): extract ALL of them into line_items
+- If this is a denial letter or coverage decision: put denial reasons, policy exclusions, and any amounts referenced as line items where possible; summarize the decision in notes
+- If this is an EOB: extract covered/denied amounts and benefit details as line items
+- For any amounts or decisions that don't fit as line items, capture them in notes
 - Use 0 for missing numeric values
 - Use empty string for missing text values
-- category should be the work type (e.g., Roofing, Siding, Exterior, Interior, etc.)
+- category should describe the type (e.g., Roofing, Siding, Denial, Coverage Decision, Deductible, etc.)
 - Return ONLY valid JSON, no additional text or explanation`
 
 	// Retry up to 3 times for transient LLM failures
@@ -171,8 +179,8 @@ Rules:
 		return nil, fmt.Errorf("failed to parse LLM response as JSON: %w (response: %s)", err, responseText)
 	}
 
-	if len(parsedData.LineItems) == 0 {
-		return nil, fmt.Errorf("no line items extracted from document")
+	if len(parsedData.LineItems) == 0 && parsedData.Notes == "" && parsedData.Total == 0 {
+		return nil, fmt.Errorf("could not extract any information from this document — please ensure it is a valid insurance document (carrier estimate, denial letter, EOB, or coverage decision)")
 	}
 
 	return &parsedData, nil
