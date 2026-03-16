@@ -168,10 +168,10 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         contractor_email: contractorData.contractor_email,
       })
 
-      // Update claim step progress
+      // Update claim with contractor info — step advances to 3 only after assessor submits
       await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 3,
-        steps_completed: [1, 2],
+        current_step: 2,
+        steps_completed: [1],
         contractor_name: contractorData.contractor_name,
         contractor_email: contractorData.contractor_email,
       })

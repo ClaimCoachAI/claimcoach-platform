@@ -1336,6 +1336,24 @@ func (s *InspectionService) SubmitInspection(token string) (*models.InspectionV2
 		fmt.Printf("Warning: failed to synthesize scope sheet from V2 inspection: %v\n", synErr)
 	}
 
+	// Advance the claim to step 3 now that the assessor has submitted the scope sheet.
+	// Only advance if still at step 2 (waiting on assessor); don't go backward.
+	_, advErr := s.db.Exec(`
+		UPDATE claims
+		SET current_step  = GREATEST(current_step, 3),
+		    steps_completed = CASE
+		        WHEN NOT (steps_completed @> '[2]'::jsonb)
+		        THEN steps_completed || '[2]'::jsonb
+		        ELSE steps_completed
+		    END,
+		    updated_at = NOW()
+		WHERE id = $1
+	`, insp.ClaimID)
+	if advErr != nil {
+		// Non-fatal: log but don't fail the submit
+		log.Printf("Warning: failed to advance claim %s to step 3 after inspection submit: %v", insp.ClaimID, advErr)
+	}
+
 	return &insp, nil
 }
 

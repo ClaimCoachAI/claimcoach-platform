@@ -23,8 +23,8 @@ export default function Step2ContractorModal({
   const mutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const response = await api.patch(`/api/claims/${claimId}/step`, {
-        current_step: 3,
-        steps_completed: [1, 2],
+        current_step: 2,
+        steps_completed: [1],
         contractor_name: data.contractor_name,
         contractor_email: data.contractor_email,
       })

@@ -57,8 +57,8 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
   const step2Mutation = useMutation({
     mutationFn: async () => {
       const response = await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 3,
-        steps_completed: [1, 2],
+        current_step: 2,
+        steps_completed: [1],
         contractor_name: contractorData.contractor_name,
         contractor_email: contractorData.contractor_email,
       })
