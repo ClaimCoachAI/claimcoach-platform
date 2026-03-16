@@ -734,28 +734,85 @@ type PMBrainAnalysis struct {
 	LegalThresholdMet       bool                     `json:"legal_threshold_met"`
 }
 
-// RunPMBrainAnalysis runs the Post-Adjudication Strategy Engine on an audit report,
-// comparing the generated estimate against the carrier's offer with full policy context.
-func (s *AuditService) RunPMBrainAnalysis(ctx context.Context, auditReportID, userID, orgID string) (*PMBrainAnalysis, error) {
-	// 1. Fetch audit report (verifies org ownership)
+// SubmitPMBrainJob validates prerequisites, resets the audit report to processing, then
+// either fires an async Lambda invocation (production) or runs synchronously (local dev).
+// Returns the auditReportID so the caller can poll GetJobStatus.
+func (s *AuditService) SubmitPMBrainJob(ctx context.Context, auditReportID, userID, orgID string) (string, error) {
+	// 1. Verify ownership and check prerequisites
 	report, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if report.GeneratedEstimate == nil || *report.GeneratedEstimate == "" {
-		return nil, fmt.Errorf("industry estimate not generated yet")
+		return "", fmt.Errorf("industry estimate not generated yet")
 	}
-
-	// 2. Fetch carrier estimate parsed data
 	carrierEstimate, err := s.getCarrierEstimate(ctx, report.ClaimID)
 	if err != nil {
-		return nil, fmt.Errorf("carrier estimate not found — please upload and parse it first")
+		return "", fmt.Errorf("carrier estimate not found — please upload and parse it first")
 	}
 	if carrierEstimate.ParsedData == nil || *carrierEstimate.ParsedData == "" {
-		return nil, fmt.Errorf("carrier estimate not parsed yet")
+		return "", fmt.Errorf("carrier estimate not parsed yet")
 	}
 
-	// 3. Fetch policy snapshot (carrier name, policy number, deductible, exclusions)
+	// 2. Reset to processing so the frontend poll works correctly
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE audit_reports SET status = $1, pm_brain_analysis = NULL, error_message = NULL, updated_at = NOW() WHERE id = $2`,
+		models.AuditStatusProcessing, auditReportID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to set processing status: %w", err)
+	}
+
+	if s.asyncInvoker != nil {
+		// Production: fire-and-forget Lambda invocation — no 29s API Gateway timeout
+		payload := AsyncJobPayload{
+			JobType:       "process_pm_brain",
+			AuditReportID: auditReportID,
+			ClaimID:       report.ClaimID,
+			UserID:        userID,
+			OrgID:         orgID,
+		}
+		if err := s.asyncInvoker.InvokeAsync(ctx, payload); err != nil {
+			_ = s.updateAuditReportFailed(context.Background(), auditReportID, err.Error())
+			return "", fmt.Errorf("failed to invoke background processing: %w", err)
+		}
+		return auditReportID, nil
+	}
+
+	// Local dev: run synchronously (no API Gateway timeout)
+	if err := s.ProcessPMBrainJob(context.Background(), auditReportID, userID, orgID); err != nil {
+		log.Printf("Warning: ProcessPMBrainJob failed: %v", err)
+	}
+	return auditReportID, nil
+}
+
+// ProcessPMBrainJob runs the full PM Brain LLM analysis and writes the result to the DB.
+// Called by the async Lambda handler. On success sets status=completed; on failure sets status=failed.
+func (s *AuditService) ProcessPMBrainJob(ctx context.Context, auditReportID, userID, orgID string) error {
+	fail := func(msg string) error {
+		_ = s.updateAuditReportFailed(ctx, auditReportID, msg)
+		return fmt.Errorf("%s", msg)
+	}
+
+	// 1. Fetch audit report
+	report, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
+	if err != nil {
+		return fail(err.Error())
+	}
+	if report.GeneratedEstimate == nil || *report.GeneratedEstimate == "" {
+		return fail("industry estimate not generated yet")
+	}
+
+	// 2. Fetch carrier estimate
+	carrierEstimate, err := s.getCarrierEstimate(ctx, report.ClaimID)
+	if err != nil {
+		return fail("carrier estimate not found — please upload and parse it first")
+	}
+	if carrierEstimate.ParsedData == nil || *carrierEstimate.ParsedData == "" {
+		return fail("carrier estimate not parsed yet")
+	}
+
+	// 3. Fetch policy snapshot
 	type policySnapshot struct {
 		address       string
 		policyNumber  *string
@@ -793,7 +850,7 @@ func (s *AuditService) RunPMBrainAnalysis(ctx context.Context, auditReportID, us
 		&snap.lossType,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch policy context: %w", err)
+		return fail(fmt.Sprintf("failed to fetch policy context — ensure the claim has an insurance policy linked: %v", err))
 	}
 
 	// 4. Build prompt and call LLM
@@ -815,36 +872,57 @@ Always respond with valid JSON only, no markdown, no additional text.`,
 
 	response, err := s.llmClient.Chat(ctx, messages, 0.2, 4096)
 	if err != nil {
-		return nil, fmt.Errorf("LLM API call failed: %w", err)
+		return fail(fmt.Sprintf("LLM API call failed: %v", err))
 	}
 	if len(response.Choices) == 0 {
-		return nil, fmt.Errorf("LLM returned no choices")
+		return fail("LLM returned no choices")
 	}
 
 	// 5. Parse and validate JSON response
 	content := extractJSON(response.Choices[0].Message.Content)
 	var analysis PMBrainAnalysis
 	if err := json.Unmarshal([]byte(content), &analysis); err != nil {
-		return nil, fmt.Errorf("the AI returned a malformed analysis — please try again")
+		return fail("the AI returned a malformed analysis — please try again")
 	}
 	validStatuses := map[string]bool{"CLOSE": true, "DISPUTE_OFFER": true, "LEGAL_REVIEW": true, "NEED_DOCS": true}
 	if !validStatuses[analysis.Status] {
-		return nil, fmt.Errorf("the AI returned an invalid status '%s' — please try again", analysis.Status)
+		return fail(fmt.Sprintf("the AI returned an invalid status '%s' — please try again", analysis.Status))
 	}
 
-	// 6. Save to DB
+	// 6. Save result and mark completed
 	analysisJSON, _ := json.Marshal(analysis)
 	_, err = s.db.ExecContext(ctx,
-		`UPDATE audit_reports SET pm_brain_analysis = $1, updated_at = NOW() WHERE id = $2`,
-		string(analysisJSON), auditReportID,
+		`UPDATE audit_reports SET pm_brain_analysis = $1, status = $2, error_message = NULL, updated_at = NOW() WHERE id = $3`,
+		string(analysisJSON), models.AuditStatusCompleted, auditReportID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to save PM Brain analysis: %w", err)
+		return fail(fmt.Sprintf("failed to save PM Brain analysis: %v", err))
 	}
 
 	// 7. Log API usage
 	_ = s.logAPIUsage(ctx, orgID, response)
 
+	return nil
+}
+
+// RunPMBrainAnalysis is kept for backwards compatibility with existing tests.
+// New code should use SubmitPMBrainJob + poll GetJobStatus.
+func (s *AuditService) RunPMBrainAnalysis(ctx context.Context, auditReportID, userID, orgID string) (*PMBrainAnalysis, error) {
+	if _, err := s.SubmitPMBrainJob(ctx, auditReportID, userID, orgID); err != nil {
+		return nil, err
+	}
+	// For sync path (local dev), the job ran inline — fetch the saved result
+	report, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if report.PMBrainAnalysis == nil {
+		return nil, fmt.Errorf("PM Brain analysis not available")
+	}
+	var analysis PMBrainAnalysis
+	if err := json.Unmarshal([]byte(*report.PMBrainAnalysis), &analysis); err != nil {
+		return nil, fmt.Errorf("failed to parse saved analysis: %w", err)
+	}
 	return &analysis, nil
 }
 

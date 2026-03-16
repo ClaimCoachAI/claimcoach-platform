@@ -116,9 +116,29 @@ export const getAuditReport = async (claimId: string) => {
   return response.data.data
 }
 
+// runPMBrainAnalysis submits an async PM Brain job and polls until it completes.
+// Mirrors the generateIndustryEstimate pattern to avoid the 29s API Gateway timeout.
 export const runPMBrainAnalysis = async (claimId: string, auditId: string) => {
-  const response = await api.post(`/api/claims/${claimId}/audit/${auditId}/pm-brain`)
-  return response.data.data
+  // Submit the job — returns { job_id, status: "processing" } immediately
+  await api.post(`/api/claims/${claimId}/audit/${auditId}/pm-brain`)
+
+  // Poll every 3 seconds until completed or failed (max 3 minutes)
+  const maxAttempts = 60
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise(r => setTimeout(r, 3000))
+    const statusResponse = await api.get(`/api/claims/${claimId}/audit/status/${auditId}`)
+    const result = statusResponse.data.data
+
+    if (result.status === 'completed' && result.audit_report?.pm_brain_analysis) {
+      return JSON.parse(result.audit_report.pm_brain_analysis)
+    }
+    if (result.status === 'failed') {
+      throw new Error(result.error || 'PM Brain analysis failed. Please try again.')
+    }
+    // still processing — continue polling
+  }
+
+  throw new Error('Analysis timed out. Please try again.')
 }
 
 export const generateDisputeLetter = async (claimId: string, auditId: string) => {

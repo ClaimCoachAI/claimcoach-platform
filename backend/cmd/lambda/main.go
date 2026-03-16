@@ -60,15 +60,30 @@ type asyncJobEvent struct {
 func handler(ctx context.Context, raw json.RawMessage) (interface{}, error) {
 	// Detect async job invocation by checking for job_type field
 	var job asyncJobEvent
-	if err := json.Unmarshal(raw, &job); err == nil && job.JobType == "process_audit_estimate" {
-		log.Printf("Processing async audit job: audit_report_id=%s claim_id=%s", job.AuditReportID, job.ClaimID)
-		if err := auditService.ProcessEstimateJob(ctx, job.AuditReportID, job.ClaimID, job.UserID, job.OrgID); err != nil {
-			log.Printf("ProcessEstimateJob failed: %v", err)
-			msg := fmt.Sprintf(
-				"🚨 *ClaimCoach — Async Job Failed*\nJob: Estimate generation\nAudit Report ID: %s\nClaim: %s\nError: %s\n_%s UTC_",
-				job.AuditReportID, job.ClaimID, err.Error(), time.Now().UTC().Format("2006-01-02 15:04"),
-			)
-			_ = slackSvc.PostAlertWithFingerprint(msg, "estimate-gen|"+job.AuditReportID)
+	if err := json.Unmarshal(raw, &job); err == nil && job.JobType != "" {
+		switch job.JobType {
+		case "process_audit_estimate":
+			log.Printf("Processing async audit job: audit_report_id=%s claim_id=%s", job.AuditReportID, job.ClaimID)
+			if err := auditService.ProcessEstimateJob(ctx, job.AuditReportID, job.ClaimID, job.UserID, job.OrgID); err != nil {
+				log.Printf("ProcessEstimateJob failed: %v", err)
+				msg := fmt.Sprintf(
+					"🚨 *ClaimCoach — Async Job Failed*\nJob: Estimate generation\nAudit Report ID: %s\nClaim: %s\nError: %s\n_%s UTC_",
+					job.AuditReportID, job.ClaimID, err.Error(), time.Now().UTC().Format("2006-01-02 15:04"),
+				)
+				_ = slackSvc.PostAlertWithFingerprint(msg, "estimate-gen|"+job.AuditReportID)
+			}
+		case "process_pm_brain":
+			log.Printf("Processing async PM Brain job: audit_report_id=%s claim_id=%s", job.AuditReportID, job.ClaimID)
+			if err := auditService.ProcessPMBrainJob(ctx, job.AuditReportID, job.UserID, job.OrgID); err != nil {
+				log.Printf("ProcessPMBrainJob failed: %v", err)
+				msg := fmt.Sprintf(
+					"🚨 *ClaimCoach — Async Job Failed*\nJob: PM Brain analysis\nAudit Report ID: %s\nClaim: %s\nError: %s\n_%s UTC_",
+					job.AuditReportID, job.ClaimID, err.Error(), time.Now().UTC().Format("2006-01-02 15:04"),
+				)
+				_ = slackSvc.PostAlertWithFingerprint(msg, "pm-brain|"+job.AuditReportID)
+			}
+		default:
+			log.Printf("Unknown job type: %s", job.JobType)
 		}
 		return nil, nil
 	}

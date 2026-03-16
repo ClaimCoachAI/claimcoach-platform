@@ -347,7 +347,13 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
       queryClient.invalidateQueries({ queryKey: ['audit-report', claim.id] })
     },
     onError: (err: unknown) => {
-      const msg = (err as any)?.response?.data?.error || 'Analysis failed. Please try again.'
+      const axiosError = err as any
+      const serverMsg = axiosError?.response?.data?.error
+      const status = axiosError?.response?.status
+      let msg = serverMsg || (err as Error)?.message || 'Analysis failed. Please try again.'
+      if (!serverMsg && (status === 503 || status === 504 || !status)) {
+        msg = 'Analysis timed out — the AI took too long to respond. Please try again.'
+      }
       setErrorMsg(msg)
       setPhase('ready')
     },

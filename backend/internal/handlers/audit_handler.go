@@ -16,6 +16,7 @@ type AuditServiceInterface interface {
 	GetJobStatus(ctx context.Context, auditReportID, orgID string) (*models.AuditReport, error)
 	GetAuditReportByClaimID(ctx context.Context, claimID, orgID string) (*models.AuditReport, error)
 	AnalyzeClaimViability(ctx context.Context, claimID, orgID string) (*services.ViabilityAnalysis, error)
+	SubmitPMBrainJob(ctx context.Context, auditReportID, userID, orgID string) (string, error)
 	RunPMBrainAnalysis(ctx context.Context, auditReportID, userID, orgID string) (*services.PMBrainAnalysis, error)
 	GenerateDisputeLetter(ctx context.Context, auditReportID, userID, orgID string) (string, error)
 	GenerateOwnerPitch(ctx context.Context, auditReportID, userID, orgID string) (string, error)
@@ -120,13 +121,14 @@ func (h *AuditHandler) GetAuditReport(c *gin.Context) {
 	})
 }
 
-// RunPMBrain runs the Post-Adjudication Strategy Engine on an audit report.
+// RunPMBrain submits the PM Brain analysis as an async job and returns immediately.
+// The client should poll GET /claims/:id/audit/status/:auditId until status=completed.
 // POST /api/claims/:id/audit/:auditId/pm-brain
 func (h *AuditHandler) RunPMBrain(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
 	auditReportID := c.Param("auditId")
 
-	analysis, err := h.service.RunPMBrainAnalysis(c.Request.Context(), auditReportID, user.ID, user.OrganizationID)
+	_, err := h.service.SubmitPMBrainJob(c.Request.Context(), auditReportID, user.ID, user.OrganizationID)
 	if err != nil {
 		if strings.Contains(err.Error(), "audit report not found") {
 			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Audit report not found"})
@@ -136,11 +138,17 @@ func (h *AuditHandler) RunPMBrain(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to run PM Brain analysis: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to submit PM Brain job: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": analysis})
+	c.JSON(http.StatusAccepted, gin.H{
+		"success": true,
+		"data": gin.H{
+			"job_id": auditReportID,
+			"status": "processing",
+		},
+	})
 }
 
 // GenerateDisputeLetter generates the formal dispute letter on demand.

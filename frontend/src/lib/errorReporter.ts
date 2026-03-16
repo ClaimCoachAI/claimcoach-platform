@@ -25,7 +25,12 @@ export function reportError(report: ErrorReport): void {
     fetch(`${API_BASE}/api/errors`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(report),
+      body: JSON.stringify({
+        source: report.source,
+        url: report.url,
+        error_message: report.errorMessage,
+        claim_id: report.claimId,
+      }),
     }).catch(() => {
       // Intentionally ignored — error reporting must never throw
     })

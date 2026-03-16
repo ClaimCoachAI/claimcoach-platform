@@ -49,6 +49,11 @@ func (m *MockAuditService) AnalyzeClaimViability(ctx context.Context, claimID, o
 	return args.Get(0).(*services.ViabilityAnalysis), args.Error(1)
 }
 
+func (m *MockAuditService) SubmitPMBrainJob(ctx context.Context, auditReportID, userID, orgID string) (string, error) {
+	args := m.Called(ctx, auditReportID, userID, orgID)
+	return args.String(0), args.Error(1)
+}
+
 func (m *MockAuditService) RunPMBrainAnalysis(ctx context.Context, auditReportID, userID, orgID string) (*services.PMBrainAnalysis, error) {
 	args := m.Called(ctx, auditReportID, userID, orgID)
 	if args.Get(0) == nil {
