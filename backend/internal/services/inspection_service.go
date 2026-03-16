@@ -238,7 +238,7 @@ func (s *InspectionService) SaveSetup(token string, input SaveSetupInput) (*mode
 // SaveElevationInput is the request body for saving one elevation side.
 type SaveElevationInput struct {
 	PhotoDocumentID *string  `json:"photo_document_id"`
-	HasDamage       bool     `json:"has_damage"`
+	HasDamage       *bool    `json:"has_damage"`
 	SidingType      *string  `json:"siding_type"`
 	SidingReplaceSF *float64 `json:"siding_replace_sf"`
 	SidingPaintSF   *float64 `json:"siding_paint_sf"`
@@ -354,10 +354,10 @@ func (s *InspectionService) SaveElevation(token string, side string, input SaveE
 				windows_count, doors_count, notes,
 				created_at, updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+			VALUES ($1, $2, $3, $4, COALESCE($5, false), $6, $7, $8, $9, $10, $11, $12, $13, $13)
 			ON CONFLICT (inspection_id, side) DO UPDATE
-			SET photo_document_id = EXCLUDED.photo_document_id,
-			    has_damage        = EXCLUDED.has_damage,
+			SET photo_document_id = COALESCE(EXCLUDED.photo_document_id, inspection_elevation.photo_document_id),
+			    has_damage        = COALESCE($5, inspection_elevation.has_damage),
 			    siding_type       = EXCLUDED.siding_type,
 			    siding_replace_sf = EXCLUDED.siding_replace_sf,
 			    siding_paint_sf   = EXCLUDED.siding_paint_sf,

@@ -82,6 +82,7 @@ export function useWizardV2State(token: string): WizardV2State {
   const [elevations, setElevations] = useState<ElevationData[]>([])
   const [elevationLoading, setElevationLoading] = useState(false)
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const pendingElevationData = useRef<Record<string, Partial<ElevationData>>>({})
   const [roofSections, setRoofSections] = useState<RoofData[]>([])
   const [roofLoading, setRoofLoading] = useState(false)
   const roofDebounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
@@ -419,11 +420,19 @@ export function useWizardV2State(token: string): WizardV2State {
   }, [currentStep, loadElevations, loadRoofSections, loadRooms])
 
   const saveElevation = useCallback(async (side: ElevationSide, data: Partial<ElevationData>) => {
+    // Merge incoming data with any already-pending data for this side so rapid
+    // sequential calls (e.g. photo upload followed immediately by YES/NO toggle)
+    // don't discard earlier fields.
+    pendingElevationData.current[side] = { ...pendingElevationData.current[side], ...data }
+
     // Debounce per-side: cancel any pending save for this side
     if (debounceTimers.current[side]) {
       clearTimeout(debounceTimers.current[side])
     }
     debounceTimers.current[side] = setTimeout(async () => {
+      const dataToSave = pendingElevationData.current[side] ?? data
+      delete pendingElevationData.current[side]
+
       setElevationLoading(true)
       let retries = 0
       const maxRetries = 3
@@ -432,7 +441,7 @@ export function useWizardV2State(token: string): WizardV2State {
         try {
           const { data: res } = await axios.put<{ success: boolean; data: ElevationData }>(
             `${API}/api/magic-links/${token}/v2/inspection/elevations/${side}`,
-            data
+            dataToSave
           )
           setElevations(prev => {
             const idx = prev.findIndex(e => e.side === side)
