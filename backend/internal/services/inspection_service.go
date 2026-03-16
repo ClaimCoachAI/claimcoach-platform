@@ -437,9 +437,9 @@ type UpdateRoofSectionInput struct {
 	ShingleType       *string  `json:"shingle_type"`
 	Layers            *int     `json:"layers"`
 	Squares           *float64 `json:"squares"`
-	HasRidgeDamage    bool     `json:"has_ridge_damage"`
-	HasValleyDamage   bool     `json:"has_valley_damage"`
-	HasFlashingDamage bool     `json:"has_flashing_damage"`
+	HasRidgeDamage    *bool    `json:"has_ridge_damage"`
+	HasValleyDamage   *bool    `json:"has_valley_damage"`
+	HasFlashingDamage *bool    `json:"has_flashing_damage"`
 	DeckingCondition  *string  `json:"decking_condition"`
 	Notes             *string  `json:"notes"`
 	Penetrations      *string  `json:"penetrations"`
@@ -650,21 +650,21 @@ func (s *InspectionService) UpdateRoofSection(token string, roofID string, input
 	err = s.db.QueryRow(`
 		WITH updated AS (
 			UPDATE inspection_roof
-			SET overview_photo_id   = $2,
-			    slope_photo_id      = $3,
-			    shingles_photo_id   = $4,
-			    ridge_photo_id      = $5,
-			    pitch               = $6,
-			    shingle_type        = $7,
-			    layers              = $8,
-			    squares             = $9,
-			    has_ridge_damage    = $10,
-			    has_valley_damage   = $11,
-			    has_flashing_damage = $12,
-			    decking_condition   = $13,
-			    notes               = $14,
-			    penetrations        = $15,
-			    complexity          = $16,
+			SET overview_photo_id   = COALESCE($2,  inspection_roof.overview_photo_id),
+			    slope_photo_id      = COALESCE($3,  inspection_roof.slope_photo_id),
+			    shingles_photo_id   = COALESCE($4,  inspection_roof.shingles_photo_id),
+			    ridge_photo_id      = COALESCE($5,  inspection_roof.ridge_photo_id),
+			    pitch               = COALESCE($6,  inspection_roof.pitch),
+			    shingle_type        = COALESCE($7,  inspection_roof.shingle_type),
+			    layers              = COALESCE($8,  inspection_roof.layers),
+			    squares             = COALESCE($9,  inspection_roof.squares),
+			    has_ridge_damage    = COALESCE($10, inspection_roof.has_ridge_damage),
+			    has_valley_damage   = COALESCE($11, inspection_roof.has_valley_damage),
+			    has_flashing_damage = COALESCE($12, inspection_roof.has_flashing_damage),
+			    decking_condition   = COALESCE($13, inspection_roof.decking_condition),
+			    notes               = COALESCE($14, inspection_roof.notes),
+			    penetrations        = COALESCE($15, inspection_roof.penetrations),
+			    complexity          = COALESCE($16, inspection_roof.complexity),
 			    updated_at          = $17
 			WHERE id = $1
 			  AND inspection_id = (

@@ -1,20 +1,22 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useCallback } from 'react'
 import {
   InspectionRoom,
   UpdateRoomInput,
   DAMAGED_MATERIALS,
   DamagedMaterial,
 } from '../types'
+import { usePhotoUpload } from '../usePhotoUpload'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface RoomsStepProps {
+  token: string
   rooms: InspectionRoom[]
   roomsLoading: boolean
   onCreateRoom: () => Promise<void>
   onUpdateRoom: (roomId: string, input: UpdateRoomInput) => void
   onDeleteRoom: (roomId: string) => Promise<void>
-  onAddRoomPhoto: (roomId: string, input: { caption?: string }) => Promise<void>
+  onAddRoomPhoto: (roomId: string, input: { photo_document_id: string }) => Promise<void>
   onDeleteRoomPhoto: (roomId: string, photoId: string) => Promise<void>
   onContinue: () => void
   onBack: () => void
@@ -81,9 +83,10 @@ interface RoomPhotoGalleryProps {
   photos: InspectionRoom['photos']
   onDelete: (photoId: string) => void
   onAdd: () => void
+  uploading?: boolean
 }
 
-function RoomPhotoGallery({ photos, onDelete, onAdd }: RoomPhotoGalleryProps) {
+function RoomPhotoGallery({ photos, onDelete, onAdd, uploading }: RoomPhotoGalleryProps) {
   const scrollStyle: React.CSSProperties = {
     display: 'flex',
     gap: '8px',
@@ -158,7 +161,15 @@ function RoomPhotoGallery({ photos, onDelete, onAdd }: RoomPhotoGalleryProps) {
             </button>
           </div>
         ))}
-        <button type="button" style={addTileStyle} onClick={onAdd} aria-label="Add damage photo">+</button>
+        <button
+          type="button"
+          style={{ ...addTileStyle, opacity: uploading ? 0.6 : 1 }}
+          onClick={uploading ? undefined : onAdd}
+          disabled={uploading}
+          aria-label="Add damage photo"
+        >
+          {uploading ? '…' : '+'}
+        </button>
       </div>
     </div>
   )
@@ -167,16 +178,18 @@ function RoomPhotoGallery({ photos, onDelete, onAdd }: RoomPhotoGalleryProps) {
 // ── RoomCard ──────────────────────────────────────────────────────────────────
 
 interface RoomCardProps {
+  token: string
   room: InspectionRoom
   isExpanded: boolean
   onToggle: () => void
   onUpdate: (input: UpdateRoomInput) => void
   onDelete: () => void
-  onAddPhoto: () => void
+  onAddPhoto: (docId: string) => Promise<void>
   onDeletePhoto: (photoId: string) => void
 }
 
 function RoomCard({
+  token,
   room,
   isExpanded,
   onToggle,
@@ -185,6 +198,18 @@ function RoomCard({
   onAddPhoto,
   onDeletePhoto,
 }: RoomCardProps) {
+  const { uploadPhoto, uploading: photoUploading } = usePhotoUpload(token)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    const result = await uploadPhoto(file)
+    if (result) {
+      await onAddPhoto(result.documentId)
+    }
+  }, [uploadPhoto, onAddPhoto])
   const buildInput = (overrides: Partial<UpdateRoomInput>): UpdateRoomInput => ({
     name: room.name,
     length_ft: room.length_ft,
@@ -253,6 +278,14 @@ function RoomCard({
 
   return (
     <div style={cardStyle}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/heic"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+        aria-hidden="true"
+      />
       <button
         type="button"
         style={{ ...headerStyle, width: '100%', background: 'none', border: 'none', textAlign: 'left' }}
@@ -322,7 +355,8 @@ function RoomCard({
           <RoomPhotoGallery
             photos={room.photos}
             onDelete={onDeletePhoto}
-            onAdd={onAddPhoto}
+            onAdd={() => fileInputRef.current?.click()}
+            uploading={photoUploading}
           />
 
           {/* Notes */}
@@ -348,6 +382,7 @@ function RoomCard({
 // ── RoomsStep ─────────────────────────────────────────────────────────────────
 
 export default function RoomsStep({
+  token,
   rooms,
   roomsLoading,
   onCreateRoom,
@@ -462,12 +497,13 @@ export default function RoomsStep({
         {rooms.map(room => (
           <RoomCard
             key={room.id}
+            token={token}
             room={room}
             isExpanded={expandedRoomId === room.id}
             onToggle={() => setExpandedRoomId(prev => prev === room.id ? null : room.id)}
             onUpdate={input => onUpdateRoom(room.id, input)}
             onDelete={() => handleDeleteRoom(room.id)}
-            onAddPhoto={() => onAddRoomPhoto(room.id, {})}
+            onAddPhoto={async (docId) => { await onAddRoomPhoto(room.id, { photo_document_id: docId }) }}
             onDeletePhoto={photoId => onDeleteRoomPhoto(room.id, photoId)}
           />
         ))}

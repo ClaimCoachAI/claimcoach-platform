@@ -77,12 +77,13 @@ export default function ContractorWizardV2({ token }: ContractorWizardV2Props) {
 
       {state.currentStep === 4 && (
         <RoomsStep
+          token={state.token}
           rooms={state.rooms}
           roomsLoading={state.roomsLoading}
           onCreateRoom={async () => { await state.createRoom({ name: 'Room' }) }}
           onUpdateRoom={state.updateRoom}
           onDeleteRoom={state.deleteRoom}
-          onAddRoomPhoto={async (roomId, input) => { await state.addRoomPhoto(roomId, input) }}
+          onAddRoomPhoto={async (roomId, input) => { await state.addRoomPhoto(roomId, { photo_document_id: input.photo_document_id }) }}
           onDeleteRoomPhoto={state.deleteRoomPhoto}
           onContinue={() => state.setCurrentStep(state.computeNextStep(4))}
           onBack={() => state.setCurrentStep(state.computePrevStep(4))}
