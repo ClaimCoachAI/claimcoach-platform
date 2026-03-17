@@ -85,8 +85,7 @@ func TestClaimMediaHandler_ClaimNotFound(t *testing.T) {
 	defer cleanup()
 
 	db := h.claimService.GetDB()
-	orgID, userID, token := createAuthenticatedUser(t, db)
-	_ = orgID // user belongs to org; claim we request belongs to nobody
+	_, _, token := createAuthenticatedUser(t, db)
 
 	r := newClaimMediaTestRouter(h)
 	req, _ := http.NewRequest("GET", "/api/claims/nonexistent-id/media", nil)
@@ -95,7 +94,6 @@ func TestClaimMediaHandler_ClaimNotFound(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
-	_ = userID
 }
 
 func TestClaimMediaHandler_NoInspection_ReturnsEmptyArray(t *testing.T) {
