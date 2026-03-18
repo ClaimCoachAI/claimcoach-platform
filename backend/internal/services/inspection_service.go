@@ -1781,11 +1781,11 @@ func (s *InspectionService) GetMediaByClaimID(claimID string) ([]MediaItem, erro
 			currentRoofID = roofID
 			spotN = 0
 		}
-		spotN++
 		pub := s.convertFileURLToPublic(&photoURL)
 		if pub == nil {
 			continue
 		}
+		spotN++
 		label := roofSectionLabel(sType, customName)
 		items = append(items, MediaItem{
 			URL:     *pub,
@@ -1823,7 +1823,12 @@ func (s *InspectionService) GetMediaByClaimID(claimID string) ([]MediaItem, erro
 		if pub == nil {
 			continue
 		}
-		caption := strings.ToUpper(side[:1]) + side[1:] + " Elevation"
+		var caption string
+		if len(side) > 0 {
+			caption = strings.ToUpper(side[:1]) + side[1:] + " Elevation"
+		} else {
+			caption = "Elevation"
+		}
 		items = append(items, MediaItem{URL: *pub, Caption: caption})
 	}
 	if err := elevRows.Err(); err != nil {
