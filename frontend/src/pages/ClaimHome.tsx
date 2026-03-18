@@ -1,18 +1,22 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api from '../lib/api'
+import api, { getClaimMedia } from '../lib/api'
 import Layout from '../components/Layout'
 import ProgressBar from '../components/ProgressBar'
 import ClaimStepper from '../components/ClaimStepper'
+import ClaimPhotoGallery from '../components/ClaimPhotoGallery'
+import ClaimDamageReport from '../components/ClaimDamageReport'
 import { getDamageTypeLabel } from '../lib/stepUtils'
 import type { Claim } from '../types/claim'
+import type { ScopeSheet } from '../types/scopeSheet'
 
 export default function ClaimHome() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'report'>('overview')
 
   const { data: claim, isLoading } = useQuery({
     queryKey: ['claim', id],
@@ -21,6 +25,29 @@ export default function ClaimHome() {
       return response.data.data as Claim
     },
   })
+
+  const { data: scopeSheet = null } = useQuery<ScopeSheet | null>({
+    queryKey: ['scope-sheet', id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${id}/scope-sheet`)
+        return response.data.data as ScopeSheet
+      } catch (error: any) {
+        if (error.response?.status === 404) return null
+        throw error
+      }
+    },
+    enabled: !!id,
+  })
+
+  const { data: mediaData } = useQuery({
+    queryKey: ['claim-media', id],
+    queryFn: () => getClaimMedia(id!),
+    enabled: false,
+    staleTime: Infinity,
+  })
+  const photoCount = mediaData?.length ?? 0
+  const showPhotoBadge = photoCount > 0
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -96,17 +123,58 @@ export default function ClaimHome() {
           </button>
         </div>
 
-        {/* Progress Bar */}
-        <ProgressBar
-          stepsCompleted={claim.steps_completed || []}
-          currentStep={claim.current_step || 1}
-        />
-
-        {/* Claim Journey Stepper */}
-        <div>
-          <h2 className="text-xl font-display font-bold text-navy mb-4">Your Claim Journey</h2>
-          <ClaimStepper claim={claim} />
+        {/* Tab bar */}
+        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '24px' }}>
+          {(['overview', 'photos', 'report'] as const).map((tab) => {
+            const labels: Record<string, string> = { overview: 'Overview', photos: 'Photos', report: 'Damage Report' }
+            const isActive = activeTab === tab
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: '10px 20px', border: 'none', background: 'none', cursor: 'pointer',
+                  fontFamily: 'Manrope, sans-serif', fontSize: '14px',
+                  fontWeight: isActive ? 700 : 500,
+                  color: isActive ? 'var(--color-teal-dark)' : 'var(--color-slate)',
+                  borderBottom: isActive ? '2px solid var(--color-teal)' : '2px solid transparent',
+                  marginBottom: '-1px', display: 'flex', alignItems: 'center', gap: '6px',
+                }}
+              >
+                {labels[tab]}
+                {tab === 'photos' && showPhotoBadge && (
+                  <span style={{ background: 'var(--color-mint-light)', color: 'var(--color-teal-dark)', borderRadius: '20px', padding: '1px 7px', fontSize: '11px', fontWeight: 700 }}>
+                    {photoCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
+
+        {/* Photos tab */}
+        {activeTab === 'photos' && id && (
+          <ClaimPhotoGallery claimId={id} isActive={activeTab === 'photos'} />
+        )}
+
+        {/* Damage Report tab */}
+        {activeTab === 'report' && (
+          <ClaimDamageReport scopeSheet={scopeSheet} />
+        )}
+
+        {/* Overview tab */}
+        {activeTab === 'overview' && (
+          <>
+            <ProgressBar
+              stepsCompleted={claim.steps_completed || []}
+              currentStep={claim.current_step || 1}
+            />
+            <div>
+              <h2 className="text-xl font-display font-bold text-navy mb-4">Your Claim Journey</h2>
+              <ClaimStepper claim={claim} />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}
