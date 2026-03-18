@@ -1565,7 +1565,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         /* Info Box */
         .info-box {
           padding: 16px;
-          background: rgba(241, 245, 249, 0.6);
+          background: rgba(255, 255, 255, 0.6);
           border: 1px solid rgba(148, 163, 184, 0.2);
           border-radius: 10px;
           display: flex;
@@ -1966,7 +1966,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           justify-content: space-between;
           gap: 16px;
           padding: 18px 20px;
-          background: rgba(241, 245, 249, 0.7);
+          background: rgba(255, 255, 255, 0.7);
           border: 1.5px solid rgba(148, 163, 184, 0.25);
           border-radius: 12px;
         }
@@ -2050,7 +2050,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
         /* Adjuster Summary Card (Step 6) */
         .adjuster-summary-card {
-          background: rgba(241, 245, 249, 0.6);
+          background: rgba(255, 255, 255, 0.6);
           border: 1px solid rgba(148, 163, 184, 0.2);
           border-radius: 10px;
           padding: 16px 18px;
@@ -2170,7 +2170,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           align-items: center;
           gap: 16px;
           padding: 18px 20px;
-          background: rgba(241, 245, 249, 0.7);
+          background: rgba(255, 255, 255, 0.7);
           border: 1px solid rgba(148, 163, 184, 0.2);
           border-radius: 12px;
         }

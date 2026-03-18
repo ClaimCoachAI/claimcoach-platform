@@ -59,7 +59,7 @@
 
   body {
     @apply font-body text-navy antialiased;
-    background: linear-gradient(135deg, #FAFBFC 0%, #FFFFFF 50%, #F5F7FA 100%);
+    background: linear-gradient(135deg, #edfaf8 0%, #f5fffe 50%, #e8f8f8 100%);
     min-height: 100vh;
   }
 
