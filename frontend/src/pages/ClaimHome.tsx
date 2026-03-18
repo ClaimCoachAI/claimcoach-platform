@@ -135,7 +135,7 @@ export default function ClaimHome() {
                 onClick={() => setActiveTab(tab)}
                 style={{
                   padding: '10px 20px', border: 'none', background: 'none', cursor: 'pointer',
-                  fontFamily: 'Manrope, sans-serif', fontSize: '14px', borderRadius: 0,
+                  fontFamily: 'Manrope, sans-serif', fontSize: '14px', borderRadius: 0, boxShadow: 'none',
                   fontWeight: isActive ? 700 : 500,
                   color: isActive ? 'var(--color-teal-dark)' : 'var(--color-slate)',
                   borderBottom: isActive ? '2px solid var(--color-teal)' : '2px solid transparent',
