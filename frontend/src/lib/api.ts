@@ -203,4 +203,14 @@ export const updateClaimStep = async (claimId: string, data: {
   return response.data
 }
 
+export interface MediaItem {
+  url: string
+  caption: string
+}
+
+export async function getClaimMedia(claimId: string): Promise<MediaItem[]> {
+  const response = await api.get(`/api/claims/${claimId}/media`)
+  return response.data.data
+}
+
 export default api
