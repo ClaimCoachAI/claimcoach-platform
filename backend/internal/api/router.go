@@ -248,6 +248,10 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		// Inspection V2 routes (protected - requires auth)
 		api.GET("/claims/:id/inspection", inspectionHandler.GetByClaimID)
 
+		// Media routes (protected - requires auth)
+		claimMediaHandler := handlers.NewClaimMediaHandler(claimService, inspectionService)
+		api.GET("/claims/:id/media", claimMediaHandler.GetMedia)
+
 		// Audit routes (protected - requires auth)
 		api.POST("/claims/:id/audit/generate", auditHandler.GenerateIndustryEstimate)
 		api.GET("/claims/:id/audit/status/:jobId", auditHandler.GetJobStatus)
