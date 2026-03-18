@@ -29,15 +29,15 @@ func (h *ClaimMediaHandler) GetMedia(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
 
 	if _, err := h.claimService.GetClaim(claimID, user.OrganizationID); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "not found"})
 		return
 	}
 
 	items, err := h.inspectionService.GetMediaByClaimID(claimID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "internal error"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": items})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
 }
