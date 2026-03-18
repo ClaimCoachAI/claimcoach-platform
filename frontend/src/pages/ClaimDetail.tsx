@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api, { updateClaimEstimate, uploadCarrierEstimate, getCarrierEstimates, generateIndustryEstimate, getAuditReport } from '../lib/api'
+import api, { updateClaimEstimate, uploadCarrierEstimate, getCarrierEstimates, generateIndustryEstimate, getAuditReport, getClaimMedia } from '../lib/api'
 import Layout from '../components/Layout'
 import ClaimStatusBadge from '../components/ClaimStatusBadge'
 import MeetingsSection from '../components/MeetingsSection'
@@ -871,10 +871,15 @@ export default function ClaimDetail() {
     enabled: !!id,
   })
 
-  // Badge: read photo count from query cache — populated after first Photos tab visit.
-  // mediaData is undefined before the Photos tab is clicked (query never ran).
-  // showPhotoBadge is false until then, satisfying the spec's "not shown on initial page load" rule.
-  const mediaData = queryClient.getQueryData<{ url: string; caption: string }[]>(['claim-media', id])
+  // Badge: subscribe to photo count reactively — populated after first Photos tab visit.
+  // enabled: false means this query never fires its own request; ClaimPhotoGallery owns the fetch.
+  // Using useQuery (not getQueryData) ensures re-render when ClaimPhotoGallery's query resolves.
+  const { data: mediaData } = useQuery({
+    queryKey: ['claim-media', id],
+    queryFn: () => getClaimMedia(id!),
+    enabled: false,
+    staleTime: Infinity,
+  })
   const photoCount = mediaData?.length ?? 0
   const showPhotoBadge = photoCount > 0
 
@@ -1435,7 +1440,7 @@ export default function ClaimDetail() {
 
         {/* Photos tab */}
         {activeTab === 'photos' && id && (
-          <ClaimPhotoGallery claimId={id} isActive={true} />
+          <ClaimPhotoGallery claimId={id} isActive={activeTab === 'photos'} />
         )}
 
         {/* Damage Report tab */}
