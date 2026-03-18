@@ -1300,70 +1300,38 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           position: relative;
         }
 
-        /* Step Item - Grid Layout */
+        /* Step Item */
         .step-item {
-          display: grid;
-          grid-template-columns: 80px 1fr;
-          gap: 24px;
-          margin-bottom: 16px;
+          display: block;
+          margin-bottom: 12px;
           position: relative;
-        }
-
-        .step-item:last-child .step-timeline::after {
-          display: none;
-        }
-
-        /* Timeline Column */
-        .step-timeline {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          position: relative;
-        }
-
-        /* Connecting Line */
-        .step-timeline::after {
-          content: '';
-          position: absolute;
-          top: 56px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 2px;
-          height: calc(100% + 16px);
-          background: linear-gradient(180deg, #0d9488 0%, rgba(148, 163, 184, 0.2) 100%);
-        }
-
-        .step-item.upcoming .step-timeline::after {
-          background: rgba(148, 163, 184, 0.2);
         }
 
         /* Step Icon */
         .step-icon {
-          width: 56px;
-          height: 56px;
-          border-radius: 16px;
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 24px;
-          position: relative;
-          z-index: 2;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          font-size: 20px;
           flex-shrink: 0;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .step-icon.completed {
           background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
-          box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25);
+          box-shadow: 0 2px 8px rgba(13, 148, 136, 0.25);
           color: white;
           font-weight: 700;
         }
 
         .step-icon.current {
-          background: white;
-          border: 3px solid #0d9488;
-          box-shadow: 0 0 0 4px rgba(13, 148, 136, 0.1), 0 4px 12px rgba(13, 148, 136, 0.15);
-          font-size: 28px;
+          background: rgba(13, 148, 136, 0.08);
+          border: 2px solid #0d9488;
+          color: #0d9488;
+          font-size: 20px;
         }
 
         .step-icon.upcoming {
@@ -1371,49 +1339,49 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
           color: #64748b;
           font-family: 'Work Sans', sans-serif;
           font-weight: 700;
-          font-size: 20px;
+          font-size: 18px;
           border: 2px solid rgba(148, 163, 184, 0.2);
         }
 
         /* Content Column */
         .step-main {
-          padding-top: 4px;
+          padding-top: 0;
         }
 
         /* Step Header */
         .step-header {
           display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
+          align-items: center;
           gap: 16px;
-          padding: 20px 24px;
-          background: rgba(255, 255, 255, 0.6);
+          padding: 16px 20px;
+          background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(12px);
           border-radius: 16px;
-          border: 1px solid rgba(148, 163, 184, 0.15);
+          border: 1.5px solid rgba(148, 163, 184, 0.15);
           cursor: pointer;
           transition: all 0.3s ease;
         }
 
         .step-item.accessible .step-header:hover {
-          background: rgba(255, 255, 255, 0.9);
-          border-color: #0d9488;
-          box-shadow: 0 4px 20px rgba(13, 148, 136, 0.08);
+          background: rgba(255, 255, 255, 1);
+          box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+          transform: translateY(-1px);
         }
 
         .step-item.current .step-header {
-          background: rgba(255, 255, 255, 0.95);
-          border-color: #0d9488;
-          box-shadow: 0 4px 20px rgba(13, 148, 136, 0.12);
+          background: rgba(255, 255, 255, 1);
+          border: 2px solid #0d9488;
+          box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.08), 0 4px 16px rgba(13, 148, 136, 0.1);
         }
 
         .step-item.completed .step-header {
-          background: rgba(240, 253, 250, 0.6);
-          border-color: rgba(13, 148, 136, 0.2);
+          background: rgba(240, 253, 250, 0.8);
+          border: 1.5px solid rgba(13, 148, 136, 0.2);
         }
 
         .step-item.upcoming .step-header {
-          background: rgba(255, 255, 255, 0.5);
+          background: rgba(255, 255, 255, 0.7);
+          border: 1.5px solid rgba(148, 163, 184, 0.12);
         }
 
         /* Step Info */
@@ -3237,19 +3205,10 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
         /* Responsive */
         @media (max-width: 768px) {
-          .step-item {
-            grid-template-columns: 64px 1fr;
-            gap: 16px;
-          }
-
           .step-icon {
-            width: 48px;
-            height: 48px;
-            font-size: 20px;
-          }
-
-          .step-timeline::after {
-            top: 48px;
+            width: 36px;
+            height: 36px;
+            font-size: 16px;
           }
 
           .step-title {
@@ -3291,27 +3250,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                 isExpanded ? 'expanded' : ''
               }`}
             >
-              {/* Timeline Column */}
-              <div className="step-timeline">
-                <div className={`step-icon ${status}`}>
-                  {status === 'completed' ? (
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M5 13l4 4L19 7"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  ) : status === 'current' ? (
-                    step.icon
-                  ) : (
-                    stepNum
-                  )}
-                </div>
-              </div>
-
               {/* Content Column */}
               <div className="step-main">
                 <div
@@ -3320,6 +3258,23 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                   role="button"
                   tabIndex={0}
                 >
+                  <div className={`step-icon ${status}`}>
+                    {status === 'completed' ? (
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M5 13l4 4L19 7"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : status === 'current' ? (
+                      step.icon
+                    ) : (
+                      stepNum
+                    )}
+                  </div>
                   <div className="step-info">
                     <div className="step-title-row">
                       <h3 className="step-title">{step.title}</h3>

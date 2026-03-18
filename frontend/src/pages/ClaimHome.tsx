@@ -124,7 +124,7 @@ export default function ClaimHome() {
         </div>
 
         {/* Tab bar */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '24px', background: 'white' }}>
           {(['overview', 'photos', 'report'] as const).map((tab) => {
             const labels: Record<string, string> = { overview: 'Overview', photos: 'Photos', report: 'Damage Report' }
             const isActive = activeTab === tab
