@@ -85,7 +85,8 @@ export default function ClaimHome() {
 
   return (
     <Layout>
-      <div className="space-y-6 animate-fade-in">
+      <div style={{ maxWidth: '768px', margin: '0 auto' }}>
+      <div className="space-y-6 animate-fade-in" style={{ background: 'white', borderRadius: '16px', padding: '32px 32px 40px' }}>
         {/* Back Button */}
         <button
           onClick={() => navigate(`/properties/${claim.property_id}`)}
@@ -124,7 +125,7 @@ export default function ClaimHome() {
         </div>
 
         {/* Tab bar */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '24px', background: 'white' }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '24px' }}>
           {(['overview', 'photos', 'report'] as const).map((tab) => {
             const labels: Record<string, string> = { overview: 'Overview', photos: 'Photos', report: 'Damage Report' }
             const isActive = activeTab === tab
@@ -134,7 +135,7 @@ export default function ClaimHome() {
                 onClick={() => setActiveTab(tab)}
                 style={{
                   padding: '10px 20px', border: 'none', background: 'none', cursor: 'pointer',
-                  fontFamily: 'Manrope, sans-serif', fontSize: '14px',
+                  fontFamily: 'Manrope, sans-serif', fontSize: '14px', borderRadius: 0,
                   fontWeight: isActive ? 700 : 500,
                   color: isActive ? 'var(--color-teal-dark)' : 'var(--color-slate)',
                   borderBottom: isActive ? '2px solid var(--color-teal)' : '2px solid transparent',
@@ -175,6 +176,7 @@ export default function ClaimHome() {
             </div>
           </>
         )}
+      </div>
       </div>
 
       {/* Delete Confirmation Modal */}
