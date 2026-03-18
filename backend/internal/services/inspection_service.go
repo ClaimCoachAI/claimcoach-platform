@@ -30,6 +30,32 @@ func NewInspectionService(db *sql.DB, magicLinkSvc *MagicLinkService, storage *s
 	}
 }
 
+// MediaItem represents a single inspection photo with its display caption.
+type MediaItem struct {
+	URL     string `json:"url"`
+	Caption string `json:"caption"`
+}
+
+// roofSectionLabel returns the display label for a roof section.
+// customName takes precedence when set.
+func roofSectionLabel(sectionType string, customName sql.NullString) string {
+	if customName.Valid && customName.String != "" {
+		return customName.String
+	}
+	labels := map[string]string{
+		"main_house": "Main House",
+		"garage":     "Garage",
+		"patio":      "Patio",
+		"carport":    "Carport",
+		"flat_roof":  "Flat Roof",
+		"other":      "Other",
+	}
+	if l, ok := labels[sectionType]; ok {
+		return l
+	}
+	return sectionType
+}
+
 // SaveSetupInput is the request body for the wizard setup step.
 type SaveSetupInput struct {
 	PropertyType  *string                        `json:"property_type"`
@@ -1656,4 +1682,189 @@ func (s *InspectionService) GetSubmittedByClaimID(claimID string) (*models.Inspe
 	}
 
 	return &insp, nil
+}
+
+// GetMediaByClaimID returns all inspection photos for the most recent submitted
+// inspection linked to claimID, ordered: roof slot photos → damage spots →
+// elevations → room photos.
+// Returns an empty (non-nil) slice if no submitted inspection exists or no photos found.
+func (s *InspectionService) GetMediaByClaimID(claimID string) ([]MediaItem, error) {
+	// 1. Find the most-recent submitted inspection for this claim.
+	var inspectionID string
+	err := s.db.QueryRow(`
+		SELECT iv2.id
+		FROM inspection_v2 iv2
+		JOIN magic_links ml ON ml.id = iv2.magic_link_id
+		WHERE ml.claim_id = $1 AND iv2.submitted_at IS NOT NULL
+		ORDER BY iv2.submitted_at DESC
+		LIMIT 1
+	`, claimID).Scan(&inspectionID)
+	if err == sql.ErrNoRows {
+		return []MediaItem{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("GetMediaByClaimID: lookup inspection: %w", err)
+	}
+
+	var items []MediaItem
+	slotLabels := []string{"Overview", "Slope", "Shingles", "Ridge"}
+
+	// 2a. Roof section slot photos (4 per section via documents JOIN).
+	roofRows, err := s.db.Query(`
+		SELECT
+			r.section_type, r.section_custom_name, r.sort_order,
+			d_ov.file_url, d_sl.file_url, d_sh.file_url, d_ri.file_url
+		FROM inspection_roof r
+		LEFT JOIN documents d_ov ON d_ov.id = r.overview_photo_id
+		LEFT JOIN documents d_sl ON d_sl.id = r.slope_photo_id
+		LEFT JOIN documents d_sh ON d_sh.id = r.shingles_photo_id
+		LEFT JOIN documents d_ri ON d_ri.id = r.ridge_photo_id
+		WHERE r.inspection_id = $1
+		ORDER BY r.sort_order, r.created_at
+	`, inspectionID)
+	if err != nil {
+		return nil, fmt.Errorf("GetMediaByClaimID: roof query: %w", err)
+	}
+	defer roofRows.Close()
+
+	for roofRows.Next() {
+		var sType string
+		var customName sql.NullString
+		var sortOrder int
+		var urls [4]sql.NullString
+		if err := roofRows.Scan(&sType, &customName, &sortOrder, &urls[0], &urls[1], &urls[2], &urls[3]); err != nil {
+			return nil, fmt.Errorf("GetMediaByClaimID: roof scan: %w", err)
+		}
+		label := roofSectionLabel(sType, customName)
+		for i, u := range urls {
+			if !u.Valid {
+				continue
+			}
+			pub := s.convertFileURLToPublic(&u.String)
+			if pub == nil {
+				continue
+			}
+			items = append(items, MediaItem{
+				URL:     *pub,
+				Caption: label + " – " + slotLabels[i],
+			})
+		}
+	}
+	if err := roofRows.Err(); err != nil {
+		return nil, fmt.Errorf("GetMediaByClaimID: roof rows: %w", err)
+	}
+
+	// 2b. Damage spots (photo_url stored directly — no documents JOIN).
+	spotRows, err := s.db.Query(`
+		SELECT ds.roof_id, ds.photo_url, ds.sort_order, r.section_type, r.section_custom_name
+		FROM inspection_roof_damage_spot ds
+		JOIN inspection_roof r ON r.id = ds.roof_id
+		WHERE r.inspection_id = $1 AND ds.photo_url IS NOT NULL
+		ORDER BY r.sort_order, ds.sort_order
+	`, inspectionID)
+	if err != nil {
+		return nil, fmt.Errorf("GetMediaByClaimID: spots query: %w", err)
+	}
+	defer spotRows.Close()
+
+	var currentRoofID string
+	spotN := 0
+	for spotRows.Next() {
+		var roofID, photoURL string
+		var spotSortOrder int
+		var sType string
+		var customName sql.NullString
+		if err := spotRows.Scan(&roofID, &photoURL, &spotSortOrder, &sType, &customName); err != nil {
+			return nil, fmt.Errorf("GetMediaByClaimID: spot scan: %w", err)
+		}
+		if roofID != currentRoofID {
+			currentRoofID = roofID
+			spotN = 0
+		}
+		spotN++
+		pub := s.convertFileURLToPublic(&photoURL)
+		if pub == nil {
+			continue
+		}
+		label := roofSectionLabel(sType, customName)
+		items = append(items, MediaItem{
+			URL:     *pub,
+			Caption: fmt.Sprintf("%s – Damage Spot %d", label, spotN),
+		})
+	}
+	if err := spotRows.Err(); err != nil {
+		return nil, fmt.Errorf("GetMediaByClaimID: spot rows: %w", err)
+	}
+
+	// 2c. Elevations (URL via documents JOIN).
+	elevRows, err := s.db.Query(`
+		SELECT e.side, d.file_url
+		FROM inspection_elevation e
+		LEFT JOIN documents d ON d.id = e.photo_document_id
+		WHERE e.inspection_id = $1 AND d.file_url IS NOT NULL
+		ORDER BY CASE e.side
+			WHEN 'front' THEN 1
+			WHEN 'right' THEN 2
+			WHEN 'back'  THEN 3
+			WHEN 'left'  THEN 4
+		END
+	`, inspectionID)
+	if err != nil {
+		return nil, fmt.Errorf("GetMediaByClaimID: elevation query: %w", err)
+	}
+	defer elevRows.Close()
+
+	for elevRows.Next() {
+		var side, fileURL string
+		if err := elevRows.Scan(&side, &fileURL); err != nil {
+			return nil, fmt.Errorf("GetMediaByClaimID: elevation scan: %w", err)
+		}
+		pub := s.convertFileURLToPublic(&fileURL)
+		if pub == nil {
+			continue
+		}
+		caption := strings.ToUpper(side[:1]) + side[1:] + " Elevation"
+		items = append(items, MediaItem{URL: *pub, Caption: caption})
+	}
+	if err := elevRows.Err(); err != nil {
+		return nil, fmt.Errorf("GetMediaByClaimID: elevation rows: %w", err)
+	}
+
+	// 2d. Room photos (photo_url stored directly — no documents JOIN).
+	roomRows, err := s.db.Query(`
+		SELECT rp.photo_url, rp.caption, r.name
+		FROM inspection_room_photo rp
+		JOIN inspection_room r ON r.id = rp.room_id
+		WHERE r.inspection_id = $1 AND rp.photo_url IS NOT NULL
+		ORDER BY r.sort_order, r.created_at, rp.sort_order
+	`, inspectionID)
+	if err != nil {
+		return nil, fmt.Errorf("GetMediaByClaimID: room query: %w", err)
+	}
+	defer roomRows.Close()
+
+	for roomRows.Next() {
+		var photoURL, roomName string
+		var caption sql.NullString
+		if err := roomRows.Scan(&photoURL, &caption, &roomName); err != nil {
+			return nil, fmt.Errorf("GetMediaByClaimID: room scan: %w", err)
+		}
+		pub := s.convertFileURLToPublic(&photoURL)
+		if pub == nil {
+			continue
+		}
+		cap := roomName
+		if caption.Valid && caption.String != "" {
+			cap = caption.String
+		}
+		items = append(items, MediaItem{URL: *pub, Caption: cap})
+	}
+	if err := roomRows.Err(); err != nil {
+		return nil, fmt.Errorf("GetMediaByClaimID: room rows: %w", err)
+	}
+
+	if items == nil {
+		return []MediaItem{}, nil
+	}
+	return items, nil
 }
