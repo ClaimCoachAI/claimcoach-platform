@@ -333,3 +333,8 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-slate);
 }
+
+/* Photo gallery thumbnail hover overlay */
+.photo-grid-btn:hover .photo-hover-overlay {
+  opacity: 1 !important;
+}
