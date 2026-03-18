@@ -9,6 +9,8 @@ import PaymentsSection from '../components/PaymentsSection'
 import RCVDemandSection from '../components/RCVDemandSection'
 import MagicLinkHistory from '../components/MagicLinkHistory'
 import ScopeSheetSummary from '../components/ScopeSheetSummary'
+import ClaimPhotoGallery from '../components/ClaimPhotoGallery'
+import ClaimDamageReport from '../components/ClaimDamageReport'
 import { Claim, Policy } from '../types/claim'
 import type { ScopeSheet } from '../types/scopeSheet'
 
@@ -850,6 +852,31 @@ export default function ClaimDetail() {
   const [selectedStatus, setSelectedStatus] = useState<string>('')
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string>('')
+  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'report'>('overview')
+
+  // Lift scope-sheet query so result can be passed as a prop to ClaimDamageReport.
+  // React Query deduplicates — ContractorSubmissionWrapper / AuditSectionWrapper
+  // continue using their own copies with zero extra network requests.
+  const { data: scopeSheet = null } = useQuery<ScopeSheet | null>({
+    queryKey: ['scope-sheet', id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${id}/scope-sheet`)
+        return response.data.data as ScopeSheet
+      } catch (error: any) {
+        if (error.response?.status === 404) return null
+        throw error
+      }
+    },
+    enabled: !!id,
+  })
+
+  // Badge: read photo count from query cache — populated after first Photos tab visit.
+  // mediaData is undefined before the Photos tab is clicked (query never ran).
+  // showPhotoBadge is false until then, satisfying the spec's "not shown on initial page load" rule.
+  const mediaData = queryClient.getQueryData<{ url: string; caption: string }[]>(['claim-media', id])
+  const photoCount = mediaData?.length ?? 0
+  const showPhotoBadge = photoCount > 0
 
   // Fetch claim details
   const {
@@ -1355,7 +1382,69 @@ export default function ClaimDetail() {
           </div>
         </div>
 
+        {/* Tab bar */}
+        <div style={{
+          display: 'flex',
+          borderBottom: '1px solid #e5e7eb',
+          marginBottom: '24px',
+        }}>
+          {(['overview', 'photos', 'report'] as const).map((tab) => {
+            const labels: Record<string, string> = {
+              overview: 'Overview',
+              photos: 'Photos',
+              report: 'Damage Report',
+            }
+            const isActive = activeTab === tab
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: '10px 20px',
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  fontFamily: 'Manrope, sans-serif',
+                  fontSize: '14px',
+                  fontWeight: isActive ? 700 : 500,
+                  color: isActive ? 'var(--color-teal-dark)' : 'var(--color-slate)',
+                  borderBottom: isActive ? '2px solid var(--color-teal)' : '2px solid transparent',
+                  marginBottom: '-1px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {labels[tab]}
+                {tab === 'photos' && showPhotoBadge && (
+                  <span style={{
+                    background: 'var(--color-mint-light)',
+                    color: 'var(--color-teal-dark)',
+                    borderRadius: '20px',
+                    padding: '1px 7px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                  }}>
+                    {photoCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Photos tab */}
+        {activeTab === 'photos' && id && (
+          <ClaimPhotoGallery claimId={id} isActive={true} />
+        )}
+
+        {/* Damage Report tab */}
+        {activeTab === 'report' && (
+          <ClaimDamageReport scopeSheet={scopeSheet} />
+        )}
+
         {/* Two-column layout */}
+        {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Main Content */}
           <div className="lg:col-span-2 space-y-6">
@@ -1757,6 +1846,7 @@ export default function ClaimDetail() {
             </div>
           </div>
         </div>
+        )}
       </div>
     </Layout>
   )
