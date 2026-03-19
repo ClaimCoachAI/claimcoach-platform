@@ -173,7 +173,16 @@ export function useWizardV2State(token: string): WizardV2State {
       const { data } = await axios.get<{ success: boolean; data: RoofData[] }>(
         `${API}/api/magic-links/${token}/v2/inspection/roof-sections`
       )
-      setRoofSections(data.data ?? [])
+      const fetched: RoofData[] = data.data ?? []
+      // Merge any pending optimistic updates (not yet flushed to DB) so that
+      // navigating to step 5 before the 800ms debounce fires doesn't wipe photos.
+      setRoofSections(
+        fetched.map(section =>
+          section.id && pendingRoofUpdates.current.has(section.id)
+            ? { ...section, ...pendingRoofUpdates.current.get(section.id) }
+            : section
+        )
+      )
     } catch {
       // non-fatal
     } finally {
