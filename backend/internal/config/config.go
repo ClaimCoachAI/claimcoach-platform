@@ -22,9 +22,10 @@ type Config struct {
 	PerplexityTimeout    int // seconds
 	PerplexityMaxRetries int
 
-	// Anthropic Claude API (for PDF parsing)
-	AnthropicAPIKey string
-	AnthropicModel  string
+	// Anthropic Claude API
+	AnthropicAPIKey  string
+	AnthropicModel   string    // used for audit generation (Sonnet)
+	AnthropicPDFModel string   // used for PDF parsing (Haiku)
 
 	// OpenAI API (for live pricing web search)
 	OpenAIAPIKey  string
@@ -60,6 +61,7 @@ func Load() (*Config, error) {
 		PerplexityMaxRetries: getEnvIntOrDefault("PERPLEXITY_MAX_RETRIES", 3),
 		AnthropicAPIKey:      os.Getenv("ANTHROPIC_API_KEY"),
 		AnthropicModel:       getEnvOrDefault("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+		AnthropicPDFModel:    getEnvOrDefault("ANTHROPIC_PDF_MODEL", "claude-haiku-4-5-20251001"),
 		OpenAIAPIKey:         os.Getenv("OPENAI_API_KEY"),
 		OpenAIModel:          getEnvOrDefault("OPENAI_MODEL", "gpt-4o-mini-search-preview"),
 		OpenAITimeout:        getEnvIntOrDefault("OPENAI_TIMEOUT", 30),

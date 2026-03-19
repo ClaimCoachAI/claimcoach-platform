@@ -228,9 +228,9 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		api.GET("/documents/:id", documentHandler.GetDocument)
 
 		// Carrier Estimate routes
-		claudeClient := llm.NewClaudeClient(cfg.AnthropicAPIKey, cfg.AnthropicModel, 120)
+		pdfClaudeClient := llm.NewClaudeClient(cfg.AnthropicAPIKey, cfg.AnthropicPDFModel, 120)
 		carrierEstimateService := services.NewCarrierEstimateService(db, storageClient, claimService)
-		pdfParserService := services.NewPDFParserService(db, storageClient, claudeClient, claimService)
+		pdfParserService := services.NewPDFParserService(db, storageClient, pdfClaudeClient, claimService)
 		carrierEstimateHandler := handlers.NewCarrierEstimateHandler(carrierEstimateService, pdfParserService, slackSvc)
 
 		api.POST("/claims/:id/carrier-estimate/upload-url", carrierEstimateHandler.RequestUploadURL)
