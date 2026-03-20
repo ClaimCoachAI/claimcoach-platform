@@ -213,4 +213,39 @@ export async function getClaimMedia(claimId: string): Promise<MediaItem[]> {
   return response.data.data
 }
 
+// Contractor estimate API (Step 2 — PDF upload flow)
+
+export const uploadContractorEstimate = async (claimId: string, file: File) => {
+  // Step 1: Request presigned upload URL
+  const uploadUrlResponse = await api.post(
+    `/api/claims/${claimId}/contractor-estimate/upload-url`,
+    { file_name: file.name, file_size: file.size, mime_type: 'application/pdf' }
+  )
+  const { upload_url, estimate_id } = uploadUrlResponse.data.data
+
+  // Step 2: PUT file directly to Supabase storage
+  await fetch(upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/pdf' },
+    body: file,
+  })
+
+  // Step 3: Confirm upload
+  await api.post(`/api/claims/${claimId}/contractor-estimate/${estimate_id}/confirm`)
+
+  return { estimate_id }
+}
+
+export const parseContractorEstimate = async (claimId: string, estimateId: string) => {
+  const response = await api.post(
+    `/api/claims/${claimId}/contractor-estimate/${estimateId}/parse`
+  )
+  return response.data.data // ContractorEstimateParsedData
+}
+
+export const getContractorEstimate = async (claimId: string) => {
+  const response = await api.get(`/api/claims/${claimId}/contractor-estimate`)
+  return response.data.data // ContractorEstimate | null
+}
+
 export default api
