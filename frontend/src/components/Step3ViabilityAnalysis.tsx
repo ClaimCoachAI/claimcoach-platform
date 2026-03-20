@@ -3,15 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api, { generateIndustryEstimate, analyzeClaimViability, getAuditReport } from '../lib/api'
 import type { Claim, ViabilityAnalysis } from '../types/claim'
 
-interface ScopeSheet {
-  id: string
-  submitted_at: string | null
-}
-
 interface Step3ViabilityAnalysisProps {
   claim: Claim
-  scopeSheet: ScopeSheet | null
-  hasInspectionV2?: boolean
+  contractorEstimateParsed: boolean
 }
 
 type Phase = 'idle' | 'reading' | 'estimating' | 'analyzing' | 'complete' | 'error'
@@ -33,7 +27,7 @@ interface GeneratedEstimate {
 }
 
 const PHASES = [
-  { id: 'reading'    as Phase, label: 'Reading scope sheet',          sub: 'Parsing damage areas & dimensions'        },
+  { id: 'reading'    as Phase, label: 'Reading damage estimate',          sub: 'Parsing damage areas & dimensions'        },
   { id: 'estimating' as Phase, label: 'Building ClaimCoach estimate',  sub: 'Industry-standard pricing at 2026 rates'  },
   { id: 'analyzing'  as Phase, label: 'Running viability analysis',    sub: 'Evaluating policy & financial strength'   },
 ]
@@ -151,7 +145,7 @@ function VerdictCard({ analysis, deductibleValue, onContinue, onReanalyze, isPen
                 {verdictLabel}
               </div>
               <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>
-                Based on your scope sheet and policy
+                Based on your damage estimate and policy
               </div>
             </div>
           </div>
@@ -489,7 +483,7 @@ function ProgressTimeline({ currentPhase }: { currentPhase: Phase }) {
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
-export default function Step3ViabilityAnalysis({ claim, scopeSheet, hasInspectionV2 }: Step3ViabilityAnalysisProps) {
+export default function Step3ViabilityAnalysis({ claim, contractorEstimateParsed }: Step3ViabilityAnalysisProps) {
   const queryClient = useQueryClient()
   const [phase, setPhase]       = useState<Phase>('idle')
   const [analysis, setAnalysis] = useState<ViabilityAnalysis | null>(null)
@@ -497,7 +491,7 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet, hasInspectio
   const [estimateOpen, setEstimateOpen] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  const scopeSubmitted  = !!scopeSheet?.submitted_at || !!hasInspectionV2
+  const scopeSubmitted  = contractorEstimateParsed
   const deductibleValue = claim.policy?.deductible_value ?? 0
 
   const runAnalysis = useCallback(async () => {
@@ -597,10 +591,10 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet, hasInspectio
           </div>
         </div>
         <div style={{ padding: '24px 20px', border: '1.5px dashed rgba(148,163,184,0.3)', borderRadius: '12px', textAlign: 'center' }}>
-          <div style={{ fontSize: '28px', marginBottom: '10px', opacity: 0.5 }}>📋</div>
-          <div style={{ fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Waiting for Assessment Scope Sheet</div>
+          <div style={{ fontSize: '28px', marginBottom: '10px', opacity: 0.5 }}>📄</div>
+          <div style={{ fontSize: '14px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>Damage Estimate Not Yet Uploaded</div>
           <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.6', maxWidth: '280px', margin: '0 auto' }}>
-            The AI analysis requires the assessor's scope sheet. Send the assessment link in Step 2 and return here once submitted.
+            Upload your contractor's damage estimate in Step 2 to generate your ClaimCoach estimate.
           </div>
         </div>
       </div>
@@ -730,7 +724,7 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet, hasInspectio
           fontSize: '10px', fontWeight: '800', color: '#fff', flexShrink: 0,
         }}>✓</div>
         <span style={{ fontSize: '12px', fontWeight: '500', color: '#0d9488' }}>
-          Assessment scope sheet received
+          Damage estimate uploaded
         </span>
       </div>
 
@@ -740,7 +734,7 @@ export default function Step3ViabilityAnalysis({ claim, scopeSheet, hasInspectio
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {[
-            'Build a full ClaimCoach estimate from the scope sheet',
+            'Build a full ClaimCoach estimate from your damage estimate',
             'Check if your policy covers the damage',
             'Calculate how much you could potentially recover',
           ].map((item, i) => (

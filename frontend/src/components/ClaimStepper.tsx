@@ -3,18 +3,10 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 import { getStepDefinition } from '../lib/stepUtils'
 import Toast from './Toast'
-import ContractorStatusBadge from './ContractorStatusBadge'
-import ScopeSheetSummary from './ScopeSheetSummary'
+import Step2PDFUpload from './Step2PDFUpload'
 import Step3ViabilityAnalysis from './Step3ViabilityAnalysis'
 import Step6AdjudicationEngine from './Step6AdjudicationEngine'
 import type { Claim, Payment } from '../types/claim'
-
-interface ContractorPhoto {
-  id: string
-  file_name: string
-  document_type: string
-  uploaded_at: string
-}
 
 interface ClaimStepperProps {
   claim: Claim
@@ -23,77 +15,6 @@ interface ClaimStepperProps {
 export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const [activeStep, setActiveStep] = useState(claim.current_step || 1)
   const queryClient = useQueryClient()
-
-  const [photosOpen, setPhotosOpen] = useState(false)
-
-  // Scope sheet query
-  const {
-    data: scopeSheet,
-    isLoading: loadingScopeSheet,
-  } = useQuery({
-    queryKey: ['scope-sheet', claim.id],
-    queryFn: async () => {
-      try {
-        const response = await api.get(`/api/claims/${claim.id}/scope-sheet`)
-        return response.data.data
-      } catch (error: any) {
-        if (error.response?.status === 404) {
-          return null
-        }
-        // Return null for other errors instead of throwing
-        console.error('Error fetching scope sheet:', error)
-        return null
-      }
-    },
-    enabled: !!claim.id,
-    retry: false,
-  })
-
-  // V2 inspection query (for claims using the new contractor wizard)
-  const { data: inspectionV2, isLoading: loadingInspectionV2 } = useQuery({
-    queryKey: ['inspection-v2', claim.id],
-    queryFn: async () => {
-      try {
-        const response = await api.get(`/api/claims/${claim.id}/inspection`)
-        return response.data.data
-      } catch (error: any) {
-        if (error.response?.status === 404) return null
-        return null
-      }
-    },
-    enabled: !!claim.id,
-    retry: false,
-  })
-
-  // Contractor photos query
-  const { data: contractorPhotos = [] } = useQuery<ContractorPhoto[]>({
-    queryKey: ['claim-documents', claim.id],
-    queryFn: async () => {
-      const response = await api.get(`/api/claims/${claim.id}/documents`)
-      const docs = response.data.data as ContractorPhoto[]
-      return docs.filter(d => d.document_type === 'contractor_photo')
-    },
-    enabled: !!claim.id,
-  })
-
-  useEffect(() => {
-    if (contractorPhotos.length > 0 && contractorPhotos.length <= 2) {
-      setPhotosOpen(true)
-    }
-  }, [contractorPhotos.length])
-
-  const handlePhotoDownload = async (documentId: string) => {
-    try {
-      const response = await api.get(`/api/documents/${documentId}`)
-      const downloadUrl = response.data.data.download_url
-      const isValid = downloadUrl.startsWith('https://') ||
-                      downloadUrl.startsWith(import.meta.env.VITE_API_URL || '')
-      if (!isValid) throw new Error('Invalid download URL received')
-      window.open(downloadUrl, '_blank', 'noopener,noreferrer')
-    } catch (err) {
-      console.error('Download failed:', err)
-    }
-  }
 
   // Payments query
   const {
@@ -114,18 +35,26 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     retry: false,
   })
 
+  // Contractor estimate query (Step 2 — PDF upload flow)
+  const { data: contractorEstimate } = useQuery({
+    queryKey: ['contractor-estimate', claim.id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${claim.id}/contractor-estimate`)
+        return response.data.data // ContractorEstimate | null
+      } catch {
+        return null
+      }
+    },
+    enabled: !!claim.id,
+    retry: false,
+  })
+
   // Toast state
   const [toast, setToast] = useState<{
     message: string
     type: 'success' | 'error'
   } | null>(null)
-
-  // Form states - pre-populate with existing claim data
-  const [contractorData, setContractorData] = useState({
-    contractor_name: claim.contractor_name || '',
-    contractor_email: claim.contractor_email || '',
-  })
-  const [isEditingContractor, setIsEditingContractor] = useState(!claim.contractor_name)
 
   const [step4Description, setStep4Description] = useState<string>(claim.description || '')
   const [isEditingDescription, setIsEditingDescription] = useState<boolean>(false)
@@ -160,40 +89,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const [isEditingAdjuster, setIsEditingAdjuster] = useState(!claim.insurance_claim_number)
 
   // Mutations
-  const step2Mutation = useMutation({
-    mutationFn: async () => {
-      // Generate magic link and send email to contractor
-      const magicLinkResponse = await api.post(`/api/claims/${claim.id}/magic-link`, {
-        contractor_name: contractorData.contractor_name,
-        contractor_email: contractorData.contractor_email,
-      })
-
-      // Update claim with contractor info — step advances to 3 only after assessor submits
-      await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 2,
-        steps_completed: [1],
-        contractor_name: contractorData.contractor_name,
-        contractor_email: contractorData.contractor_email,
-      })
-
-      return magicLinkResponse.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['claim', claim.id] })
-      setToast({
-        message: `✓ Email sent successfully to ${contractorData.contractor_email}`,
-        type: 'success',
-      })
-      setIsEditingContractor(false)
-    },
-    onError: () => {
-      setToast({
-        message: 'Failed to send email. Please try again.',
-        type: 'error',
-      })
-    },
-  })
-
   const step4Mutation = useMutation({
     mutationFn: async (data: { description: string }) => {
       const alreadyCompleted = (claim.steps_completed || []).includes(4)
@@ -318,11 +213,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     },
   })
 
-  const handleStep2Submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    step2Mutation.mutate()
-  }
-
   const handleStep4Submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (step4Description.trim().length < 20) {
@@ -377,10 +267,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
     if (stepNum === claim.current_step) return 'current'
     return 'upcoming'
   }
-
-  // Calculate status flags
-  const hasMagicLink = claim.contractor_email !== null
-  const hasScopeSheet = scopeSheet !== null || inspectionV2 !== null
 
   const renderStepContent = (stepNum: number) => {
     if (activeStep !== stepNum) return null
@@ -445,196 +331,24 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
 
       case 2:
         return (
-          <form onSubmit={handleStep2Submit} className="step-content step-form">
-            {!isEditingContractor ? (
-              <div className="contractor-view-card">
-                <div className="contractor-view-fields">
-                  <div className="contractor-view-field">
-                    <span className="contractor-view-label">Assessor Name</span>
-                    <span className="contractor-view-value">{contractorData.contractor_name}</span>
-                  </div>
-                  <div className="contractor-view-field">
-                    <span className="contractor-view-label">Assessor Email</span>
-                    <span className="contractor-view-value">{contractorData.contractor_email}</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="edit-contractor-btn"
-                  onClick={() => setIsEditingContractor(true)}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                  Edit
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="form-field">
-                  <label>
-                    Assessor Name <span className="required">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={contractorData.contractor_name}
-                    onChange={(e) =>
-                      setContractorData({ ...contractorData, contractor_name: e.target.value })
-                    }
-                    placeholder="e.g. ABC Roofing, John Smith"
-                  />
-                </div>
-                <div className="form-field">
-                  <label>
-                    Assessor Email <span className="required">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={contractorData.contractor_email}
-                    onChange={(e) =>
-                      setContractorData({ ...contractorData, contractor_email: e.target.value })
-                    }
-                    placeholder="assessor@example.com"
-                  />
-                </div>
-                {!!claim.contractor_name && (
-                  <button
-                    type="button"
-                    className="cancel-edit-btn"
-                    onClick={() => {
-                      setIsEditingContractor(false)
-                      setContractorData({
-                        contractor_name: claim.contractor_name || '',
-                        contractor_email: claim.contractor_email || '',
-                      })
-                    }}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* Contractor Status */}
-            {(loadingScopeSheet || loadingInspectionV2) ? (
-              <div className="mt-3 animate-pulse">
-                <div className="h-8 w-48 bg-slate-200 rounded-full"></div>
-              </div>
-            ) : (
-              <>
-                <div className="mt-3">
-                  <ContractorStatusBadge
-                    hasMagicLink={hasMagicLink}
-                    hasScopeSheet={hasScopeSheet}
-                  />
-                </div>
-
-                {hasScopeSheet && !scopeSheet && inspectionV2 && (
-                  <div className="mt-4 p-4 rounded-xl border border-emerald-200 bg-emerald-50">
-                    <p className="text-sm font-semibold text-emerald-800 mb-1">
-                      Inspection submitted via wizard
-                    </p>
-                    {inspectionV2.property_type && (
-                      <p className="text-sm text-emerald-700">
-                        Property type: <span className="capitalize">{inspectionV2.property_type}</span>
-                        {inspectionV2.stories ? ` · ${inspectionV2.stories} stor${inspectionV2.stories === 1 ? 'y' : 'ies'}` : ''}
-                      </p>
-                    )}
-                    {inspectionV2.submitted_at && (
-                      <p className="text-sm text-emerald-600 mt-0.5">
-                        Submitted {new Date(inspectionV2.submitted_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {hasScopeSheet && scopeSheet && (
-                  <>
-                    <ScopeSheetSummary scopeSheet={scopeSheet} />
-                    <div className="mt-4 rounded-lg border border-gray-200 overflow-hidden">
-                      {/* Accordion header */}
-                      <button
-                        type="button"
-                        aria-expanded={photosOpen}
-                        aria-controls="photos-accordion-body"
-                        onClick={() => setPhotosOpen(prev => !prev)}
-                        className="photo-accordion-header"
-                      >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#475569' }}>
-                          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: '#94a3b8', flexShrink: 0 }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          Photos ({contractorPhotos.length})
-                        </span>
-                        <svg
-                          width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                          style={{ color: '#94a3b8', flexShrink: 0, transition: 'transform 0.2s ease', transform: photosOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
-
-                      {/* Accordion body */}
-                      <div
-                        id="photos-accordion-body"
-                        className={`transition-all duration-200 ease-in-out overflow-y-auto ${
-                          photosOpen ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'
-                        }`}
-                      >
-                        {contractorPhotos.length > 0 ? (
-                          <ul className="divide-y divide-gray-100 border-t border-gray-200">
-                            {contractorPhotos.map(photo => (
-                              <li key={photo.id} className="flex items-center justify-between px-4 py-2 text-sm bg-white">
-                                <span className="text-gray-700 truncate max-w-xs">{photo.file_name}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handlePhotoDownload(photo.id)}
-                                  title={`Download ${photo.file_name}`}
-                                  className="photo-download-btn"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                  </svg>
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="px-4 py-3 text-sm text-gray-400 border-t border-gray-100">No photos uploaded.</p>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-
-            {step2Mutation.isError && (
-              <div className="error">
-                {(step2Mutation.error as any)?.response?.data?.error || 'Failed to send link'}
-              </div>
-            )}
-            <button type="submit" disabled={step2Mutation.isPending}>
-              {step2Mutation.isPending
-                ? 'Sending...'
-                : !!claim.contractor_name && !isEditingContractor
-                  ? 'Resend Assessment Link'
-                  : 'Send Assessment Link'}
-            </button>
-          </form>
+          <>
+            {/* HIDDEN: Magic link / scope sheet flow — replaced by PDF upload (Step 2).
+                Do not delete. Pending decision on whether to remove or repurpose.
+                Spec: docs/superpowers/specs/2026-03-20-pdf-damage-assessment-design.md */}
+            {/*
+              <form onSubmit={handleStep2Submit} className="step-content step-form">
+                ...old form...
+              </form>
+            */}
+            <Step2PDFUpload claim={claim} />
+          </>
         )
 
       case 3:
         return (
           <Step3ViabilityAnalysis
             claim={claim}
-            scopeSheet={scopeSheet ?? null}
-            hasInspectionV2={!!inspectionV2}
+            contractorEstimateParsed={contractorEstimate?.parse_status === 'completed'}
           />
         )
 
