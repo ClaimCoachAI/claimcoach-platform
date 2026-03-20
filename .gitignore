@@ -1,2 +1,7 @@
 .worktrees/
 .idea/
+.claude/
+.planning/
+.superpowers/
+backend/healthcheck
+*.go.bak
