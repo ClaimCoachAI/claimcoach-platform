@@ -15,11 +15,11 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
   const step = getStepDefinition(stepNumber)
   const queryClient = useQueryClient()
 
-  // Step 2 - Contractor
-  const [contractorData, setContractorData] = useState({
-    contractor_name: '',
-    contractor_email: '',
-  })
+  // HIDDEN: Step 2 contractor state — used by commented-out form below
+  // const [contractorData, setContractorData] = useState({
+  //   contractor_name: '',
+  //   contractor_email: '',
+  // })
 
   // Step 3 - Deductible
   const [estimateAmount, setEstimateAmount] = useState('')
@@ -54,21 +54,22 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
   })
 
   // Mutations for each step
-  const step2Mutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.patch(`/api/claims/${claim.id}/step`, {
-        current_step: 2,
-        steps_completed: [1],
-        contractor_name: contractorData.contractor_name,
-        contractor_email: contractorData.contractor_email,
-      })
-      return response.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['claim', claim.id] })
-      setContractorData({ contractor_name: '', contractor_email: '' })
-    },
-  })
+  // HIDDEN: step2Mutation was used by the commented-out Step 2 form below
+  // const step2Mutation = useMutation({
+  //   mutationFn: async () => {
+  //     const response = await api.patch(`/api/claims/${claim.id}/step`, {
+  //       current_step: 2,
+  //       steps_completed: [1],
+  //       contractor_name: contractorData.contractor_name,
+  //       contractor_email: contractorData.contractor_email,
+  //     })
+  //     return response.data
+  //   },
+  //   onSuccess: () => {
+  //     queryClient.invalidateQueries({ queryKey: ['claim', claim.id] })
+  //     setContractorData({ contractor_name: '', contractor_email: '' })
+  //   },
+  // })
 
   const step3Mutation = useMutation({
     mutationFn: async () => {
@@ -138,10 +139,11 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
     },
   })
 
-  const handleStep2Submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    step2Mutation.mutate()
-  }
+  // HIDDEN: handleStep2Submit was used by the commented-out Step 2 form below
+  // const handleStep2Submit = (e: React.FormEvent) => {
+  //   e.preventDefault()
+  //   step2Mutation.mutate()
+  // }
 
   const handleStep3Submit = (e: React.FormEvent) => {
     e.preventDefault()
