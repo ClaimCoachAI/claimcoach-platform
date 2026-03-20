@@ -41,85 +41,65 @@ func NewAuditService(db *sql.DB, llmClient LLMClient, searchClient LLMClient, sc
 
 // GenerateIndustryEstimate generates an industry-standard estimate using AI based on the scope sheet
 func (s *AuditService) GenerateIndustryEstimate(ctx context.Context, claimID, userID, orgID string) (string, error) {
-	// 1. Get the scope sheet for this claim
-	scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
+	// 1. Resolve data source: contractor estimate (preferred) or scope sheet (fallback)
+	source, err := s.resolveEstimateSource(ctx, claimID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get scope sheet: %w", err)
-	}
-	if scopeSheet == nil {
-		return "", fmt.Errorf("scope sheet not found for claim %s", claimID)
+		return "", err
 	}
 
-	// 2. Collect all unique damage tags across areas for the pricing query
-	var allTags []string
-	seen := map[string]bool{}
-	for _, area := range scopeSheet.Areas {
-		for _, tag := range area.Tags {
-			if !seen[tag] {
-				allTags = append(allTags, tag)
-				seen[tag] = true
-			}
-		}
-	}
-
-	// 3. Fetch property address for regional pricing query (non-fatal if missing)
-	var propertyAddress string
-	_ = s.db.QueryRowContext(ctx, `
-		SELECT p.legal_address
-		FROM claims c
-		INNER JOIN properties p ON c.property_id = p.id
-		WHERE c.id = $1
-	`, claimID).Scan(&propertyAddress)
-
-	// 4. Fetch live pricing via OpenAI web search — required, no fallback
-	pricingContext, err := s.fetchLivePricing(ctx, allTags, propertyAddress)
+	// 2. Fetch live pricing via OpenAI web search
+	pricingContext, err := s.fetchLivePricing(ctx, source.tags, source.propertyAddress)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch live regional pricing: %w", err)
 	}
 
-	// 5. Build the prompt from the scope sheet
-	userPrompt := s.buildEstimatePrompt(scopeSheet, pricingContext)
+	// 3. Build the estimate prompt
+	var userPrompt string
+	if source.scopeSheetID == nil {
+		// Contractor estimate path
+		userPrompt = s.buildEstimatePromptFromItems(source.promptScopeText, pricingContext)
+	} else {
+		// Scope sheet path (backward compat)
+		scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
+		if err != nil || scopeSheet == nil {
+			return "", fmt.Errorf("failed to get scope sheet for prompt: %w", err)
+		}
+		userPrompt = s.buildEstimatePrompt(scopeSheet, pricingContext)
+	}
 
-	// 6. Prepare messages for the LLM
+	// 4. Prepare messages for the LLM
 	messages := []llm.Message{
 		{
 			Role:    "system",
 			Content: `You are an expert Public Adjuster and Master Xactimate Estimator. Your goal is to maximize the justifiable Replacement Cost Value (RCV) for the policyholder based on the provided scope of work. Do not blindly inflate prices, but you MUST include all necessary line items, code upgrades, and standard industry waste factors that an insurance carrier owes for. Always respond with valid JSON only, no additional text or explanations.`,
 		},
-		{
-			Role:    "user",
-			Content: userPrompt,
-		},
+		{Role: "user", Content: userPrompt},
 	}
 
-	// 7. Call the LLM API — use high token limit since estimate JSON can be large
+	// 5. Call the LLM
 	response, err := s.llmClient.Chat(ctx, messages, 0.2, 8000)
 	if err != nil {
 		return "", fmt.Errorf("LLM API call failed: %w", err)
 	}
-
-	// 8. Extract and validate the response
 	if len(response.Choices) == 0 {
 		return "", fmt.Errorf("LLM returned no choices")
 	}
 
 	estimateJSON := extractJSON(response.Choices[0].Message.Content)
 
-	// Validate that it's valid JSON
 	var validationCheck map[string]interface{}
 	if err := json.Unmarshal([]byte(estimateJSON), &validationCheck); err != nil {
 		return "", fmt.Errorf("the AI returned a malformed estimate — please try again: %w", err)
 	}
 
-	// 9. Create audit report record
-	reportID, err := s.saveAuditReport(ctx, claimID, &scopeSheet.ID, userID, estimateJSON)
+	// 6. Save audit report
+	reportID, err := s.saveAuditReport(ctx, claimID, source.scopeSheetID, userID, estimateJSON)
 	if err != nil {
 		return "", fmt.Errorf("failed to save audit report: %w", err)
 	}
 
-	// 10. Log API usage
-	err = s.logAPIUsage(ctx, orgID, response)
-	if err != nil {
+	// 7. Log API usage
+	if err := s.logAPIUsage(ctx, orgID, response); err != nil {
 		log.Printf("Warning: failed to log API usage: %v", err)
 	}
 
@@ -342,21 +322,13 @@ func (s *AuditService) updateAuditReportFailed(ctx context.Context, reportID, er
 func (s *AuditService) SubmitEstimateJob(ctx context.Context, claimID, userID, orgID string) (string, error) {
 	log.Printf("SubmitEstimateJob starting for claimID=%s, userID=%s", claimID, userID)
 
-	// Validate scope sheet exists before creating the record
-	scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
+	source, err := s.resolveEstimateSource(ctx, claimID)
 	if err != nil {
-		log.Printf("ERROR: SubmitEstimateJob failed to get scope sheet for claim %s: %v", claimID, err)
-		return "", fmt.Errorf("failed to get scope sheet: %w", err)
+		return "", err
 	}
-	if scopeSheet == nil {
-		log.Printf("ERROR: SubmitEstimateJob - no scope sheet found for claim %s", claimID)
-		return "", fmt.Errorf("scope sheet not found for claim %s", claimID)
-	}
-
-	log.Printf("SubmitEstimateJob - scope sheet found with ID=%s", scopeSheet.ID)
 
 	// Create the audit report row with status=processing
-	reportID, err := s.createProcessingAuditReport(ctx, claimID, &scopeSheet.ID, userID)
+	reportID, err := s.createProcessingAuditReport(ctx, claimID, source.scopeSheetID, userID)
 	if err != nil {
 		return "", err
 	}
@@ -392,42 +364,16 @@ func (s *AuditService) SubmitEstimateJob(ctx context.Context, claimID, userID, o
 func (s *AuditService) ProcessEstimateJob(ctx context.Context, auditReportID, claimID, userID, orgID string) error {
 	log.Printf("ProcessEstimateJob starting for auditReportID=%s, claimID=%s", auditReportID, claimID)
 
-	// 1. Get scope sheet
-	scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
-	if err != nil || scopeSheet == nil {
-		msg := "failed to get scope sheet"
-		if err != nil {
-			msg = err.Error()
-		}
-		log.Printf("ERROR: ProcessEstimateJob failed to get scope sheet for auditReportID=%s: %s", auditReportID, msg)
-		_ = s.updateAuditReportFailed(ctx, auditReportID, msg)
-		return fmt.Errorf("%s", msg)
+	// 1. Resolve data source: contractor estimate (preferred) or scope sheet (fallback)
+	source, err := s.resolveEstimateSource(ctx, claimID)
+	if err != nil {
+		_ = s.updateAuditReportFailed(ctx, auditReportID, err.Error())
+		return err
 	}
 
-	// 2. Collect damage tags
-	var allTags []string
-	seen := map[string]bool{}
-	for _, area := range scopeSheet.Areas {
-		for _, tag := range area.Tags {
-			if !seen[tag] {
-				allTags = append(allTags, tag)
-				seen[tag] = true
-			}
-		}
-	}
-
-	// 3. Fetch property address
-	var propertyAddress string
-	_ = s.db.QueryRowContext(ctx, `
-		SELECT p.legal_address
-		FROM claims c
-		INNER JOIN properties p ON c.property_id = p.id
-		WHERE c.id = $1
-	`, claimID).Scan(&propertyAddress)
-
-	// 4. Live pricing via OpenAI
-	log.Printf("ProcessEstimateJob - fetching live pricing for auditReportID=%s, tags=%v, address=%s", auditReportID, allTags, propertyAddress)
-	pricingContext, err := s.fetchLivePricing(ctx, allTags, propertyAddress)
+	// 2. Live pricing via OpenAI
+	log.Printf("ProcessEstimateJob - fetching live pricing for auditReportID=%s, tags=%v, address=%s", auditReportID, source.tags, source.propertyAddress)
+	pricingContext, err := s.fetchLivePricing(ctx, source.tags, source.propertyAddress)
 	if err != nil {
 		errMsg := fmt.Sprintf("failed to fetch live pricing: %v", err)
 		log.Printf("ERROR: ProcessEstimateJob failed to fetch pricing for auditReportID=%s: %s", auditReportID, errMsg)
@@ -436,8 +382,18 @@ func (s *AuditService) ProcessEstimateJob(ctx context.Context, auditReportID, cl
 	}
 	log.Printf("ProcessEstimateJob - successfully fetched live pricing for auditReportID=%s", auditReportID)
 
-	// 5. Build prompt and call Claude
-	userPrompt := s.buildEstimatePrompt(scopeSheet, pricingContext)
+	// 3. Build prompt and call Claude
+	var userPrompt string
+	if source.scopeSheetID == nil {
+		userPrompt = s.buildEstimatePromptFromItems(source.promptScopeText, pricingContext)
+	} else {
+		scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
+		if err != nil || scopeSheet == nil {
+			_ = s.updateAuditReportFailed(ctx, auditReportID, "failed to get scope sheet for prompt")
+			return fmt.Errorf("failed to get scope sheet for prompt")
+		}
+		userPrompt = s.buildEstimatePrompt(scopeSheet, pricingContext)
+	}
 	messages := []llm.Message{
 		{
 			Role:    "system",
@@ -1463,4 +1419,138 @@ func extractJSON(s string) string {
 		}
 	}
 	return s
+}
+
+// estimateSource holds the resolved input for estimate generation.
+type estimateSource struct {
+	tags            []string // flat list of damage items for pricing query
+	scopeSheetID    *string  // non-nil if source is a scope sheet
+	promptScopeText string   // pre-formatted scope section for the estimate prompt
+	propertyAddress string   // for regional pricing query
+}
+
+// resolveEstimateSource determines whether to use a contractor estimate or scope sheet for this claim.
+// Contractor estimate takes precedence if one exists with parse_status=completed.
+func (s *AuditService) resolveEstimateSource(ctx context.Context, claimID string) (*estimateSource, error) {
+	// 1. Try contractor estimate first
+	var ceID string
+	var ceParsedData *string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, parsed_data
+		FROM contractor_estimates
+		WHERE claim_id = $1 AND parse_status = 'completed'
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, claimID).Scan(&ceID, &ceParsedData)
+
+	if err == nil && ceParsedData != nil {
+		// Parse the contractor estimate JSON
+		var data models.ContractorEstimateParsedData
+		if jsonErr := json.Unmarshal([]byte(*ceParsedData), &data); jsonErr != nil {
+			return nil, fmt.Errorf("failed to parse contractor estimate data: %w", jsonErr)
+		}
+
+		// Flatten all items across areas for the pricing query
+		seen := map[string]bool{}
+		var tags []string
+		for _, area := range data.Areas {
+			for _, item := range area.Items {
+				if !seen[item] {
+					tags = append(tags, item)
+					seen[item] = true
+				}
+			}
+		}
+
+		// Build a plain-text scope description for the estimate prompt
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("DAMAGE SCOPE (from contractor estimate by %s):\n", data.VendorName))
+		for _, area := range data.Areas {
+			sb.WriteString(fmt.Sprintf("\n%s:\n", strings.ToUpper(area.Category)))
+			for _, item := range area.Items {
+				sb.WriteString(fmt.Sprintf("  - %s\n", item))
+			}
+		}
+
+		return &estimateSource{
+			tags:            tags,
+			scopeSheetID:    nil,
+			promptScopeText: sb.String(),
+			propertyAddress: data.PropertyAddress,
+		}, nil
+	}
+
+	// 2. Fall back to scope sheet (backward compatibility for existing claims)
+	scopeSheet, err := s.scopeService.GetScopeSheetByClaimID(ctx, claimID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get scope sheet: %w", err)
+	}
+	if scopeSheet == nil {
+		return nil, fmt.Errorf("no completed contractor estimate or scope sheet found for claim %s — complete Step 2 first", claimID)
+	}
+
+	var allTags []string
+	seen := map[string]bool{}
+	for _, area := range scopeSheet.Areas {
+		for _, tag := range area.Tags {
+			if !seen[tag] {
+				allTags = append(allTags, tag)
+				seen[tag] = true
+			}
+		}
+	}
+
+	// Fetch property address from DB for scope sheet path
+	var propertyAddress string
+	_ = s.db.QueryRowContext(ctx, `
+		SELECT p.legal_address
+		FROM claims c
+		INNER JOIN properties p ON c.property_id = p.id
+		WHERE c.id = $1
+	`, claimID).Scan(&propertyAddress)
+
+	return &estimateSource{
+		tags:            allTags,
+		scopeSheetID:    &scopeSheet.ID,
+		promptScopeText: "", // buildEstimatePrompt handles scope sheet formatting
+		propertyAddress: propertyAddress,
+	}, nil
+}
+
+// buildEstimatePromptFromItems creates an estimate prompt from pre-formatted scope text.
+func (s *AuditService) buildEstimatePromptFromItems(scopeText, pricingContext string) string {
+	var builder strings.Builder
+	builder.WriteString("LIVE PRICING DATA (use as baseline for unit costs):\n")
+	builder.WriteString(pricingContext)
+	builder.WriteString("\n\n")
+	builder.WriteString(scopeText)
+	builder.WriteString("\nESTIMATING RULES - APPLY STRICTLY:\n")
+	builder.WriteString("1. Xactimate Format: Output all line items using standard Xactimate Category and Selector codes (e.g., RFG 300S for laminated shingles, RFG STEEP for steep charges, DMO DUMP for dumpsters).\n")
+	builder.WriteString("2. Pricing: Use the LIVE PRICING DATA provided above as your baseline for all unit costs.\n")
+	builder.WriteString("3. Required Add-ons (Do not miss these if the scope implies a replacement):\n")
+	builder.WriteString("   - Always include a 15% waste factor for architectural shingles (or 10% for 3-tab) calculated on top of the raw square footage.\n")
+	builder.WriteString("   - Always add \"Steep\" (RFG STEEP) and \"High\" (RFG HIGH) labor charges if the roof notes imply 2+ stories or >6/12 pitch.\n")
+	builder.WriteString("   - Always include Starter Shingles, Ridge Cap, Ice & Water Shield, and Drip Edge for full roof replacements.\n")
+	builder.WriteString("   - Always include setup, tear-off (e.g., RFG DMO), and debris removal/dumpster fees.\n")
+	builder.WriteString("4. O&P: Overhead & Profit must be calculated at exactly 20% (10% Overhead, 10% Profit) of the subtotal.\n")
+	builder.WriteString("\nRESPONSE FORMAT:\n")
+	builder.WriteString("Return ONLY a JSON object with this exact structure:\n")
+	builder.WriteString("{\n")
+	builder.WriteString("  \"line_items\": [\n")
+	builder.WriteString("    {\n")
+	builder.WriteString("      \"xactimate_code\": \"Category & Selector (e.g., RFG 300S)\",\n")
+	builder.WriteString("      \"description\": \"Item description\",\n")
+	builder.WriteString("      \"quantity\": <number>,\n")
+	builder.WriteString("      \"unit\": \"unit type (e.g., SQ, LF, EA, MO)\",\n")
+	builder.WriteString("      \"unit_cost\": <number>,\n")
+	builder.WriteString("      \"total\": <number>,\n")
+	builder.WriteString("      \"category\": \"category name (e.g., Roofing, Debris Removal)\",\n")
+	builder.WriteString("      \"justification\": \"<1-sentence explanation of why this item is justifiable>\"\n")
+	builder.WriteString("    }\n")
+	builder.WriteString("  ],\n")
+	builder.WriteString("  \"subtotal\": <number>,\n")
+	builder.WriteString("  \"overhead_profit\": <number>,\n")
+	builder.WriteString("  \"total\": <number>\n")
+	builder.WriteString("}\n")
+	return builder.String()
 }
