@@ -192,8 +192,9 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
         </div>
       )}
 
-      {/* Step 2 - Contractor Form */}
-      {stepNumber === 2 && showForm && (
+      {/* HIDDEN: Magic link / scope sheet flow — replaced by PDF upload.
+           Spec: docs/superpowers/specs/2026-03-20-pdf-damage-assessment-design.md */}
+      {/* {stepNumber === 2 && showForm && (
         <form onSubmit={handleStep2Submit} className="space-y-4 mt-6">
           <div>
             <label className="block text-sm font-medium text-navy mb-2">
@@ -243,7 +244,7 @@ export default function NextStepCard({ stepNumber, claim }: NextStepCardProps) {
             {step2Mutation.isPending ? 'Sending...' : 'Send Link'}
           </button>
         </form>
-      )}
+      )} */}
 
       {/* Step 3 - Deductible Form */}
       {stepNumber === 3 && showForm && (
