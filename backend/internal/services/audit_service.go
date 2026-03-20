@@ -112,7 +112,7 @@ func (s *AuditService) GenerateIndustryEstimate(ctx context.Context, claimID, us
 	}
 
 	// 9. Create audit report record
-	reportID, err := s.saveAuditReport(ctx, claimID, scopeSheet.ID, userID, estimateJSON)
+	reportID, err := s.saveAuditReport(ctx, claimID, &scopeSheet.ID, userID, estimateJSON)
 	if err != nil {
 		return "", fmt.Errorf("failed to save audit report: %w", err)
 	}
@@ -265,7 +265,7 @@ func (s *AuditService) buildEstimatePrompt(scope *models.ScopeSheet, pricingCont
 }
 
 // saveAuditReport creates and saves an audit report record to the database
-func (s *AuditService) saveAuditReport(ctx context.Context, claimID, scopeSheetID, userID, estimateJSON string) (string, error) {
+func (s *AuditService) saveAuditReport(ctx context.Context, claimID string, scopeSheetID *string, userID, estimateJSON string) (string, error) {
 	reportID := uuid.New().String()
 	now := time.Now()
 
@@ -300,7 +300,7 @@ func (s *AuditService) saveAuditReport(ctx context.Context, claimID, scopeSheetI
 }
 
 // createProcessingAuditReport inserts a new audit_report with status=processing (no estimate yet).
-func (s *AuditService) createProcessingAuditReport(ctx context.Context, claimID, scopeSheetID, userID string) (string, error) {
+func (s *AuditService) createProcessingAuditReport(ctx context.Context, claimID string, scopeSheetID *string, userID string) (string, error) {
 	reportID := uuid.New().String()
 	now := time.Now()
 
@@ -356,7 +356,7 @@ func (s *AuditService) SubmitEstimateJob(ctx context.Context, claimID, userID, o
 	log.Printf("SubmitEstimateJob - scope sheet found with ID=%s", scopeSheet.ID)
 
 	// Create the audit report row with status=processing
-	reportID, err := s.createProcessingAuditReport(ctx, claimID, scopeSheet.ID, userID)
+	reportID, err := s.createProcessingAuditReport(ctx, claimID, &scopeSheet.ID, userID)
 	if err != nil {
 		return "", err
 	}

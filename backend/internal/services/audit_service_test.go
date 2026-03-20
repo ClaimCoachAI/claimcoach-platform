@@ -146,7 +146,7 @@ func TestGenerateIndustryEstimate_Success(t *testing.T) {
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, claimID, auditReport.ClaimID)
-	assert.Equal(t, scopeSheet.ID, auditReport.ScopeSheetID)
+	assert.Equal(t, scopeSheet.ID, *auditReport.ScopeSheetID)
 	assert.NotNil(t, auditReport.GeneratedEstimate)
 	assert.Equal(t, models.AuditStatusCompleted, auditReport.Status)
 

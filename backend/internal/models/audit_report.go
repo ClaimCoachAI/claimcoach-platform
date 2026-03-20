@@ -5,7 +5,7 @@ import "time"
 type AuditReport struct {
 	ID                      string     `json:"id" db:"id"`
 	ClaimID                 string     `json:"claim_id" db:"claim_id"`
-	ScopeSheetID            string     `json:"scope_sheet_id" db:"scope_sheet_id"`
+	ScopeSheetID            *string    `json:"scope_sheet_id" db:"scope_sheet_id"`
 	CarrierEstimateID       *string    `json:"carrier_estimate_id" db:"carrier_estimate_id"`
 	GeneratedEstimate       *string    `json:"generated_estimate" db:"generated_estimate"`    // JSON string
 	ComparisonData          *string    `json:"comparison_data" db:"comparison_data"`          // JSON string
