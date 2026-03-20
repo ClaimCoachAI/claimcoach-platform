@@ -238,6 +238,16 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		api.GET("/claims/:id/carrier-estimate", carrierEstimateHandler.ListCarrierEstimates)
 		api.POST("/claims/:id/carrier-estimate/:estimateId/parse", carrierEstimateHandler.ParseCarrierEstimate)
 
+		// Contractor Estimate routes (Step 2 — PDF upload from contractor)
+		contractorEstimateService := services.NewContractorEstimateService(db, storageClient, claimService)
+		contractorParserService := services.NewContractorPDFParserService(db, storageClient, pdfClaudeClient, claimService)
+		contractorEstimateHandler := handlers.NewContractorEstimateHandler(contractorEstimateService, contractorParserService, slackSvc)
+
+		api.POST("/claims/:id/contractor-estimate/upload-url", contractorEstimateHandler.RequestUploadURL)
+		api.POST("/claims/:id/contractor-estimate/:estimateId/confirm", contractorEstimateHandler.ConfirmUpload)
+		api.GET("/claims/:id/contractor-estimate", contractorEstimateHandler.GetLatest)
+		api.POST("/claims/:id/contractor-estimate/:estimateId/parse", contractorEstimateHandler.ParseContractorEstimate)
+
 		// Magic Link routes (protected - requires auth)
 		api.POST("/claims/:id/magic-link", magicLinkHandler.GenerateMagicLink)
 		api.GET("/claims/:id/magic-links", magicLinkHandler.GetMagicLinks)
