@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -188,7 +190,22 @@ func (s *ContractorPDFParserService) saveParsedData(ctx context.Context, estimat
 }
 
 func (s *ContractorPDFParserService) downloadPDFContent(ctx context.Context, filePath string) ([]byte, error) {
-	// Re-use the same download logic as PDFParserService via the StorageClient interface
-	svc := &PDFParserService{storage: s.storage}
-	return svc.downloadPDF(ctx, filePath)
+	downloadURL, err := s.storage.GenerateDownloadURL(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate download URL: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create download request: %w", err)
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download PDF: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download failed with status: %d", resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
 }

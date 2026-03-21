@@ -1443,6 +1443,9 @@ func (s *AuditService) resolveEstimateSource(ctx context.Context, claimID string
 		LIMIT 1
 	`, claimID).Scan(&ceID, &ceParsedData)
 
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("failed to query contractor estimates: %w", err)
+	}
 	if err == nil && ceParsedData != nil {
 		// Parse the contractor estimate JSON
 		var data models.ContractorEstimateParsedData

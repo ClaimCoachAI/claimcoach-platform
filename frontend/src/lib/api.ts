@@ -224,11 +224,14 @@ export const uploadContractorEstimate = async (claimId: string, file: File) => {
   const { upload_url, estimate_id } = uploadUrlResponse.data.data
 
   // Step 2: PUT file directly to Supabase storage
-  await fetch(upload_url, {
+  const putResponse = await fetch(upload_url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/pdf' },
     body: file,
   })
+  if (!putResponse.ok) {
+    throw new Error('Failed to upload file to storage')
+  }
 
   // Step 3: Confirm upload
   await api.post(`/api/claims/${claimId}/contractor-estimate/${estimate_id}/confirm`)

@@ -36,7 +36,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   })
 
   // Contractor estimate query (Step 2 — PDF upload flow)
-  const { data: contractorEstimate } = useQuery({
+  const { data: contractorEstimate, isLoading: contractorEstimateLoading } = useQuery({
     queryKey: ['contractor-estimate', claim.id],
     queryFn: async () => {
       try {
@@ -348,7 +348,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         return (
           <Step3ViabilityAnalysis
             claim={claim}
-            contractorEstimateParsed={contractorEstimate?.parse_status === 'completed'}
+            contractorEstimateParsed={!contractorEstimateLoading && contractorEstimate?.parse_status === 'completed'}
           />
         )
 
