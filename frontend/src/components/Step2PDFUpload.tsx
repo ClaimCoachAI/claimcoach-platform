@@ -187,7 +187,7 @@ export default function Step2PDFUpload({ claim, initialParsedData }: Step2PDFUpl
     const { heading, sub } = PHASE_CONFIG[loadingPhase]
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingTop: '8px' }}>
         <style>{`
           @keyframes step2-spin { to { transform: rotate(360deg); } }
           @keyframes step2-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.35; transform:scale(0.65); } }
