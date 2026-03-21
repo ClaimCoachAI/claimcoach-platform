@@ -315,29 +315,33 @@ export default function Step2PDFUpload({ claim, initialParsedData }: Step2PDFUpl
         </div>
 
         {/* Continue button */}
-        <button
-          onClick={() => continueMutation.mutate()}
-          disabled={continueMutation.isPending}
-          style={{
-            width: '100%', padding: '13px 16px',
-            borderRadius: '10px', border: 'none',
-            background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
-            color: '#fff', fontSize: '14px', fontWeight: '600',
-            fontFamily: "'Work Sans', sans-serif",
-            cursor: continueMutation.isPending ? 'not-allowed' : 'pointer',
-            opacity: continueMutation.isPending ? 0.7 : 1,
-            boxShadow: '0 2px 10px rgba(13,148,136,0.25)',
-            letterSpacing: '0.01em',
-            marginTop: '4px',
-          }}
-        >
-          {continueMutation.isPending ? 'Saving…' : 'Continue →'}
-        </button>
+        {!initialParsedData && (
+          <>
+            <button
+              onClick={() => continueMutation.mutate()}
+              disabled={continueMutation.isPending}
+              style={{
+                width: '100%', padding: '13px 16px',
+                borderRadius: '10px', border: 'none',
+                background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
+                color: '#fff', fontSize: '14px', fontWeight: '600',
+                fontFamily: "'Work Sans', sans-serif",
+                cursor: continueMutation.isPending ? 'not-allowed' : 'pointer',
+                opacity: continueMutation.isPending ? 0.7 : 1,
+                boxShadow: '0 2px 10px rgba(13,148,136,0.25)',
+                letterSpacing: '0.01em',
+                marginTop: '4px',
+              }}
+            >
+              {continueMutation.isPending ? 'Saving…' : 'Continue →'}
+            </button>
 
-        {continueMutation.isError && (
-          <div style={{ fontSize: '12px', color: '#dc2626', textAlign: 'center' }}>
-            Failed to save. Please try again.
-          </div>
+            {continueMutation.isError && (
+              <div style={{ fontSize: '12px', color: '#dc2626', textAlign: 'center' }}>
+                Failed to save. Please try again.
+              </div>
+            )}
+          </>
         )}
       </div>
     )
