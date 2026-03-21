@@ -340,7 +340,14 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                 ...old form...
               </form>
             */}
-            <Step2PDFUpload claim={claim} />
+            <Step2PDFUpload
+              claim={claim}
+              initialParsedData={
+                contractorEstimate?.parse_status === 'completed' && contractorEstimate?.parsed_data
+                  ? JSON.parse(contractorEstimate.parsed_data)
+                  : undefined
+              }
+            />
           </>
         )
 

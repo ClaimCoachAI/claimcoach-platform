@@ -1,5 +1,5 @@
 // frontend/src/components/Step2PDFUpload.tsx
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 import { uploadContractorEstimate, parseContractorEstimate } from '../lib/api'
@@ -19,6 +19,7 @@ interface ParsedData {
 
 interface Step2PDFUploadProps {
   claim: Claim
+  initialParsedData?: ParsedData
 }
 
 const AREA_ICONS: Record<string, string> = {
@@ -36,13 +37,38 @@ const AREA_ICONS: Record<string, string> = {
 }
 const DEFAULT_ICON = '🔨'
 
-export default function Step2PDFUpload({ claim }: Step2PDFUploadProps) {
+type LoadingPhase = 'uploading' | 'reading' | 'identifying' | 'building'
+
+const PHASE_CONFIG: Record<LoadingPhase, { heading: string; sub: string }> = {
+  uploading:   { heading: 'Uploading your PDF…',     sub: 'Sending it over securely' },
+  reading:     { heading: 'Reading your estimate…',  sub: 'Pulling out the damage details' },
+  identifying: { heading: 'Spotting damaged areas…', sub: 'Going through each section' },
+  building:    { heading: 'Building your summary…',  sub: 'Almost done' },
+}
+
+const STEPS: { id: LoadingPhase; label: string }[] = [
+  { id: 'uploading',   label: 'PDF uploaded' },
+  { id: 'reading',     label: 'Reading the document' },
+  { id: 'identifying', label: 'Spotting damaged areas' },
+  { id: 'building',    label: 'Building your summary' },
+]
+
+const PHASE_ORDER: LoadingPhase[] = ['uploading', 'reading', 'identifying', 'building']
+
+export default function Step2PDFUpload({ claim, initialParsedData }: Step2PDFUploadProps) {
   const queryClient = useQueryClient()
-  const [screen, setScreen] = useState<'upload' | 'loading' | 'summary' | 'error'>('upload')
-  const [parsedData, setParsedData] = useState<ParsedData | null>(null)
+  const [screen, setScreen] = useState<'upload' | 'loading' | 'summary' | 'error'>(
+    initialParsedData ? 'summary' : 'upload'
+  )
+  const [parsedData, setParsedData] = useState<ParsedData | null>(initialParsedData ?? null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>('uploading')
+  const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Clean up phase timers on unmount
+  useEffect(() => () => { phaseTimers.current.forEach(clearTimeout) }, [])
 
   const continueMutation = useMutation({
     mutationFn: async () => {
@@ -70,11 +96,22 @@ export default function Step2PDFUpload({ claim }: Step2PDFUploadProps) {
     }
 
     setScreen('loading')
+    setLoadingPhase('uploading')
     setErrorMsg(null)
+    phaseTimers.current.forEach(clearTimeout)
+    phaseTimers.current = []
 
     try {
       const { estimate_id } = await uploadContractorEstimate(claim.id, file)
+
+      // Upload done — advance to reading, then schedule visual phase advances
+      setLoadingPhase('reading')
+      phaseTimers.current.push(setTimeout(() => setLoadingPhase('identifying'), 6000))
+      phaseTimers.current.push(setTimeout(() => setLoadingPhase('building'), 13000))
+
       const data = await parseContractorEstimate(claim.id, estimate_id)
+      phaseTimers.current.forEach(clearTimeout)
+      phaseTimers.current = []
       if (!data || !data.areas || data.areas.length === 0) {
         setErrorMsg("We couldn't read that file. Make sure it's a contractor damage estimate PDF and try again.")
         setScreen('error')
@@ -146,23 +183,80 @@ export default function Step2PDFUpload({ claim }: Step2PDFUploadProps) {
 
   // ── Loading state ──────────────────────────────────────────────
   if (screen === 'loading') {
+    const phaseIndex = PHASE_ORDER.indexOf(loadingPhase)
+    const { heading, sub } = PHASE_CONFIG[loadingPhase]
+
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', padding: '32px 0' }}>
-        <div style={{
-          width: '40px', height: '40px', borderRadius: '50%',
-          border: '3px solid rgba(13,148,136,0.2)',
-          borderTop: '3px solid #0d9488',
-          animation: 'step2-spin 0.8s linear infinite',
-        }} />
-        <div style={{ fontSize: '14px', fontWeight: '500', color: '#334155' }}>
-          Analyzing your estimate…
-        </div>
-        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-          This usually takes 15–30 seconds
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <style>{`
           @keyframes step2-spin { to { transform: rotate(360deg); } }
+          @keyframes step2-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.35; transform:scale(0.65); } }
         `}</style>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0,
+            border: '3px solid rgba(13,148,136,0.18)',
+            borderTop: '3px solid #0d9488',
+            animation: 'step2-spin 0.85s linear infinite',
+          }} />
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>{heading}</div>
+            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>{sub}</div>
+          </div>
+        </div>
+
+        {/* Step list */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+          {STEPS.map((step, i) => {
+            const isDone    = i < phaseIndex
+            const isActive  = i === phaseIndex
+            const isPending = i > phaseIndex
+
+            return (
+              <div key={step.id}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '6px 0' }}>
+                  {/* Dot */}
+                  <div style={{
+                    width: '22px', height: '22px', borderRadius: '50%', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: isDone ? '#0d9488' : isPending ? '#e2e8f0' : 'transparent',
+                    border: isActive ? '2.5px solid #0d9488' : 'none',
+                    position: 'relative',
+                  }}>
+                    {isDone && (
+                      <span style={{ fontSize: '11px', fontWeight: '800', color: '#fff' }}>✓</span>
+                    )}
+                    {isActive && (
+                      <div style={{
+                        width: '9px', height: '9px', borderRadius: '50%',
+                        background: '#0d9488',
+                        animation: 'step2-pulse 1.1s ease-in-out infinite',
+                      }} />
+                    )}
+                  </div>
+                  {/* Label */}
+                  <span style={{
+                    fontSize: '13px',
+                    fontWeight: isDone || isActive ? '600' : '400',
+                    color: isDone ? '#0d9488' : isActive ? '#0f172a' : '#94a3b8',
+                  }}>
+                    {step.label}
+                  </span>
+                </div>
+                {/* Connector line */}
+                {i < STEPS.length - 1 && (
+                  <div style={{
+                    width: '2px', height: '10px',
+                    background: isDone ? '#0d9488' : '#e2e8f0',
+                    marginLeft: '10px',
+                  }} />
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
     )
   }
