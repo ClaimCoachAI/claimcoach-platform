@@ -315,7 +315,7 @@ export default function Step2PDFUpload({ claim, initialParsedData }: Step2PDFUpl
         </div>
 
         {/* Continue button */}
-        {!initialParsedData && (
+        {!initialParsedData && !continueMutation.isSuccess && (
           <>
             <button
               onClick={() => continueMutation.mutate()}
