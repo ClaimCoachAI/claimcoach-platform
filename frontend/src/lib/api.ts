@@ -213,6 +213,29 @@ export async function getClaimMedia(claimId: string): Promise<MediaItem[]> {
   return response.data.data
 }
 
+export async function uploadClaimPhoto(claimId: string, file: File): Promise<void> {
+  // Step 1: Get presigned upload URL + pre-inserted photo_id
+  const urlResponse = await api.post(`/api/claims/${claimId}/media/upload-url`, {
+    file_name: file.name,
+    file_size: file.size,
+    mime_type: file.type,
+  })
+  const { upload_url, photo_id } = urlResponse.data.data
+
+  // Step 2: PUT file directly to Supabase storage
+  const putResponse = await fetch(upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+  })
+  if (!putResponse.ok) {
+    throw new Error('Failed to upload photo to storage')
+  }
+
+  // Step 3: Confirm upload (sets caption = file name by default)
+  await api.post(`/api/claims/${claimId}/media`, { photo_id, caption: '' })
+}
+
 // Contractor estimate API (Step 2 — PDF upload flow)
 
 export const uploadContractorEstimate = async (claimId: string, file: File) => {

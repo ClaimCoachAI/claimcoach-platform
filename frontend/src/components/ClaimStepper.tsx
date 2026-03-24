@@ -16,6 +16,11 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
   const [activeStep, setActiveStep] = useState(claim.current_step || 1)
   const queryClient = useQueryClient()
 
+  // Auto-advance to the new current step when a mutation completes and updates the claim
+  useEffect(() => {
+    setActiveStep(claim.current_step || 1)
+  }, [claim.current_step])
+
   // Payments query
   const {
     data: payments,

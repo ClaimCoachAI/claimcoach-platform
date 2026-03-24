@@ -543,7 +543,7 @@ export default function Step3ViabilityAnalysis({ claim, contractorEstimateParsed
   const { data: auditReport } = useQuery({
     queryKey: ['audit-report', claim.id],
     queryFn: () => getAuditReport(claim.id),
-    enabled: step3Done && phase === 'idle',
+    enabled: phase === 'idle',
     retry: false,
   })
 

@@ -871,14 +871,26 @@ export default function ClaimDetail() {
     enabled: !!id,
   })
 
-  // Badge: subscribe to photo count reactively — populated after first Photos tab visit.
-  // enabled: false means this query never fires its own request; ClaimPhotoGallery owns the fetch.
-  // Using useQuery (not getQueryData) ensures re-render when ClaimPhotoGallery's query resolves.
+  // Contractor estimate — needed by the Damage Report tab.
+  const { data: contractorEstimate = null } = useQuery({
+    queryKey: ['contractor-estimate', id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${id}/contractor-estimate`)
+        return response.data.data
+      } catch {
+        return null
+      }
+    },
+    enabled: !!id,
+    retry: false,
+  })
+
+  // Badge: fires its own request so the count stays current after uploads.
   const { data: mediaData } = useQuery({
     queryKey: ['claim-media', id],
     queryFn: () => getClaimMedia(id!),
-    enabled: false,
-    staleTime: Infinity,
+    enabled: !!id,
   })
   const photoCount = mediaData?.length ?? 0
   const showPhotoBadge = photoCount > 0
@@ -1445,7 +1457,7 @@ export default function ClaimDetail() {
 
         {/* Damage Report tab */}
         {activeTab === 'report' && (
-          <ClaimDamageReport scopeSheet={scopeSheet} />
+          <ClaimDamageReport scopeSheet={scopeSheet} contractorEstimate={contractorEstimate} />
         )}
 
         {/* Two-column layout */}
