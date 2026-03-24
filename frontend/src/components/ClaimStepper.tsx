@@ -352,6 +352,7 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
                   ? JSON.parse(contractorEstimate.parsed_data)
                   : undefined
               }
+              stepCompleted={claim.steps_completed?.includes(2)}
             />
           </>
         )

@@ -20,6 +20,7 @@ interface ParsedData {
 interface Step2PDFUploadProps {
   claim: Claim
   initialParsedData?: ParsedData
+  stepCompleted?: boolean
 }
 
 const AREA_ICONS: Record<string, string> = {
@@ -55,7 +56,7 @@ const STEPS: { id: LoadingPhase; label: string }[] = [
 
 const PHASE_ORDER: LoadingPhase[] = ['uploading', 'reading', 'identifying', 'building']
 
-export default function Step2PDFUpload({ claim, initialParsedData }: Step2PDFUploadProps) {
+export default function Step2PDFUpload({ claim, initialParsedData, stepCompleted }: Step2PDFUploadProps) {
   const queryClient = useQueryClient()
   const [screen, setScreen] = useState<'upload' | 'loading' | 'summary' | 'error'>(
     initialParsedData ? 'summary' : 'upload'
@@ -315,7 +316,7 @@ export default function Step2PDFUpload({ claim, initialParsedData }: Step2PDFUpl
         </div>
 
         {/* Continue button */}
-        {!initialParsedData && !continueMutation.isSuccess && (
+        {!stepCompleted && !continueMutation.isSuccess && (
           <>
             <button
               onClick={() => continueMutation.mutate()}
