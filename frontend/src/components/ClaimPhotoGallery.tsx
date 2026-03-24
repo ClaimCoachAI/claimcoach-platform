@@ -11,6 +11,7 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
   const queryClient = useQueryClient()
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [localPreviews, setLocalPreviews] = useState<string[]>([])
   const backdropRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -23,14 +24,21 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
   const uploadMutation = useMutation({
     mutationFn: (files: File[]) => Promise.all(files.map(f => uploadClaimPhoto(claimId, f))),
     onSuccess: () => {
+      setLocalPreviews([])
       queryClient.invalidateQueries({ queryKey: ['claim-media', claimId] })
+    },
+    onError: () => {
+      setLocalPreviews([])
     },
   })
 
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return
     const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
-    if (imageFiles.length > 0) uploadMutation.mutate(imageFiles)
+    if (imageFiles.length === 0) return
+    const previews = imageFiles.map(f => URL.createObjectURL(f))
+    setLocalPreviews(previews)
+    uploadMutation.mutate(imageFiles)
   }, [uploadMutation])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -118,7 +126,7 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
         <p style={{ textAlign: 'center', color: 'var(--color-slate)', padding: '16px 0' }}>
           Something went wrong loading photos. Try refreshing the page.
         </p>
-      ) : !photos || photos.length === 0 ? (
+      ) : !photos || (photos.length === 0 && localPreviews.length === 0) ? (
         <p style={{ textAlign: 'center', color: 'var(--color-slate)', padding: '16px 0' }}>
           No photos yet. Upload them above.
         </p>
@@ -137,13 +145,25 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
                 position: 'relative',
                 cursor: 'pointer',
                 padding: 0,
-                background: 'none',
+                background: '#f3f4f6',
               }}
             >
               <img
                 src={photo.url}
                 alt={photo.caption}
                 style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                onError={e => {
+                  const el = e.currentTarget
+                  el.style.display = 'none'
+                  const parent = el.parentElement
+                  if (parent && !parent.querySelector('.img-fallback')) {
+                    const fb = document.createElement('div')
+                    fb.className = 'img-fallback'
+                    fb.style.cssText = 'width:100%;height:100%;display:flex;align-items:center;justify-content:center;'
+                    fb.innerHTML = '<svg width="32" height="32" fill="none" stroke="#94a3b8" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'
+                    parent.appendChild(fb)
+                  }
+                }}
               />
               <div className="photo-hover-overlay" style={{
                 position: 'absolute', inset: 0,
@@ -159,6 +179,34 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
                 </svg>
               </div>
             </button>
+          ))}
+          {localPreviews.map((src, i) => (
+            <div
+              key={`preview-${i}`}
+              style={{
+                aspectRatio: '1',
+                borderRadius: '12px',
+                border: '1px solid #e5e7eb',
+                overflow: 'hidden',
+                position: 'relative',
+                background: '#f3f4f6',
+              }}
+            >
+              <img
+                src={src}
+                alt="Uploading…"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: 0.6 }}
+              />
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(255,255,255,0.35)',
+              }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+              </div>
+            </div>
           ))}
         </div>
       )}
