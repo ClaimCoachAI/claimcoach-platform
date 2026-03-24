@@ -22,6 +22,59 @@ interface ClaimDamageReportProps {
   contractorEstimate?: ContractorEstimate | null
 }
 
+const AREA_ICONS: Record<string, string> = {
+  Roof: '🏠', Roofing: '🏠',
+  Windows: '🪟', Window: '🪟',
+  Siding: '🧱',
+  Gutters: '💧', Gutter: '💧',
+  Interior: '🛋️',
+  Flooring: '🪵',
+  Ceiling: '⬆️',
+  HVAC: '❄️',
+  Electrical: '⚡',
+  Plumbing: '🔧',
+  Fence: '🌿',
+  'Garage Door': '🚗', Garage: '🚗',
+  Playscape: '🛝',
+  Grill: '🍖',
+}
+const DEFAULT_ICON = '🔨'
+
+function getIcon(category: string): string {
+  return AREA_ICONS[category] ?? DEFAULT_ICON
+}
+
+function generateSummaryBullets(areas: ContractorEstimateArea[]): string[] {
+  const bullets: string[] = []
+
+  const roofAreas = areas.filter(a => a.category.toLowerCase().includes('roof'))
+  const interiorAreas = areas.filter(a =>
+    ['interior', 'hvac', 'plumbing', 'electrical', 'ceiling', 'flooring'].some(k =>
+      a.category.toLowerCase().includes(k)
+    )
+  )
+  const otherAreas = areas.filter(a => !roofAreas.includes(a) && !interiorAreas.includes(a))
+
+  if (roofAreas.length === 1) {
+    bullets.push(`Roof: ${roofAreas[0].summary}`)
+  } else if (roofAreas.length > 1) {
+    bullets.push(`Roof has damage across ${roofAreas.length} sections.`)
+  }
+
+  if (interiorAreas.length === 1) {
+    bullets.push(`${interiorAreas[0].category}: ${interiorAreas[0].summary}`)
+  } else if (interiorAreas.length > 1) {
+    bullets.push(`${interiorAreas.length} interior areas affected with damage.`)
+  }
+
+  for (const area of otherAreas) {
+    if (bullets.length >= 4) break
+    bullets.push(`${area.category}: ${area.summary}`)
+  }
+
+  return bullets.slice(0, 4)
+}
+
 export default function ClaimDamageReport({ contractorEstimate }: ClaimDamageReportProps) {
   if (contractorEstimate?.parsed_data) {
     let parsed: ContractorEstimateParsedData | null = null
@@ -32,26 +85,43 @@ export default function ClaimDamageReport({ contractorEstimate }: ClaimDamageRep
     }
 
     if (parsed && parsed.areas?.length > 0) {
+      const bullets = generateSummaryBullets(parsed.areas)
+
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {(parsed.vendor_name || parsed.property_address) && (
-            <div style={{
-              background: 'var(--glass-mint)',
-              border: '1px solid var(--color-mint-dark)',
-              borderRadius: '16px',
-              padding: '16px 20px',
-            }}>
-              {parsed.vendor_name && (
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-teal-dark)', marginBottom: '4px' }}>
-                  {parsed.vendor_name}
-                </div>
-              )}
-              {parsed.property_address && (
-                <div style={{ fontSize: '12px', color: 'var(--color-slate)' }}>{parsed.property_address}</div>
-              )}
-            </div>
-          )}
 
+          {/* Summary card */}
+          <div style={{
+            background: 'var(--glass-mint)',
+            border: '1px solid var(--color-mint-dark)',
+            borderRadius: '16px',
+            padding: '20px',
+          }}>
+            {(parsed.vendor_name || parsed.property_address) && (
+              <div style={{ marginBottom: '12px' }}>
+                {parsed.vendor_name && (
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-teal-dark)' }}>
+                    {parsed.vendor_name}
+                  </div>
+                )}
+                {parsed.property_address && (
+                  <div style={{ fontSize: '12px', color: 'var(--color-slate)', marginTop: '2px' }}>
+                    {parsed.property_address}
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--color-navy)', marginBottom: '10px' }}>
+              {parsed.areas.length} damaged area{parsed.areas.length !== 1 ? 's' : ''} identified
+            </div>
+            <ul style={{ margin: 0, padding: '0 0 0 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {bullets.map((b, i) => (
+                <li key={i} style={{ fontSize: '13px', color: 'var(--color-slate-dark)', lineHeight: '1.5' }}>{b}</li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Area cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {parsed.areas.map((area, i) => (
               <div key={i} style={{
@@ -60,20 +130,35 @@ export default function ClaimDamageReport({ contractorEstimate }: ClaimDamageRep
                 borderRadius: '12px',
                 padding: '16px 20px',
               }}>
-                <div style={{ fontWeight: 600, color: 'var(--color-navy)', fontSize: '15px', marginBottom: area.summary || area.items.length ? '8px' : 0 }}>
-                  {area.category}
+                {/* Header row: emoji + category */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: area.summary || area.items?.length ? '8px' : 0 }}>
+                  <span style={{ fontSize: '20px', lineHeight: 1 }}>{getIcon(area.category)}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--color-navy)', fontSize: '15px' }}>
+                    {area.category}
+                  </span>
                 </div>
+                {/* Summary sentence */}
                 {area.summary && (
-                  <p style={{ margin: '0 0 8px', fontSize: '13px', color: 'var(--color-slate-dark)', lineHeight: '1.5' }}>
+                  <p style={{ margin: '0 0 10px', fontSize: '13px', color: 'var(--color-slate-dark)', lineHeight: '1.5' }}>
                     {area.summary}
                   </p>
                 )}
+                {/* Items as mint chips */}
                 {area.items?.length > 0 && (
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                     {area.items.map((item, j) => (
-                      <li key={j} style={{ fontSize: '12px', color: 'var(--color-slate)', lineHeight: '1.5' }}>{item}</li>
+                      <span key={j} style={{
+                        background: 'var(--color-mint-light)',
+                        color: 'var(--color-teal-dark)',
+                        borderRadius: '20px',
+                        padding: '3px 10px',
+                        fontSize: '11px',
+                        fontWeight: 500,
+                      }}>
+                        {item}
+                      </span>
                     ))}
-                  </ul>
+                  </div>
                 )}
               </div>
             ))}
