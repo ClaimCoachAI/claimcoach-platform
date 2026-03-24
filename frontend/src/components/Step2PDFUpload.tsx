@@ -120,6 +120,7 @@ export default function Step2PDFUpload({ claim, initialParsedData, stepCompleted
       }
       setParsedData(data)
       setScreen('summary')
+      queryClient.invalidateQueries({ queryKey: ['contractor-estimate', claim.id] })
     } catch {
       setErrorMsg("We couldn't read that file. Make sure it's a contractor damage estimate PDF and try again.")
       setScreen('error')
