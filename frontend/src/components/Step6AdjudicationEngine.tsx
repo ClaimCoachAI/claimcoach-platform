@@ -1065,43 +1065,6 @@ export default function Step6AdjudicationEngine({ claim }: Props) {
           </div>
         )}
 
-        {/* ── Required next steps ───────────────────────────────────────── */}
-        {pmBrain.required_next_steps.length > 0 && (
-          <div
-            style={{
-              padding: '16px 20px',
-              background: '#f8fafc',
-              borderRadius: 10,
-              border: '1px solid #e2e8f0',
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 700,
-                color: '#0f172a',
-                fontSize: 14,
-                marginBottom: 10,
-              }}
-            >
-              Next Steps
-            </div>
-            <ol
-              style={{
-                margin: 0,
-                paddingLeft: 20,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-              }}
-            >
-              {pmBrain.required_next_steps.map((step, i) => (
-                <li key={i} style={{ color: '#334155', fontSize: 14, lineHeight: 1.5 }}>
-                  {step}
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
 
         {/* ── DISPUTE_OFFER: dispute letter ─────────────────────────────── */}
         {pmBrain.status === 'DISPUTE_OFFER' && !step6Done && (
