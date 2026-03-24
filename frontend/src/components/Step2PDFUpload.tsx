@@ -56,6 +56,118 @@ const STEPS: { id: LoadingPhase; label: string }[] = [
 
 const PHASE_ORDER: LoadingPhase[] = ['uploading', 'reading', 'identifying', 'building']
 
+interface SummaryPanelProps {
+  parsedData: ParsedData
+  stepCompleted: boolean
+  onContinue: () => void
+  isContinuePending: boolean
+  isContinueSuccess: boolean
+  isContinueError: boolean
+}
+
+function SummaryPanel({ parsedData, stepCompleted, onContinue, isContinuePending, isContinueSuccess, isContinueError }: SummaryPanelProps) {
+  const [showAll, setShowAll] = useState(false)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{
+          width: '22px', height: '22px', borderRadius: '50%',
+          background: '#0d9488',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '11px', fontWeight: '800', color: '#fff', flexShrink: 0,
+        }}>✓</div>
+        <span style={{ fontSize: '13px', fontWeight: '600', color: '#0d9488' }}>
+          Estimate parsed from {parsedData.vendor_name || 'contractor'}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px' }}>
+        <div>
+          <div style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', marginBottom: '3px' }}>
+            Damage found in {parsedData.areas.length} {parsedData.areas.length === 1 ? 'area' : 'areas'}
+          </div>
+          <div style={{ fontSize: '12px', color: '#64748b' }}>
+            Here's a summary of what was damaged. We'll use this to build your independent ClaimCoach estimate.
+          </div>
+        </div>
+        <button
+          onClick={() => setShowAll(v => !v)}
+          style={{
+            flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: '12px', fontWeight: '600', color: '#0d9488', display: 'flex', alignItems: 'center', gap: '4px',
+          }}
+        >
+          {showAll ? 'Hide' : 'View all'}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round"
+            style={{ transition: 'transform 0.2s', transform: showAll ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Damage area cards — shown when expanded */}
+      {showAll && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {parsedData.areas.map((area, i) => (
+            <div key={i} style={{
+              padding: '12px 14px',
+              background: 'rgba(241,245,249,0.6)',
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '10px',
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'flex-start',
+            }}>
+              <div style={{ fontSize: '20px', flexShrink: 0, marginTop: '1px' }}>
+                {AREA_ICONS[area.category] ?? DEFAULT_ICON}
+              </div>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', marginBottom: '3px' }}>
+                  {area.category}
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.5' }}>
+                  {area.summary}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Continue button */}
+      {!stepCompleted && !isContinueSuccess && (
+        <>
+          <button
+            onClick={onContinue}
+            disabled={isContinuePending}
+            style={{
+              width: '100%', padding: '13px 16px',
+              borderRadius: '10px', border: 'none',
+              background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
+              color: '#fff', fontSize: '14px', fontWeight: '600',
+              fontFamily: "'Work Sans', sans-serif",
+              cursor: isContinuePending ? 'not-allowed' : 'pointer',
+              opacity: isContinuePending ? 0.7 : 1,
+              boxShadow: '0 2px 10px rgba(13,148,136,0.25)',
+              letterSpacing: '0.01em',
+              marginTop: '4px',
+            }}
+          >
+            {isContinuePending ? 'Saving…' : 'Continue →'}
+          </button>
+          {isContinueError && (
+            <div style={{ fontSize: '12px', color: '#dc2626', textAlign: 'center' }}>
+              Failed to save. Please try again.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function Step2PDFUpload({ claim, initialParsedData, stepCompleted }: Step2PDFUploadProps) {
   const queryClient = useQueryClient()
   const [screen, setScreen] = useState<'upload' | 'loading' | 'summary' | 'error'>(
@@ -266,86 +378,14 @@ export default function Step2PDFUpload({ claim, initialParsedData, stepCompleted
   // ── Damage Summary (Screen 2) ──────────────────────────────────
   if (screen === 'summary' && parsedData) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{
-            width: '22px', height: '22px', borderRadius: '50%',
-            background: '#0d9488',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '11px', fontWeight: '800', color: '#fff', flexShrink: 0,
-          }}>✓</div>
-          <span style={{ fontSize: '13px', fontWeight: '600', color: '#0d9488' }}>
-            Estimate parsed from {parsedData.vendor_name || 'contractor'}
-          </span>
-        </div>
-
-        <div>
-          <div style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', marginBottom: '3px' }}>
-            Damage found in {parsedData.areas.length} {parsedData.areas.length === 1 ? 'area' : 'areas'}
-          </div>
-          <div style={{ fontSize: '12px', color: '#64748b' }}>
-            Here's a summary of what was damaged. We'll use this to build your independent ClaimCoach estimate.
-          </div>
-        </div>
-
-        {/* Damage area cards */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {parsedData.areas.map((area, i) => (
-            <div key={i} style={{
-              padding: '12px 14px',
-              background: 'rgba(241,245,249,0.6)',
-              border: '1px solid rgba(148,163,184,0.2)',
-              borderRadius: '10px',
-              display: 'flex',
-              gap: '12px',
-              alignItems: 'flex-start',
-            }}>
-              <div style={{ fontSize: '20px', flexShrink: 0, marginTop: '1px' }}>
-                {AREA_ICONS[area.category] ?? DEFAULT_ICON}
-              </div>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', marginBottom: '3px' }}>
-                  {area.category}
-                </div>
-                <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.5' }}>
-                  {area.summary}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Continue button */}
-        {!stepCompleted && !continueMutation.isSuccess && (
-          <>
-            <button
-              onClick={() => continueMutation.mutate()}
-              disabled={continueMutation.isPending}
-              style={{
-                width: '100%', padding: '13px 16px',
-                borderRadius: '10px', border: 'none',
-                background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)',
-                color: '#fff', fontSize: '14px', fontWeight: '600',
-                fontFamily: "'Work Sans', sans-serif",
-                cursor: continueMutation.isPending ? 'not-allowed' : 'pointer',
-                opacity: continueMutation.isPending ? 0.7 : 1,
-                boxShadow: '0 2px 10px rgba(13,148,136,0.25)',
-                letterSpacing: '0.01em',
-                marginTop: '4px',
-              }}
-            >
-              {continueMutation.isPending ? 'Saving…' : 'Continue →'}
-            </button>
-
-            {continueMutation.isError && (
-              <div style={{ fontSize: '12px', color: '#dc2626', textAlign: 'center' }}>
-                Failed to save. Please try again.
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      <SummaryPanel
+        parsedData={parsedData}
+        stepCompleted={stepCompleted ?? false}
+        onContinue={() => continueMutation.mutate()}
+        isContinuePending={continueMutation.isPending}
+        isContinueSuccess={continueMutation.isSuccess}
+        isContinueError={continueMutation.isError}
+      />
     )
   }
 
