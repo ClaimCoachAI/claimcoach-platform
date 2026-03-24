@@ -279,12 +279,35 @@ func (s *AuditService) saveAuditReport(ctx context.Context, claimID string, scop
 	return returnedID, nil
 }
 
-// createProcessingAuditReport inserts a new audit_report with status=processing (no estimate yet).
+// createProcessingAuditReport reuses the existing audit_report row for the claim if one exists,
+// resetting it to processing status. This preserves downstream fields (e.g. viability_analysis)
+// on the same row so they survive page reloads after re-running the estimate.
 func (s *AuditService) createProcessingAuditReport(ctx context.Context, claimID string, scopeSheetID *string, userID string) (string, error) {
-	reportID := uuid.New().String()
 	now := time.Now()
 
-	_, err := s.db.ExecContext(ctx, `
+	// Try to reuse the existing row for this claim.
+	var existingID string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM audit_reports WHERE claim_id = $1 ORDER BY created_at DESC LIMIT 1`,
+		claimID,
+	).Scan(&existingID)
+	if err == nil {
+		// Row exists — reset it to processing so the same ID is reused.
+		_, err = s.db.ExecContext(ctx, `
+			UPDATE audit_reports
+			SET scope_sheet_id = $1, status = $2, generated_estimate = NULL,
+			    error_message = NULL, viability_analysis = NULL, updated_at = $3
+			WHERE id = $4
+		`, scopeSheetID, models.AuditStatusProcessing, now, existingID)
+		if err != nil {
+			return "", fmt.Errorf("failed to reset audit report: %w", err)
+		}
+		return existingID, nil
+	}
+
+	// No existing row — insert fresh.
+	reportID := uuid.New().String()
+	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO audit_reports (
 			id, claim_id, scope_sheet_id,
 			status, created_by_user_id, created_at, updated_at
@@ -1521,6 +1544,184 @@ func (s *AuditService) resolveEstimateSource(ctx context.Context, claimID string
 }
 
 // buildEstimatePromptFromItems creates an estimate prompt from pre-formatted scope text.
+// CompareEstimates compares the generated industry estimate against the carrier estimate and stores the result.
+func (s *AuditService) CompareEstimates(ctx context.Context, auditReportID, userID, orgID string) error {
+	report, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
+	if err != nil {
+		return err
+	}
+
+	if report.GeneratedEstimate == nil {
+		return fmt.Errorf("industry estimate not generated yet")
+	}
+
+	carrierEstimate, err := s.getCarrierEstimate(ctx, report.ClaimID)
+	if err != nil {
+		return err
+	}
+
+	if carrierEstimate.ParsedData == nil {
+		return fmt.Errorf("carrier estimate not parsed yet")
+	}
+
+	prompt := fmt.Sprintf(`Compare the following two estimates and identify discrepancies.
+
+INDUSTRY-STANDARD ESTIMATE:
+%s
+
+CARRIER ESTIMATE:
+%s
+
+Return ONLY a JSON object with this exact structure:
+{
+  "discrepancies": [
+    {
+      "item": "item description",
+      "industry_price": <number>,
+      "carrier_price": <number>,
+      "delta": <number>,
+      "justification": "why the industry price is justified"
+    }
+  ],
+  "summary": {
+    "total_industry": <number>,
+    "total_carrier": <number>,
+    "total_delta": <number>
+  }
+}`, *report.GeneratedEstimate, *carrierEstimate.ParsedData)
+
+	messages := []llm.Message{
+		{Role: "system", Content: "You are an expert insurance claim adjuster. Compare two estimates and identify discrepancies. Respond with JSON only."},
+		{Role: "user", Content: prompt},
+	}
+
+	response, err := s.llmClient.Chat(ctx, messages, 0.2, 3000)
+	if err != nil {
+		return fmt.Errorf("LLM API call failed: %w", err)
+	}
+	if len(response.Choices) == 0 {
+		return fmt.Errorf("LLM returned no choices")
+	}
+
+	comparisonJSON := extractJSON(response.Choices[0].Message.Content)
+
+	var comparisonData map[string]interface{}
+	if err := json.Unmarshal([]byte(comparisonJSON), &comparisonData); err != nil {
+		return fmt.Errorf("invalid comparison JSON from LLM: %w", err)
+	}
+
+	var totalContractor, totalCarrier, totalDelta float64
+	if summary, ok := comparisonData["summary"].(map[string]interface{}); ok {
+		if v, ok := summary["total_industry"].(float64); ok {
+			totalContractor = v
+		}
+		if v, ok := summary["total_carrier"].(float64); ok {
+			totalCarrier = v
+		}
+		if v, ok := summary["total_delta"].(float64); ok {
+			totalDelta = v
+		}
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE audit_reports
+		SET comparison_data = $1, total_contractor_estimate = $2,
+		    total_carrier_estimate = $3, total_delta = $4, status = $5, updated_at = $6
+		WHERE id = $7`,
+		comparisonJSON, totalContractor, totalCarrier, totalDelta,
+		models.AuditStatusCompleted, time.Now(), auditReportID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update audit report with comparison: %w", err)
+	}
+
+	if err := s.logAPIUsage(ctx, orgID, response); err != nil {
+		log.Printf("failed to log API usage: %v", err)
+	}
+
+	return nil
+}
+
+// GenerateRebuttal generates a professional rebuttal letter based on the comparison data.
+func (s *AuditService) GenerateRebuttal(ctx context.Context, auditReportID, userID, orgID string) (string, error) {
+	report, err := s.getAuditReportWithOwnershipCheck(ctx, auditReportID, orgID)
+	if err != nil {
+		return "", err
+	}
+
+	if report.ComparisonData == nil {
+		return "", fmt.Errorf("comparison data not available")
+	}
+
+	prompt := fmt.Sprintf(`Based on the following comparison data, write a professional rebuttal letter to the insurance carrier requesting reconsideration of the estimate.
+
+COMPARISON DATA:
+%s
+
+Write a professional letter that addresses each discrepancy specifically, cites industry-standard pricing, requests reconsideration, and is polite but firm. Write the letter directly.`, *report.ComparisonData)
+
+	messages := []llm.Message{
+		{Role: "system", Content: "You are an expert Public Adjuster writing professional rebuttal letters to insurance carriers. Write clear, professional, and persuasive letters."},
+		{Role: "user", Content: prompt},
+	}
+
+	response, err := s.llmClient.Chat(ctx, messages, 0.3, 2000)
+	if err != nil {
+		return "", fmt.Errorf("LLM API call failed: %w", err)
+	}
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("LLM returned no choices")
+	}
+
+	content := response.Choices[0].Message.Content
+	rebuttalID := uuid.New().String()
+	now := time.Now()
+
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO rebuttals (id, audit_report_id, content, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
+		rebuttalID, auditReportID, content, now, now,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to save rebuttal: %w", err)
+	}
+
+	if err := s.logAPIUsage(ctx, orgID, response); err != nil {
+		log.Printf("failed to log API usage: %v", err)
+	}
+
+	return rebuttalID, nil
+}
+
+// GetRebuttal retrieves a rebuttal by ID with org ownership verification.
+func (s *AuditService) GetRebuttal(ctx context.Context, rebuttalID, orgID string) (*models.Rebuttal, error) {
+	query := `
+		SELECT r.id, r.audit_report_id, r.content, r.created_at, r.updated_at
+		FROM rebuttals r
+		INNER JOIN audit_reports ar ON r.audit_report_id = ar.id
+		INNER JOIN claims c ON ar.claim_id = c.id
+		INNER JOIN properties p ON c.property_id = p.id
+		WHERE r.id = $1 AND p.organization_id = $2
+	`
+
+	var rebuttal models.Rebuttal
+	err := s.db.QueryRowContext(ctx, query, rebuttalID, orgID).Scan(
+		&rebuttal.ID,
+		&rebuttal.AuditReportID,
+		&rebuttal.Content,
+		&rebuttal.CreatedAt,
+		&rebuttal.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("rebuttal not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rebuttal: %w", err)
+	}
+
+	return &rebuttal, nil
+}
+
 func (s *AuditService) buildEstimatePromptFromItems(scopeText, pricingContext string) string {
 	var builder strings.Builder
 	builder.WriteString("LIVE PRICING DATA (use as baseline for unit costs):\n")
