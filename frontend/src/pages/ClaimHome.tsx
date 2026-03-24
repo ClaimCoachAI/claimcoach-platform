@@ -26,6 +26,20 @@ export default function ClaimHome() {
     },
   })
 
+  const { data: contractorEstimate = null } = useQuery({
+    queryKey: ['contractor-estimate', id],
+    queryFn: async () => {
+      try {
+        const response = await api.get(`/api/claims/${id}/contractor-estimate`)
+        return response.data.data
+      } catch {
+        return null
+      }
+    },
+    enabled: !!id,
+    retry: false,
+  })
+
   const { data: scopeSheet = null } = useQuery<ScopeSheet | null>({
     queryKey: ['scope-sheet', id],
     queryFn: async () => {
@@ -160,7 +174,7 @@ export default function ClaimHome() {
 
         {/* Damage Report tab */}
         {activeTab === 'report' && (
-          <ClaimDamageReport scopeSheet={scopeSheet} />
+          <ClaimDamageReport scopeSheet={scopeSheet} contractorEstimate={contractorEstimate} />
         )}
 
         {/* Overview tab */}
