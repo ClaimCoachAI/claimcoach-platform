@@ -1,8 +1,8 @@
 name: Morning Health Check
 
 on:
-  schedule:
-    - cron: "0 11 * * *" # 6am CDT (UTC-5, Mar–Nov) / 5am CST (UTC-6, Nov–Mar)
+  # schedule:
+  #   - cron: "0 11 * * *" # 6am CDT (UTC-5, Mar–Nov) / 5am CST (UTC-6, Nov–Mar)
   workflow_dispatch:
 
 jobs:
