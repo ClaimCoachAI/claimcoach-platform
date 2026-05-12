@@ -68,11 +68,16 @@ func (h *ClaimMediaHandler) GetMedia(c *gin.Context) {
 		if err := rows.Scan(&filePath, &fileName, &caption); err != nil {
 			continue
 		}
+		signedURL, err := h.storage.GenerateDownloadURL(filePath)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "failed to generate photo URL"})
+			return
+		}
 		cap := caption
 		if cap == "" {
 			cap = fileName
 		}
-		items = append(items, mediaItem{URL: h.storage.GetPublicURL(filePath), Caption: cap})
+		items = append(items, mediaItem{URL: signedURL, Caption: cap})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})

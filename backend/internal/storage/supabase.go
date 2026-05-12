@@ -76,8 +76,8 @@ func (s *SupabaseStorage) GenerateUploadURL(organizationID, claimID, documentTyp
 
 // GenerateDownloadURL creates a presigned URL for downloading a file
 func (s *SupabaseStorage) GenerateDownloadURL(filePath string) (string, error) {
-	// Generate presigned download URL (5 minutes expiry)
-	expiresIn := 5 * 60 // 5 minutes in seconds
+	// Generate presigned download URL (1 hour expiry)
+	expiresIn := 60 * 60 // 1 hour in seconds
 
 	response, err := s.client.CreateSignedUrl(BucketName, filePath, expiresIn)
 	if err != nil {
