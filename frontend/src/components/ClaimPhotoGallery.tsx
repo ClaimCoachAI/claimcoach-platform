@@ -232,33 +232,28 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
                   </div>
                 </div>
               ) : (
-                <div style={{
-                  position: 'absolute', inset: 0,
-                  background: 'rgba(0,0,0,0.35)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  opacity: hoveredId === photo.id ? 1 : 0, transition: 'opacity 0.15s',
-                  pointerEvents: hoveredId === photo.id ? 'auto' : 'none',
-                }}>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      setConfirmDeleteId(photo.id)
-                    }}
-                    aria-label="Delete photo"
-                    style={{
-                      background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%',
-                      width: '36px', height: '36px', display: 'flex', alignItems: 'center',
-                      justifyContent: 'center', cursor: 'pointer', color: 'white',
-                    }}
-                  >
-                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                      <path d="M10 11v6M14 11v6" />
-                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                    </svg>
-                  </button>
-                </div>
+                <button
+                  onClick={e => {
+                    e.stopPropagation()
+                    setConfirmDeleteId(photo.id)
+                  }}
+                  aria-label="Delete photo"
+                  style={{
+                    position: 'absolute', top: '8px', right: '8px',
+                    background: 'rgba(15,23,42,0.65)', border: 'none', borderRadius: '50%',
+                    width: '30px', height: '30px', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', cursor: 'pointer', color: 'white',
+                    opacity: hoveredId === photo.id ? 1 : 0, transition: 'opacity 0.15s',
+                    pointerEvents: hoveredId === photo.id ? 'auto' : 'none',
+                  }}
+                >
+                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                  </svg>
+                </button>
               )}
             </div>
           ))}
