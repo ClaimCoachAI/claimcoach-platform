@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getClaimMedia, uploadClaimPhoto } from '../lib/api'
+import { getClaimMedia, uploadClaimPhoto, deleteClaimPhoto } from '../lib/api'
 
 interface ClaimPhotoGalleryProps {
   claimId: string
@@ -11,6 +11,7 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
   const queryClient = useQueryClient()
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [localPreviews, setLocalPreviews] = useState<string[]>([])
   const backdropRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -29,6 +30,17 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
     },
     onError: () => {
       setLocalPreviews([])
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (photoId: string) => deleteClaimPhoto(claimId, photoId),
+    onSuccess: () => {
+      setConfirmDeleteId(null)
+      queryClient.invalidateQueries({ queryKey: ['claim-media', claimId] })
+    },
+    onError: () => {
+      setConfirmDeleteId(null)
     },
   })
 
@@ -138,9 +150,8 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
           {photos.map((photo, i) => (
-            <button
-              key={i}
-              onClick={() => setLightboxIndex(i)}
+            <div
+              key={photo.id}
               className="photo-grid-btn"
               style={{
                 aspectRatio: '1',
@@ -148,9 +159,12 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
                 border: '1px solid #e5e7eb',
                 overflow: 'hidden',
                 position: 'relative',
-                cursor: 'pointer',
-                padding: 0,
+                cursor: confirmDeleteId === photo.id ? 'default' : 'pointer',
                 background: '#f3f4f6',
+              }}
+              onClick={() => {
+                if (confirmDeleteId === photo.id) return
+                setLightboxIndex(i)
               }}
             >
               <img
@@ -170,20 +184,80 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
                   }
                 }}
               />
-              <div className="photo-hover-overlay" style={{
-                position: 'absolute', inset: 0,
-                background: 'rgba(0,0,0,0.35)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                opacity: 0, transition: 'opacity 0.15s',
-              }}>
-                <svg width="28" height="28" fill="none" stroke="white" strokeWidth="2" viewBox="0 0 24 24">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  <line x1="11" y1="8" x2="11" y2="14" />
-                  <line x1="8" y1="11" x2="14" y2="11" />
-                </svg>
-              </div>
-            </button>
+
+              {confirmDeleteId === photo.id ? (
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  background: 'rgba(15,23,42,0.82)',
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  gap: '10px', padding: '12px',
+                }}>
+                  <span style={{ color: 'white', fontSize: '12px', fontWeight: '600', textAlign: 'center' }}>
+                    Delete photo?
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={e => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                      style={{
+                        padding: '5px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.3)',
+                        background: 'transparent', color: 'white', fontSize: '11px', cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation()
+                        deleteMutation.mutate(photo.id)
+                      }}
+                      disabled={deleteMutation.isPending}
+                      style={{
+                        padding: '5px 12px', borderRadius: '6px', border: 'none',
+                        background: '#ef4444', color: 'white', fontSize: '11px',
+                        cursor: deleteMutation.isPending ? 'not-allowed' : 'pointer',
+                        opacity: deleteMutation.isPending ? 0.7 : 1,
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                      }}
+                    >
+                      {deleteMutation.isPending ? (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                        </svg>
+                      ) : null}
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="photo-hover-overlay" style={{
+                  position: 'absolute', inset: 0,
+                  background: 'rgba(0,0,0,0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  opacity: 0, transition: 'opacity 0.15s',
+                }}>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      setConfirmDeleteId(photo.id)
+                    }}
+                    aria-label="Delete photo"
+                    style={{
+                      background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%',
+                      width: '36px', height: '36px', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', cursor: 'pointer', color: 'white',
+                    }}
+                  >
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                      <path d="M10 11v6M14 11v6" />
+                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
           {localPreviews.map((src, i) => (
             <div
