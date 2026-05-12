@@ -142,6 +142,42 @@ func (h *DocumentHandler) ListDocuments(c *gin.Context) {
 	})
 }
 
+// DeleteDocument deletes a document from storage and the database
+// DELETE /api/claims/:id/documents/:documentId
+func (h *DocumentHandler) DeleteDocument(c *gin.Context) {
+	user := c.MustGet("user").(models.User)
+	claimID := c.Param("id")
+	documentID := c.Param("documentId")
+
+	err := h.service.DeleteDocument(claimID, documentID, user.OrganizationID)
+	if err != nil {
+		if err.Error() == "claim not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   "Claim not found",
+			})
+			return
+		}
+		if err.Error() == "document not found" {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   "Document not found",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to delete document: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+	})
+}
+
 // GetDocument retrieves a document and generates a download URL
 // GET /api/documents/:id
 func (h *DocumentHandler) GetDocument(c *gin.Context) {
