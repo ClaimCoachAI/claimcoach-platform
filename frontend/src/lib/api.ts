@@ -204,6 +204,7 @@ export const updateClaimStep = async (claimId: string, data: {
 }
 
 export interface MediaItem {
+  id: string
   url: string
   caption: string
 }
@@ -234,6 +235,10 @@ export async function uploadClaimPhoto(claimId: string, file: File): Promise<voi
 
   // Step 3: Confirm upload (sets caption = file name by default)
   await api.post(`/api/claims/${claimId}/media`, { photo_id, caption: '' })
+}
+
+export async function deleteClaimPhoto(claimId: string, photoId: string): Promise<void> {
+  await api.delete(`/api/claims/${claimId}/media/${photoId}`)
 }
 
 // Contractor estimate API (Step 2 — PDF upload flow)
