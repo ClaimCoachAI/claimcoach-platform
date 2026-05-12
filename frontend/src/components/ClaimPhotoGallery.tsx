@@ -111,7 +111,12 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
 
       {uploadMutation.isError && (
         <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', fontSize: '12px', color: '#dc2626' }}>
-          Upload failed. Please try again.
+          {(() => {
+            const err = uploadMutation.error as { response?: { data?: { error?: string } }; message?: string } | null
+            const serverMsg = err?.response?.data?.error
+            const msg = serverMsg ?? err?.message ?? null
+            return msg && msg !== 'Network Error' ? `Upload failed: ${msg}` : 'Upload failed. Please try again.'
+          })()}
         </div>
       )}
 

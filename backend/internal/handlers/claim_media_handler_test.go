@@ -64,7 +64,7 @@ func newClaimMediaHandler(t *testing.T) (*ClaimMediaHandler, func()) {
 	claimSvc := services.NewClaimService(db, nil, nil)
 	magicLinkSvc := services.NewMagicLinkService(db, nil, storageClient, claimSvc, nil)
 	inspSvc := services.NewInspectionService(db, magicLinkSvc, storageClient)
-	h := NewClaimMediaHandler(claimSvc, inspSvc)
+	h := NewClaimMediaHandler(claimSvc, inspSvc, db, storageClient)
 	return h, func() { db.Close() }
 }
 

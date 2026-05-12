@@ -67,10 +67,6 @@ func (s *SupabaseStorage) GenerateUploadURL(organizationID, claimID, documentTyp
 		return "", "", fmt.Errorf("failed to generate upload URL: %w", err)
 	}
 
-	// Log the response for debugging
-	fmt.Printf("DEBUG: CreateSignedUploadUrl response.Url = %s\n", response.Url)
-	fmt.Printf("DEBUG: Full upload URL will be: https://%s.supabase.co/storage/v1%s\n", s.projectRef, response.Url)
-
 	// Construct full URL with proper Storage API path
 	// The Go library returns /object/upload/sign/... but we need /storage/v1/object/upload/sign/...
 	fullURL := fmt.Sprintf("https://%s.supabase.co/storage/v1%s", s.projectRef, response.Url)
