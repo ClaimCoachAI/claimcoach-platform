@@ -11,6 +11,7 @@ import MagicLinkHistory from '../components/MagicLinkHistory'
 import ScopeSheetSummary from '../components/ScopeSheetSummary'
 import ClaimPhotoGallery from '../components/ClaimPhotoGallery'
 import ClaimDamageReport from '../components/ClaimDamageReport'
+import ClaimDocuments from '../components/ClaimDocuments'
 import { Claim, Policy } from '../types/claim'
 import type { ScopeSheet } from '../types/scopeSheet'
 
@@ -852,7 +853,7 @@ export default function ClaimDetail() {
   const [selectedStatus, setSelectedStatus] = useState<string>('')
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string>('')
-  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'report'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'report' | 'documents'>('overview')
 
   // Lift scope-sheet query so result can be passed as a prop to ClaimDamageReport.
   // React Query deduplicates — ContractorSubmissionWrapper / AuditSectionWrapper
@@ -1405,11 +1406,12 @@ export default function ClaimDetail() {
           borderBottom: '1px solid #e5e7eb',
           marginBottom: '24px',
         }}>
-          {(['overview', 'photos', 'report'] as const).map((tab) => {
+          {(['overview', 'photos', 'report', 'documents'] as const).map((tab) => {
             const labels: Record<string, string> = {
               overview: 'Overview',
               photos: 'Photos',
               report: 'Damage Report',
+              documents: 'Documents',
             }
             const isActive = activeTab === tab
             return (
@@ -1458,6 +1460,13 @@ export default function ClaimDetail() {
         {/* Damage Report tab */}
         {activeTab === 'report' && (
           <ClaimDamageReport scopeSheet={scopeSheet} contractorEstimate={contractorEstimate} />
+        )}
+
+        {/* Documents tab */}
+        {activeTab === 'documents' && id && (
+          <div className="px-4 py-6 sm:px-6">
+            <ClaimDocuments claimId={id} />
+          </div>
         )}
 
         {/* Two-column layout */}
