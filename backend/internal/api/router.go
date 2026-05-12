@@ -263,6 +263,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		api.GET("/claims/:id/media", claimMediaHandler.GetMedia)
 		api.POST("/claims/:id/media/upload-url", claimMediaHandler.RequestPhotoUploadURL)
 		api.POST("/claims/:id/media", claimMediaHandler.ConfirmPhotoUpload)
+		api.DELETE("/claims/:id/media/:photoId", claimMediaHandler.DeletePhoto)
 
 		// Audit routes (protected - requires auth)
 		api.POST("/claims/:id/audit/generate", auditHandler.GenerateIndustryEstimate)

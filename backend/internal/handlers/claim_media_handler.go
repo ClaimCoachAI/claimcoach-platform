@@ -34,6 +34,7 @@ func NewClaimMediaHandler(
 }
 
 type mediaItem struct {
+	ID      string `json:"id"`
 	URL     string `json:"url"`
 	Caption string `json:"caption"`
 }
@@ -53,7 +54,7 @@ func (h *ClaimMediaHandler) GetMedia(c *gin.Context) {
 	}
 
 	rows, err := h.db.QueryContext(c.Request.Context(),
-		`SELECT file_path, file_name, caption FROM claim_photos WHERE claim_id = $1 ORDER BY uploaded_at ASC`,
+		`SELECT id, file_path, file_name, caption FROM claim_photos WHERE claim_id = $1 ORDER BY uploaded_at ASC`,
 		claimID,
 	)
 	if err != nil {
@@ -64,8 +65,8 @@ func (h *ClaimMediaHandler) GetMedia(c *gin.Context) {
 
 	items := []mediaItem{}
 	for rows.Next() {
-		var filePath, fileName, caption string
-		if err := rows.Scan(&filePath, &fileName, &caption); err != nil {
+		var id, filePath, fileName, caption string
+		if err := rows.Scan(&id, &filePath, &fileName, &caption); err != nil {
 			continue
 		}
 		signedURL, err := h.storage.GenerateDownloadURL(filePath)
@@ -77,7 +78,7 @@ func (h *ClaimMediaHandler) GetMedia(c *gin.Context) {
 		if cap == "" {
 			cap = fileName
 		}
-		items = append(items, mediaItem{URL: signedURL, Caption: cap})
+		items = append(items, mediaItem{ID: id, URL: signedURL, Caption: cap})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
@@ -179,4 +180,49 @@ func (h *ClaimMediaHandler) ConfirmPhotoUpload(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"photo_id": input.PhotoID}})
+}
+
+// DeletePhoto handles DELETE /api/claims/:id/media/:photoId
+func (h *ClaimMediaHandler) DeletePhoto(c *gin.Context) {
+	claimID := c.Param("id")
+	photoID := c.Param("photoId")
+	user := c.MustGet("user").(models.User)
+
+	if _, err := h.claimService.GetClaim(claimID, user.OrganizationID); err != nil {
+		if err.Error() == "claim not found" {
+			c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Claim not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+
+	var filePath string
+	err := h.db.QueryRowContext(c.Request.Context(),
+		`SELECT file_path FROM claim_photos WHERE id = $1 AND claim_id = $2`,
+		photoID, claimID,
+	).Scan(&filePath)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Photo not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to fetch photo: " + err.Error()})
+		return
+	}
+
+	if err := h.storage.DeleteFile(filePath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to delete photo from storage: " + err.Error()})
+		return
+	}
+
+	if _, err := h.db.ExecContext(c.Request.Context(),
+		`DELETE FROM claim_photos WHERE id = $1`,
+		photoID,
+	); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "Failed to delete photo record: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
