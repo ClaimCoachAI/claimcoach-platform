@@ -621,6 +621,7 @@
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Uploaded By</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
@@ -634,6 +635,7 @@
                         </span>
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-900">{doc.file_name}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{doc.uploaded_by_user_id ?? '—'}</td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(doc.created_at)}</td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm space-x-3">
                         <button
@@ -747,7 +749,7 @@
 - [ ] **Step 6: Commit**
 
   ```bash
-  git add frontend/src/pages/ClaimDetail.tsx frontend/src/components/ClaimDocuments.tsx
+  git add frontend/src/pages/ClaimDetail.tsx
   git commit -m "feat: add Documents tab to claim detail page"
   ```
 
@@ -762,9 +764,9 @@
 
   In `ClaimDetail.tsx`, find the `ContractorSubmissionWrapper` component definition (~line 135). Read it carefully to understand how it uses `documents` and `onDownload`.
 
-- [ ] **Step 2: Update props interface**
+- [ ] **Step 2: Update props interface and function signature**
 
-  Find `ContractorSubmissionWrapperProps` (~line 135). Change from:
+  Find `ContractorSubmissionWrapperProps` (~line 135). Change the interface from:
   ```ts
   interface ContractorSubmissionWrapperProps {
     claimId: string
@@ -779,9 +781,14 @@
   }
   ```
 
+  Then find the function definition line (e.g. `function ContractorSubmissionWrapper({ claimId, documents, onDownload }: ContractorSubmissionWrapperProps)`) and update the destructuring to:
+  ```ts
+  function ContractorSubmissionWrapper({ claimId }: ContractorSubmissionWrapperProps)
+  ```
+
 - [ ] **Step 3: Add internal data fetching to ContractorSubmissionWrapper**
 
-  Inside the `ContractorSubmissionWrapper` function body, add a `useQuery` call to fetch documents and replace usage of the `documents` and `onDownload` props:
+  Inside the `ContractorSubmissionWrapper` function body, add a `useQuery` call to fetch documents and replace usage of the removed props:
 
   ```ts
   const { data: documents = [] } = useQuery({
@@ -871,7 +878,11 @@
 
 - [ ] **Step 5: Remove the old Document interface if now unused**
 
-  Check if the `Document` interface at the top of `ClaimDetail.tsx` (~line 17) is still used anywhere else in the file. If not (now that `ContractorSubmissionWrapper` is self-contained and the documents section is gone), delete it.
+  Run:
+  ```bash
+  grep -n ': Document\b\|Document\[\]\|as Document' frontend/src/pages/ClaimDetail.tsx
+  ```
+  If the only matches are the interface declaration itself (line ~17), delete the interface. If other usages remain, leave it.
 
 - [ ] **Step 6: TypeScript check**
 
