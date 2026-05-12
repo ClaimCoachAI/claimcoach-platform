@@ -226,6 +226,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		api.POST("/claims/:id/documents/:documentId/confirm", documentHandler.ConfirmUpload)
 		api.GET("/claims/:id/documents", documentHandler.ListDocuments)
 		api.GET("/documents/:id", documentHandler.GetDocument)
+		api.DELETE("/claims/:id/documents/:documentId", documentHandler.DeleteDocument)
 
 		// Carrier Estimate routes
 		pdfClaudeClient := llm.NewClaudeClient(cfg.AnthropicAPIKey, cfg.AnthropicPDFModel, 120)

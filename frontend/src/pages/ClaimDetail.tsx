@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api, { updateClaimEstimate, uploadCarrierEstimate, getCarrierEstimates, generateIndustryEstimate, getAuditReport, getClaimMedia } from '../lib/api'
+import api, { updateClaimEstimate, uploadCarrierEstimate, getCarrierEstimates, generateIndustryEstimate, getAuditReport, getClaimMedia, getClaimDocumentDownloadUrl } from '../lib/api'
 import Layout from '../components/Layout'
 import ClaimStatusBadge from '../components/ClaimStatusBadge'
 import MeetingsSection from '../components/MeetingsSection'
@@ -11,17 +11,10 @@ import MagicLinkHistory from '../components/MagicLinkHistory'
 import ScopeSheetSummary from '../components/ScopeSheetSummary'
 import ClaimPhotoGallery from '../components/ClaimPhotoGallery'
 import ClaimDamageReport from '../components/ClaimDamageReport'
+import ClaimDocuments from '../components/ClaimDocuments'
 import { Claim, Policy } from '../types/claim'
 import type { ScopeSheet } from '../types/scopeSheet'
 
-interface Document {
-  id: string
-  claim_id: string
-  document_type: string
-  file_name: string
-  uploaded_by: string
-  uploaded_at: string
-}
 
 interface Activity {
   id: string
@@ -132,11 +125,9 @@ function AuditSectionWrapper({ claimId }: AuditSectionWrapperProps) {
 
 interface ContractorSubmissionWrapperProps {
   claimId: string
-  documents: Document[]
-  onDownload: (documentId: string) => void
 }
 
-function ContractorSubmissionWrapper({ claimId, documents, onDownload }: ContractorSubmissionWrapperProps) {
+function ContractorSubmissionWrapper({ claimId }: ContractorSubmissionWrapperProps) {
   const { data: scopeSheet, isLoading } = useQuery<ScopeSheet | null>({
     queryKey: ['scope-sheet', claimId],
     queryFn: async () => {
@@ -151,6 +142,23 @@ function ContractorSubmissionWrapper({ claimId, documents, onDownload }: Contrac
       }
     },
   })
+
+  const { data: documents = [] } = useQuery({
+    queryKey: ['claim-documents', claimId],
+    queryFn: async () => {
+      const response = await api.get(`/api/claims/${claimId}/documents`)
+      return response.data.data as { id: string; document_type: string; file_name: string; file_url: string; file_size_bytes: number; mime_type: string; status: string; created_at: string }[]
+    },
+  })
+
+  const handleDocumentDownload = async (documentId: string) => {
+    try {
+      const url = await getClaimDocumentDownloadUrl(documentId)
+      window.open(url, '_blank')
+    } catch {
+      alert('Failed to generate download link.')
+    }
+  }
 
   if (isLoading) {
     return (
@@ -186,9 +194,9 @@ function ContractorSubmissionWrapper({ claimId, documents, onDownload }: Contrac
                 <li key={photo.id} className="flex items-center justify-between py-2 text-sm">
                   <span className="text-gray-900 truncate max-w-xs">{photo.file_name}</span>
                   <div className="flex items-center gap-4 ml-4 shrink-0">
-                    <span className="text-gray-500">{formatDate(photo.uploaded_at)}</span>
+                    <span className="text-gray-500">{formatDate(photo.created_at)}</span>
                     <button
-                      onClick={() => onDownload(photo.id)}
+                      onClick={() => handleDocumentDownload(photo.id)}
                       className="text-blue-600 hover:text-blue-800 font-medium"
                     >
                       Download
@@ -851,8 +859,7 @@ export default function ClaimDetail() {
   const queryClient = useQueryClient()
   const [selectedStatus, setSelectedStatus] = useState<string>('')
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string>('')
-  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'report'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'report' | 'documents'>('overview')
 
   // Lift scope-sheet query so result can be passed as a prop to ClaimDamageReport.
   // React Query deduplicates — ContractorSubmissionWrapper / AuditSectionWrapper
@@ -910,19 +917,6 @@ export default function ClaimDetail() {
     enabled: !!id,
   })
 
-  // Fetch documents
-  const {
-    data: documents,
-    isLoading: loadingDocuments,
-  } = useQuery({
-    queryKey: ['claim-documents', id],
-    queryFn: async () => {
-      const response = await api.get(`/api/claims/${id}/documents`)
-      return response.data.data as Document[]
-    },
-    enabled: !!id,
-  })
-
   // Fetch activities
   const {
     data: activities,
@@ -960,30 +954,6 @@ export default function ClaimDetail() {
     },
   })
 
-  // Document download handler
-  const handleDocumentDownload = async (documentId: string) => {
-    try {
-      const response = await api.get(`/api/documents/${documentId}`)
-      const downloadUrl = response.data.data.download_url
-
-      // Validate URL is HTTPS or from our API domain
-      const isValid = downloadUrl.startsWith('https://') ||
-                      downloadUrl.startsWith(import.meta.env.VITE_API_URL || '')
-
-      if (!isValid) {
-        throw new Error('Invalid download URL received')
-      }
-
-      window.open(downloadUrl, '_blank', 'noopener,noreferrer')
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error && error.message.includes('Invalid')
-          ? 'Invalid download URL. Please contact support.'
-          : 'Failed to download document. Please try again.'
-      )
-      setTimeout(() => setErrorMessage(''), 5000)
-    }
-  }
 
   const formatDateTime = (dateString?: string) => {
     if (!dateString) return 'N/A'
@@ -1100,17 +1070,6 @@ export default function ClaimDetail() {
     }
   }
 
-  const getDocumentTypeLabel = (type: string) => {
-    const labels: { [key: string]: string } = {
-      photo: 'Photo',
-      estimate: 'Estimate',
-      invoice: 'Invoice',
-      correspondence: 'Correspondence',
-      policy_doc: 'Policy Document',
-      other: 'Other',
-    }
-    return labels[type] || type
-  }
 
   const getActivityIcon = (activityType: string) => {
     switch (activityType) {
@@ -1276,15 +1235,6 @@ export default function ClaimDetail() {
           </div>
         )}
 
-        {/* Error Message */}
-        {errorMessage && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-800">{errorMessage}</p>
-            </div>
-          </div>
-        )}
-
         {/* Breadcrumb */}
         <nav className="text-sm text-gray-500">
           <ol className="flex items-center space-x-2">
@@ -1405,11 +1355,12 @@ export default function ClaimDetail() {
           borderBottom: '1px solid #e5e7eb',
           marginBottom: '24px',
         }}>
-          {(['overview', 'photos', 'report'] as const).map((tab) => {
+          {(['overview', 'photos', 'report', 'documents'] as const).map((tab) => {
             const labels: Record<string, string> = {
               overview: 'Overview',
               photos: 'Photos',
               report: 'Damage Report',
+              documents: 'Documents',
             }
             const isActive = activeTab === tab
             return (
@@ -1458,6 +1409,13 @@ export default function ClaimDetail() {
         {/* Damage Report tab */}
         {activeTab === 'report' && (
           <ClaimDamageReport scopeSheet={scopeSheet} contractorEstimate={contractorEstimate} />
+        )}
+
+        {/* Documents tab */}
+        {activeTab === 'documents' && id && (
+          <div className="px-4 py-6 sm:px-6">
+            <ClaimDocuments claimId={id} />
+          </div>
         )}
 
         {/* Two-column layout */}
@@ -1545,101 +1503,9 @@ export default function ClaimDetail() {
               </div>
             </div>
 
-            {/* Documents Section */}
-            <div className="bg-white shadow rounded-lg">
-              <div className="px-6 py-5 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Documents</h3>
-              </div>
-              <div className="px-6 py-5">
-                {loadingDocuments ? (
-                  <div className="text-center py-4 text-gray-600">
-                    Loading documents...
-                  </div>
-                ) : documents && documents.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Type
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            File Name
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Uploaded By
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Upload Date
-                          </th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {documents.map((doc) => (
-                          <tr key={doc.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-                                {getDocumentTypeLabel(doc.document_type)}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 text-sm text-gray-900">
-                              {doc.file_name}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                              {doc.uploaded_by}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">
-                              {formatDate(doc.uploaded_at)}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm">
-                              <button
-                                onClick={() => handleDocumentDownload(doc.id)}
-                                className="text-blue-600 hover:text-blue-800 font-medium"
-                              >
-                                Download
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <svg
-                      className="mx-auto h-12 w-12 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                      />
-                    </svg>
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">
-                      No documents uploaded yet
-                    </h3>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Documents will appear here once uploaded.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* Assessment Submission - scope sheet + photos */}
-            {claim && documents && !loadingDocuments && (
-              <ContractorSubmissionWrapper
-                claimId={claim.id}
-                documents={documents}
-                onDownload={handleDocumentDownload}
-              />
+            {claim && (
+              <ContractorSubmissionWrapper claimId={claim.id} />
             )}
 
             {/* Magic Link History */}

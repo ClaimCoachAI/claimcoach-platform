@@ -279,4 +279,43 @@ export const getContractorEstimate = async (claimId: string) => {
   return response.data.data // ContractorEstimate | null
 }
 
+// ── Claim Documents ──────────────────────────────────────────────────────────
+
+export async function uploadClaimDocument(
+  claimId: string,
+  file: File,
+  documentType: string
+): Promise<void> {
+  // Step 1: Request presigned upload URL
+  const urlResponse = await api.post(`/api/claims/${claimId}/documents/upload-url`, {
+    file_name: file.name,
+    file_size: file.size,
+    mime_type: file.type || 'application/pdf',
+    document_type: documentType,
+  })
+  const { upload_url, document_id } = urlResponse.data.data
+
+  // Step 2: PUT file directly to Supabase storage
+  const putResponse = await fetch(upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type || 'application/pdf' },
+    body: file,
+  })
+  if (!putResponse.ok) {
+    throw new Error('Failed to upload document to storage')
+  }
+
+  // Step 3: Confirm upload
+  await api.post(`/api/claims/${claimId}/documents/${document_id}/confirm`)
+}
+
+export async function getClaimDocumentDownloadUrl(documentId: string): Promise<string> {
+  const response = await api.get(`/api/documents/${documentId}`)
+  return response.data.data.download_url as string
+}
+
+export async function deleteClaimDocument(claimId: string, documentId: string): Promise<void> {
+  await api.delete(`/api/claims/${claimId}/documents/${documentId}`)
+}
+
 export default api

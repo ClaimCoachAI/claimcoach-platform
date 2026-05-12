@@ -271,6 +271,49 @@ func (s *DocumentService) GetDocument(documentID string, organizationID string) 
 	return &doc, downloadURL, nil
 }
 
+// GetDB exposes the database connection (used in tests)
+func (s *DocumentService) GetDB() *sql.DB {
+	return s.db
+}
+
+// DeleteDocument deletes a document from storage and the database.
+// Returns an error if the document is not found or doesn't belong to the org.
+func (s *DocumentService) DeleteDocument(claimID, documentID, organizationID string) error {
+	// Verify claim ownership
+	_, err := s.claimService.GetClaim(claimID, organizationID)
+	if err != nil {
+		return err
+	}
+
+	// Fetch the document to get the file path for storage deletion
+	var fileURL string
+	query := `
+		SELECT file_url FROM documents
+		WHERE id = $1 AND claim_id = $2 AND status = 'confirmed'
+	`
+	err = s.db.QueryRow(query, documentID, claimID).Scan(&fileURL)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("document not found")
+	}
+	if err != nil {
+		return fmt.Errorf("failed to fetch document: %w", err)
+	}
+
+	// Delete from Supabase Storage
+	if err := s.storage.DeleteFile(fileURL); err != nil {
+		// Log but don't block DB deletion — storage may already be gone
+		log.Printf("Warning: failed to delete document from storage: %v", err)
+	}
+
+	// Delete the database row
+	_, err = s.db.Exec(`DELETE FROM documents WHERE id = $1 AND claim_id = $2`, documentID, claimID)
+	if err != nil {
+		return fmt.Errorf("failed to delete document record: %w", err)
+	}
+
+	return nil
+}
+
 // cleanupAbandonedPendingDocuments removes pending documents older than 24 hours
 func (s *DocumentService) cleanupAbandonedPendingDocuments(claimID string) error {
 	query := `
