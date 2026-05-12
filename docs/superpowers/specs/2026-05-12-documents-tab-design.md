@@ -25,7 +25,7 @@ Add three PA-specific document types:
 
 All three accept PDF only, 25MB max — same rules as existing `policy_pdf`.
 
-Add to `ValidDocumentTypes`, `FileValidationRules`, and `getDocumentTypeLabel` in the frontend.
+Add to `ValidDocumentTypes` and `FileValidationRules` in `backend/internal/models/document.go`.
 
 ### New DELETE Endpoint
 
@@ -37,7 +37,7 @@ DELETE /api/claims/:id/documents/:documentId
 - New `DeleteDocument(c *gin.Context)` handler in `backend/internal/handlers/document_handler.go`
 - New `DeleteDocument(claimID, documentID, orgID string) error` method in `backend/internal/services/document_service.go`
 - Service verifies the document belongs to the claim and org before deleting from Supabase Storage and the database row
-- Returns 404 if not found, 500 on error, 200 on success
+- Returns 404 if not found, 500 on error, `200 {"success": true}` on success (consistent with all other handlers in the codebase)
 
 ---
 
@@ -46,13 +46,15 @@ DELETE /api/claims/:id/documents/:documentId
 Three new exported functions:
 
 ```ts
-// 3-step presigned upload: request URL → PUT to storage → confirm
+// Encapsulates all three upload steps: (1) POST /api/claims/:id/documents/upload-url,
+// (2) PUT file to Supabase presigned URL, (3) POST confirm. Same pattern as uploadClaimPhoto.
 uploadClaimDocument(claimId: string, file: File, documentType: string): Promise<void>
 
-// Returns a temporary signed download URL
+// Calls GET /api/documents/:documentId, returns the signed download_url from the response.
+// Same endpoint as the existing GetDocument handler.
 getClaimDocumentDownloadUrl(documentId: string): Promise<string>
 
-// Deletes a document
+// Calls DELETE /api/claims/:claimId/documents/:documentId
 deleteClaimDocument(claimId: string, documentId: string): Promise<void>
 ```
 
@@ -65,8 +67,18 @@ deleteClaimDocument(claimId: string, documentId: string): Promise<void>
 
 ### Data
 
-- Fetches documents via `useQuery(['claim-documents', claimId], () => api.get('/api/claims/:id/documents'))`
-- Invalidates the query after upload or delete
+- Fetches documents using TanStack Query v5 object syntax:
+  ```ts
+  useQuery({
+    queryKey: ['claim-documents', claimId],
+    queryFn: async () => {
+      const response = await api.get(`/api/claims/${claimId}/documents`)
+      return response.data.data as Document[]
+    }
+  })
+  ```
+- The `Document` type uses `created_at: string` (matching the Go model's `created_at` field), not `uploaded_at`
+- Invalidates the query after upload or delete via `queryClient.invalidateQueries({ queryKey: ['claim-documents', claimId] })`
 
 ### Layout
 
@@ -97,6 +109,7 @@ deleteClaimDocument(claimId: string, documentId: string): Promise<void>
   - Policy PDF
   - Proof of Repair
   - Other
+- `contractor_photo` is intentionally excluded from the dropdown — photos are managed via the dedicated Photos tab
 - On submit: calls `uploadClaimDocument()`, hides form, invalidates query
 - Loading state on the Upload button during upload
 
@@ -107,14 +120,32 @@ deleteClaimDocument(claimId: string, documentId: string): Promise<void>
 - Delete: `window.confirm()` → `deleteClaimDocument()` → invalidate query
 - Empty state: icon + "No documents uploaded yet"
 
+### Label Map
+
+`ClaimDocuments.tsx` defines its own label map keyed off the actual backend `document_type` constants (not the legacy labels in `ClaimDetail.tsx`):
+
+```ts
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  pa_contract: 'PA Contract',
+  letter_of_representation: 'Letter of Representation',
+  carrier_acknowledgement: 'Carrier Acknowledgement',
+  contractor_estimate: 'Contractor Estimate',
+  carrier_estimate: 'Carrier Estimate',
+  policy_pdf: 'Policy PDF',
+  proof_of_repair: 'Proof of Repair',
+  other: 'Other',
+}
+```
+
 ---
 
 ## `ClaimDetail.tsx` Changes
 
 1. **Add tab** — extend union type to `'overview' | 'photos' | 'report' | 'documents'` and add `documents: 'Documents'` to the labels map
 2. **Mount component** — render `<ClaimDocuments claimId={id} />` when `activeTab === 'documents'`
-3. **Remove Overview Documents section** — delete the "Documents Section" block (~lines 1548–1635) from the Overview tab
-4. **Clean up dead state** — remove the `documents` useQuery, `loadingDocuments`, and `handleDocumentDownload` that were only used by the removed section (the new component owns its own data fetching)
+3. **Remove Overview Documents section** — delete the "Documents Section" block from the Overview tab, including the `ContractorSubmissionWrapper` render guard (`{claim && documents && !loadingDocuments && ...}`) that depends on document state
+4. **Update `ContractorSubmissionWrapper`** — this component currently receives `claimId`, `documents`, and `onDownload` props. Remove the `documents` and `onDownload` props; keep `claimId`. Migrate to fetch documents internally via `useQuery` (same v5 syntax, same `['claim-documents', claimId]` key) and call `getClaimDocumentDownloadUrl` directly for downloads
+5. **Clean up dead state** — once `ContractorSubmissionWrapper` is self-contained, remove the `documents` useQuery, `loadingDocuments`, and `handleDocumentDownload` from `ClaimDetail.tsx`
 
 ---
 
@@ -128,6 +159,7 @@ deleteClaimDocument(claimId: string, documentId: string): Promise<void>
 - [ ] Overview tab no longer shows a Documents section
 - [ ] All three new PA document types are selectable on upload
 - [ ] Existing document types (contractor estimate, carrier estimate, etc.) remain selectable
+- [ ] Assessment Submission section in the Overview tab still renders and functions correctly after `ContractorSubmissionWrapper` is made self-contained
 
 ---
 
