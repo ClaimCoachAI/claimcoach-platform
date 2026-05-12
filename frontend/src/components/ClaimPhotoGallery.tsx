@@ -12,6 +12,7 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [localPreviews, setLocalPreviews] = useState<string[]>([])
   const backdropRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -152,7 +153,6 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
           {photos.map((photo, i) => (
             <div
               key={photo.id}
-              className="photo-grid-btn"
               style={{
                 aspectRatio: '1',
                 borderRadius: '12px',
@@ -162,6 +162,8 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
                 cursor: confirmDeleteId === photo.id ? 'default' : 'pointer',
                 background: '#f3f4f6',
               }}
+              onMouseEnter={() => setHoveredId(photo.id)}
+              onMouseLeave={() => setHoveredId(null)}
               onClick={() => {
                 if (confirmDeleteId === photo.id) return
                 setLightboxIndex(i)
@@ -230,11 +232,12 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
                   </div>
                 </div>
               ) : (
-                <div className="photo-hover-overlay" style={{
+                <div style={{
                   position: 'absolute', inset: 0,
                   background: 'rgba(0,0,0,0.35)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  opacity: 0, transition: 'opacity 0.15s',
+                  opacity: hoveredId === photo.id ? 1 : 0, transition: 'opacity 0.15s',
+                  pointerEvents: hoveredId === photo.id ? 'auto' : 'none',
                 }}>
                   <button
                     onClick={e => {
@@ -365,7 +368,6 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-        .photo-grid-btn:hover .photo-hover-overlay { opacity: 1 !important; }
       `}</style>
     </div>
   )
