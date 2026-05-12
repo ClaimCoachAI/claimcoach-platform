@@ -18,12 +18,15 @@ type Document struct {
 
 // DocumentType constants
 const (
-	DocumentTypePolicyPDF          = "policy_pdf"
-	DocumentTypeContractorPhoto    = "contractor_photo"
-	DocumentTypeContractorEstimate = "contractor_estimate"
-	DocumentTypeCarrierEstimate    = "carrier_estimate"
-	DocumentTypeProofOfRepair      = "proof_of_repair"
-	DocumentTypeOther              = "other"
+	DocumentTypePolicyPDF               = "policy_pdf"
+	DocumentTypeContractorPhoto         = "contractor_photo"
+	DocumentTypeContractorEstimate      = "contractor_estimate"
+	DocumentTypeCarrierEstimate         = "carrier_estimate"
+	DocumentTypeProofOfRepair           = "proof_of_repair"
+	DocumentTypeOther                   = "other"
+	DocumentTypePAContract              = "pa_contract"
+	DocumentTypeLetterOfRepresentation  = "letter_of_representation"
+	DocumentTypeCarrierAcknowledgement  = "carrier_acknowledgement"
 )
 
 // FileValidationRule defines validation rules for file uploads
@@ -58,6 +61,18 @@ var FileValidationRules = map[string]FileValidationRule{
 		MaxSizeBytes: 25 * 1024 * 1024, // 25MB
 		MimeTypes:    []string{"image/jpeg", "image/png", "image/heic", "application/pdf"},
 	},
+	DocumentTypePAContract: {
+		MaxSizeBytes: 25 * 1024 * 1024, // 25MB
+		MimeTypes:    []string{"application/pdf"},
+	},
+	DocumentTypeLetterOfRepresentation: {
+		MaxSizeBytes: 25 * 1024 * 1024, // 25MB
+		MimeTypes:    []string{"application/pdf"},
+	},
+	DocumentTypeCarrierAcknowledgement: {
+		MaxSizeBytes: 25 * 1024 * 1024, // 25MB
+		MimeTypes:    []string{"application/pdf"},
+	},
 }
 
 // ValidDocumentTypes is a list of all valid document types
@@ -68,6 +83,9 @@ var ValidDocumentTypes = []string{
 	DocumentTypeCarrierEstimate,
 	DocumentTypeProofOfRepair,
 	DocumentTypeOther,
+	DocumentTypePAContract,
+	DocumentTypeLetterOfRepresentation,
+	DocumentTypeCarrierAcknowledgement,
 }
 
 // IsValidDocumentType checks if a document type is valid
