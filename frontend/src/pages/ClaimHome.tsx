@@ -7,6 +7,7 @@ import ProgressBar from '../components/ProgressBar'
 import ClaimStepper from '../components/ClaimStepper'
 import ClaimPhotoGallery from '../components/ClaimPhotoGallery'
 import ClaimDamageReport from '../components/ClaimDamageReport'
+import ClaimDocuments from '../components/ClaimDocuments'
 import { getDamageTypeLabel } from '../lib/stepUtils'
 import type { Claim } from '../types/claim'
 import type { ScopeSheet } from '../types/scopeSheet'
@@ -16,7 +17,7 @@ export default function ClaimHome() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'report'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'photos' | 'report' | 'documents'>('overview')
 
   const { data: claim, isLoading } = useQuery({
     queryKey: ['claim', id],
@@ -140,8 +141,8 @@ export default function ClaimHome() {
 
         {/* Tab bar */}
         <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', marginBottom: '24px' }}>
-          {(['overview', 'photos', 'report'] as const).map((tab) => {
-            const labels: Record<string, string> = { overview: 'Overview', photos: 'Photos', report: 'Damage Report' }
+          {(['overview', 'photos', 'report', 'documents'] as const).map((tab) => {
+            const labels: Record<string, string> = { overview: 'Overview', photos: 'Photos', report: 'Damage Report', documents: 'Documents' }
             const isActive = activeTab === tab
             return (
               <button
@@ -166,6 +167,11 @@ export default function ClaimHome() {
             )
           })}
         </div>
+
+        {/* Documents tab */}
+        {activeTab === 'documents' && id && (
+          <ClaimDocuments claimId={id} />
+        )}
 
         {/* Photos tab */}
         {activeTab === 'photos' && id && (
