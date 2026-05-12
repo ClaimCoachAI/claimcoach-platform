@@ -372,3 +372,4 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
     </div>
   )
 }
+
