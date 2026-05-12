@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api, { updateClaimEstimate, uploadCarrierEstimate, getCarrierEstimates, generateIndustryEstimate, getAuditReport, getClaimMedia } from '../lib/api'
+import api, { updateClaimEstimate, uploadCarrierEstimate, getCarrierEstimates, generateIndustryEstimate, getAuditReport, getClaimMedia, getClaimDocumentDownloadUrl } from '../lib/api'
 import Layout from '../components/Layout'
 import ClaimStatusBadge from '../components/ClaimStatusBadge'
 import MeetingsSection from '../components/MeetingsSection'
@@ -133,11 +133,9 @@ function AuditSectionWrapper({ claimId }: AuditSectionWrapperProps) {
 
 interface ContractorSubmissionWrapperProps {
   claimId: string
-  documents: Document[]
-  onDownload: (documentId: string) => void
 }
 
-function ContractorSubmissionWrapper({ claimId, documents, onDownload }: ContractorSubmissionWrapperProps) {
+function ContractorSubmissionWrapper({ claimId }: ContractorSubmissionWrapperProps) {
   const { data: scopeSheet, isLoading } = useQuery<ScopeSheet | null>({
     queryKey: ['scope-sheet', claimId],
     queryFn: async () => {
@@ -152,6 +150,23 @@ function ContractorSubmissionWrapper({ claimId, documents, onDownload }: Contrac
       }
     },
   })
+
+  const { data: documents = [] } = useQuery({
+    queryKey: ['claim-documents', claimId],
+    queryFn: async () => {
+      const response = await api.get(`/api/claims/${claimId}/documents`)
+      return response.data.data as { id: string; document_type: string; file_name: string; file_url: string; file_size_bytes: number; mime_type: string; status: string; created_at: string }[]
+    },
+  })
+
+  const handleDocumentDownload = async (documentId: string) => {
+    try {
+      const url = await getClaimDocumentDownloadUrl(documentId)
+      window.open(url, '_blank')
+    } catch {
+      alert('Failed to generate download link.')
+    }
+  }
 
   if (isLoading) {
     return (
@@ -187,9 +202,9 @@ function ContractorSubmissionWrapper({ claimId, documents, onDownload }: Contrac
                 <li key={photo.id} className="flex items-center justify-between py-2 text-sm">
                   <span className="text-gray-900 truncate max-w-xs">{photo.file_name}</span>
                   <div className="flex items-center gap-4 ml-4 shrink-0">
-                    <span className="text-gray-500">{formatDate(photo.uploaded_at)}</span>
+                    <span className="text-gray-500">{formatDate(photo.created_at)}</span>
                     <button
-                      onClick={() => onDownload(photo.id)}
+                      onClick={() => handleDocumentDownload(photo.id)}
                       className="text-blue-600 hover:text-blue-800 font-medium"
                     >
                       Download
@@ -1643,12 +1658,8 @@ export default function ClaimDetail() {
             </div>
 
             {/* Assessment Submission - scope sheet + photos */}
-            {claim && documents && !loadingDocuments && (
-              <ContractorSubmissionWrapper
-                claimId={claim.id}
-                documents={documents}
-                onDownload={handleDocumentDownload}
-              />
+            {claim && (
+              <ContractorSubmissionWrapper claimId={claim.id} />
             )}
 
             {/* Magic Link History */}
