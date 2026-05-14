@@ -3,7 +3,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -15,18 +14,15 @@ import (
 type ContractorEstimateHandler struct {
 	service       *services.ContractorEstimateService
 	parserService *services.ContractorPDFParserService
-	slack         ErrorAlertPoster
 }
 
 func NewContractorEstimateHandler(
 	service *services.ContractorEstimateService,
 	parserService *services.ContractorPDFParserService,
-	slackSvc ErrorAlertPoster,
 ) *ContractorEstimateHandler {
 	return &ContractorEstimateHandler{
 		service:       service,
 		parserService: parserService,
-		slack:         slackSvc,
 	}
 }
 
@@ -108,7 +104,6 @@ func (h *ContractorEstimateHandler) GetLatest(c *gin.Context) {
 // POST /api/claims/:id/contractor-estimate/:estimateId/parse
 func (h *ContractorEstimateHandler) ParseContractorEstimate(c *gin.Context) {
 	user := c.MustGet("user").(models.User)
-	claimID := c.Param("id")
 	estimateID := c.Param("estimateId")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -116,12 +111,6 @@ func (h *ContractorEstimateHandler) ParseContractorEstimate(c *gin.Context) {
 
 	parsedData, err := h.parserService.ParseContractorEstimate(ctx, estimateID, user.OrganizationID)
 	if err != nil {
-		msg := fmt.Sprintf(
-			"🚨 *ClaimCoach — Contractor PDF Parse Failed*\nEstimate ID: %s\nClaim ID: %s\nError: %s\n_%s UTC_",
-			estimateID, claimID, err.Error(), time.Now().UTC().Format("2006-01-02 15:04"),
-		)
-		_ = h.slack.PostAlertWithFingerprint(msg, "contractor-pdf-parse|"+estimateID)
-
 		c.JSON(http.StatusUnprocessableEntity, gin.H{
 			"success": false,
 			"error":   "Failed to parse PDF: " + err.Error(),

@@ -14,7 +14,6 @@ import (
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/claimcoach/backend/internal/handlers"
 	"github.com/claimcoach/backend/internal/llm"
-	"github.com/claimcoach/backend/internal/middleware"
 	"github.com/claimcoach/backend/internal/services"
 	"github.com/claimcoach/backend/internal/slack"
 	"github.com/claimcoach/backend/internal/storage"
@@ -40,9 +39,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		AllowCredentials: true,
 	}))
 
-	// Slack error alerting (no-op if token not set)
 	slackSvc := slack.NewSlackService(cfg.SlackBotToken)
-	r.Use(middleware.ErrorReporter(slackSvc))
 
 	// Supabase client
 	supabase, err := auth.NewSupabaseClient(
@@ -130,9 +127,6 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 	})
 
 	// Error reporting (unauthenticated — frontend fires-and-forgets)
-	errorReporterHandler := handlers.NewErrorReporterHandler(slackSvc)
-	r.POST("/api/errors", errorReporterHandler.Report)
-
 	// Public auth endpoints (no auth required)
 	authHandler := handlers.NewAuthHandler(db, supabase)
 	r.POST("/api/auth/complete-signup", authHandler.CompleteSignup)
@@ -232,7 +226,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		pdfClaudeClient := llm.NewClaudeClient(cfg.AnthropicAPIKey, cfg.AnthropicPDFModel, 120)
 		carrierEstimateService := services.NewCarrierEstimateService(db, storageClient, claimService)
 		pdfParserService := services.NewPDFParserService(db, storageClient, pdfClaudeClient, claimService)
-		carrierEstimateHandler := handlers.NewCarrierEstimateHandler(carrierEstimateService, pdfParserService, slackSvc)
+		carrierEstimateHandler := handlers.NewCarrierEstimateHandler(carrierEstimateService, pdfParserService)
 
 		api.POST("/claims/:id/carrier-estimate/upload-url", carrierEstimateHandler.RequestUploadURL)
 		api.POST("/claims/:id/carrier-estimate/:estimateId/confirm", carrierEstimateHandler.ConfirmUpload)
@@ -242,7 +236,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		// Contractor Estimate routes (Step 2 — PDF upload from contractor)
 		contractorEstimateService := services.NewContractorEstimateService(db, storageClient, claimService)
 		contractorParserService := services.NewContractorPDFParserService(db, storageClient, pdfClaudeClient, claimService)
-		contractorEstimateHandler := handlers.NewContractorEstimateHandler(contractorEstimateService, contractorParserService, slackSvc)
+		contractorEstimateHandler := handlers.NewContractorEstimateHandler(contractorEstimateService, contractorParserService)
 
 		api.POST("/claims/:id/contractor-estimate/upload-url", contractorEstimateHandler.RequestUploadURL)
 		api.POST("/claims/:id/contractor-estimate/:estimateId/confirm", contractorEstimateHandler.ConfirmUpload)

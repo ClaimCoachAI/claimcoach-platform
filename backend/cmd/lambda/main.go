@@ -9,19 +9,14 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	ginadapter "github.com/awslabs/aws-lambda-go-api-proxy/gin"
 
-	"fmt"
-	"time"
-
 	"github.com/claimcoach/backend/internal/api"
 	"github.com/claimcoach/backend/internal/config"
 	"github.com/claimcoach/backend/internal/database"
 	"github.com/claimcoach/backend/internal/services"
-	"github.com/claimcoach/backend/internal/slack"
 )
 
 var ginLambda *ginadapter.GinLambdaV2
 var auditService *services.AuditService
-var slackSvc *slack.SlackService
 
 func init() {
 	cfg, err := config.Load()
@@ -45,7 +40,6 @@ func init() {
 
 	ginLambda = ginadapter.NewV2(router)
 	auditService = svc
-	slackSvc = slack.NewSlackService(cfg.SlackBotToken)
 }
 
 // asyncJobEvent is the payload sent when the Lambda invokes itself asynchronously.
@@ -66,21 +60,11 @@ func handler(ctx context.Context, raw json.RawMessage) (interface{}, error) {
 			log.Printf("Processing async audit job: audit_report_id=%s claim_id=%s", job.AuditReportID, job.ClaimID)
 			if err := auditService.ProcessEstimateJob(ctx, job.AuditReportID, job.ClaimID, job.UserID, job.OrgID); err != nil {
 				log.Printf("ProcessEstimateJob failed: %v", err)
-				msg := fmt.Sprintf(
-					"🚨 *ClaimCoach — Async Job Failed*\nJob: Estimate generation\nAudit Report ID: %s\nClaim: %s\nError: %s\n_%s UTC_",
-					job.AuditReportID, job.ClaimID, err.Error(), time.Now().UTC().Format("2006-01-02 15:04"),
-				)
-				_ = slackSvc.PostAlertWithFingerprint(msg, "estimate-gen|"+job.AuditReportID)
 			}
 		case "process_pm_brain":
 			log.Printf("Processing async PM Brain job: audit_report_id=%s claim_id=%s", job.AuditReportID, job.ClaimID)
 			if err := auditService.ProcessPMBrainJob(ctx, job.AuditReportID, job.UserID, job.OrgID); err != nil {
 				log.Printf("ProcessPMBrainJob failed: %v", err)
-				msg := fmt.Sprintf(
-					"🚨 *ClaimCoach — Async Job Failed*\nJob: PM Brain analysis\nAudit Report ID: %s\nClaim: %s\nError: %s\n_%s UTC_",
-					job.AuditReportID, job.ClaimID, err.Error(), time.Now().UTC().Format("2006-01-02 15:04"),
-				)
-				_ = slackSvc.PostAlertWithFingerprint(msg, "pm-brain|"+job.AuditReportID)
 			}
 		default:
 			log.Printf("Unknown job type: %s", job.JobType)

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -14,14 +13,12 @@ import (
 type CarrierEstimateHandler struct {
 	service       *services.CarrierEstimateService
 	parserService *services.PDFParserService
-	slack         ErrorAlertPoster
 }
 
-func NewCarrierEstimateHandler(service *services.CarrierEstimateService, parserService *services.PDFParserService, slackSvc ErrorAlertPoster) *CarrierEstimateHandler {
+func NewCarrierEstimateHandler(service *services.CarrierEstimateService, parserService *services.PDFParserService) *CarrierEstimateHandler {
 	return &CarrierEstimateHandler{
 		service:       service,
 		parserService: parserService,
-		slack:         slackSvc,
 	}
 }
 
@@ -158,12 +155,6 @@ func (h *CarrierEstimateHandler) ParseCarrierEstimate(c *gin.Context) {
 
 	err := h.parserService.ParseCarrierEstimate(ctx, estimateID, user.OrganizationID)
 	if err != nil {
-		msg := fmt.Sprintf(
-			"🚨 *ClaimCoach — PDF Parse Failed*\nEstimate ID: %s\nError: %s\n_%s UTC_",
-			estimateID, err.Error(), time.Now().UTC().Format("2006-01-02 15:04"),
-		)
-		_ = h.slack.PostAlertWithFingerprint(msg, "pdf-parse|"+estimateID)
-
 		c.JSON(http.StatusUnprocessableEntity, gin.H{
 			"success": false,
 			"error":   "Failed to parse PDF: " + err.Error(),
