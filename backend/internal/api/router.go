@@ -206,7 +206,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 		api.POST("/properties/:id/policy/pdf/confirm", policyHandler.ConfirmPDFUpload)
 
 		// Claim routes
-		claimHandler := handlers.NewClaimHandler(claimService, emailService)
+		claimHandler := handlers.NewClaimHandler(claimService, emailService, slackSvc)
 
 		api.POST("/claims", claimHandler.Create)
 		api.GET("/claims", claimHandler.List)

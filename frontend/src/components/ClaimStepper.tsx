@@ -107,7 +107,6 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         description: data.description,
       })
 
-      await api.post(`/api/claims/${claim.id}/notify-claimcoach`)
       return data
     },
     onSuccess: (data) => {
@@ -118,6 +117,10 @@ export default function ClaimStepper({ claim }: ClaimStepperProps) {
         type: 'success',
       })
       queryClient.invalidateQueries({ queryKey: ['claim', claim.id] })
+      // Fire-and-forget — notification failure should not block the user
+      api.post(`/api/claims/${claim.id}/notify-claimcoach`).catch((err) => {
+        console.error('ClaimCoach notification failed (non-fatal):', err)
+      })
     },
     onError: (error: any) => {
       console.error('Step 4 submission error:', error)

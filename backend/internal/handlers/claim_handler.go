@@ -1,24 +1,28 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
 
 	"github.com/claimcoach/backend/internal/models"
 	"github.com/claimcoach/backend/internal/services"
+	"github.com/claimcoach/backend/internal/slack"
 	"github.com/gin-gonic/gin"
 )
 
 type ClaimHandler struct {
 	claimService *services.ClaimService
 	emailService services.EmailService
+	slackSvc     *slack.SlackService
 }
 
-func NewClaimHandler(claimService *services.ClaimService, emailService services.EmailService) *ClaimHandler {
+func NewClaimHandler(claimService *services.ClaimService, emailService services.EmailService, slackSvc *slack.SlackService) *ClaimHandler {
 	return &ClaimHandler{
 		claimService: claimService,
 		emailService: emailService,
+		slackSvc:     slackSvc,
 	}
 }
 
@@ -194,10 +198,46 @@ func (h *ClaimHandler) NotifyClaimCoach(c *gin.Context) {
 		return
 	}
 
-	// Send email to ClaimCoach team
-	err = h.emailService.SendClaimCoachNotification(claim)
-	if err != nil {
-		log.Printf("Failed to send ClaimCoach notification for claim %s: %v", claimID, err)
+	// Build Slack message for the #new-claims channel
+	address := claimID
+	ownerEntity := ""
+	carrierName := ""
+	policyNumber := ""
+	deductible := 0.0
+	lossType := claim.LossType
+	incidentDate := claim.IncidentDate.Format("January 2, 2006")
+
+	if claim.Property != nil {
+		address = claim.Property.LegalAddress
+		ownerEntity = claim.Property.OwnerEntityName
+	}
+	if claim.Policy != nil {
+		carrierName = claim.Policy.CarrierName
+		deductible = claim.Policy.DeductibleValue
+		if claim.Policy.PolicyNumber != nil {
+			policyNumber = *claim.Policy.PolicyNumber
+		}
+	}
+
+	description := "No description provided"
+	if claim.Description != nil && *claim.Description != "" {
+		description = *claim.Description
+	}
+
+	msg := fmt.Sprintf(
+		":bell: *New Claim Submission*\n"+
+			"*Property:* %s\n"+
+			"*Owner:* %s\n"+
+			"*Loss Type:* %s\n"+
+			"*Incident Date:* %s\n"+
+			"*Carrier:* %s  |  *Policy #:* %s  |  *Deductible:* $%.2f\n"+
+			"*Description:* %s",
+		address, ownerEntity, lossType, incidentDate,
+		carrierName, policyNumber, deductible, description,
+	)
+
+	if err := h.slackSvc.PostToChannel("#new-claims", msg); err != nil {
+		log.Printf("Failed to notify #new-claims for claim %s: %v", claimID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to notify ClaimCoach team"})
 		return
 	}

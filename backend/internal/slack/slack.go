@@ -71,9 +71,21 @@ func (s *SlackService) PostAlertWithFingerprint(message, fingerprint string) err
 	return s.post(message)
 }
 
+// PostToChannel posts a message to a specific Slack channel (no rate limiting).
+func (s *SlackService) PostToChannel(channel, message string) error {
+	if s.token == "" {
+		return nil
+	}
+	return s.postToChannel(channel, message)
+}
+
 func (s *SlackService) post(text string) error {
+	return s.postToChannel(alertChannel, text)
+}
+
+func (s *SlackService) postToChannel(channel, text string) error {
 	payload, _ := json.Marshal(map[string]string{
-		"channel": alertChannel,
+		"channel": channel,
 		"text":    text,
 	})
 	req, err := http.NewRequest(http.MethodPost, s.apiURL, bytes.NewReader(payload))
