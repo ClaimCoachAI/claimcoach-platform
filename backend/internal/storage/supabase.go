@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -129,4 +130,16 @@ func (s *SupabaseStorage) GeneratePolicyPDFUploadURL(organizationID, propertyID,
 func (s *SupabaseStorage) GetPublicURL(filePath string) string {
 	response := s.client.GetPublicUrl(BucketName, filePath)
 	return response.SignedURL
+}
+
+// UploadFile uploads raw bytes directly to storage (server-side upload).
+// Uses upsert so re-uploading to the same path overwrites the existing file.
+func (s *SupabaseStorage) UploadFile(filePath string, data []byte, mimeType string) error {
+	upsert := true
+	_, err := s.client.UploadFile(BucketName, filePath, bytes.NewReader(data),
+		storage_go.FileOptions{ContentType: &mimeType, Upsert: &upsert})
+	if err != nil {
+		return fmt.Errorf("failed to upload file: %w", err)
+	}
+	return nil
 }

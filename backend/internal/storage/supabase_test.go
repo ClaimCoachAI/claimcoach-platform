@@ -74,6 +74,15 @@ func TestFileNameEdgeCases(t *testing.T) {
 	}
 }
 
+// TestUploadFileCompileCheck is a compile-time interface satisfaction check.
+// SupabaseStorage cannot be instantiated without live credentials, so this verifies
+// the UploadFile method exists with the correct signature without making network calls.
+func TestUploadFileCompileCheck(t *testing.T) {
+	var _ interface {
+		UploadFile(filePath string, data []byte, mimeType string) error
+	} = (*SupabaseStorage)(nil)
+}
+
 // TestCleanupAbandonedPendingDocumentsQuery validates the SQL query syntax
 func TestCleanupAbandonedPendingDocumentsQuery(t *testing.T) {
 	query := `
