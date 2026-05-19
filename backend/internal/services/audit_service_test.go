@@ -7,11 +7,13 @@ import (
 	"testing"
 	"time"
 
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/claimcoach/backend/internal/llm"
 	"github.com/claimcoach/backend/internal/models"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockLLMClient is a mock implementation of the LLM client for testing
@@ -125,7 +127,7 @@ func TestGenerateIndustryEstimate_Success(t *testing.T) {
 	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.2, 2000).Return(mockResponse, nil)
 
 	// Create audit service with mock LLM client
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	reportID, err := auditService.GenerateIndustryEstimate(ctx, claimID, userID, orgID)
@@ -200,7 +202,7 @@ func TestGenerateIndustryEstimate_NoScopeSheet(t *testing.T) {
 	// Create mock LLM client and services
 	mockLLM := new(MockLLMClient)
 	scopeService := NewScopeSheetService(db)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	ctx := context.Background()
@@ -270,7 +272,7 @@ func TestGenerateIndustryEstimate_InvalidJSON(t *testing.T) {
 
 	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.2, 2000).Return(mockResponse, nil)
 
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	reportID, err := auditService.GenerateIndustryEstimate(ctx, claimID, userID, orgID)
@@ -427,7 +429,7 @@ func TestCompareEstimates_Success(t *testing.T) {
 	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.2, 3000).Return(mockResponse, nil)
 
 	// Create audit service
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	err = auditService.CompareEstimates(ctx, auditReportID, userID, orgID)
@@ -495,7 +497,7 @@ func TestCompareEstimates_NoIndustryEstimate(t *testing.T) {
 
 	// Create mock LLM client
 	mockLLM := new(MockLLMClient)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	err = auditService.CompareEstimates(ctx, auditReportID, userID, orgID)
@@ -533,7 +535,7 @@ func TestCompareEstimates_NoCarrierEstimate(t *testing.T) {
 
 	// Create mock LLM client
 	mockLLM := new(MockLLMClient)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	err = auditService.CompareEstimates(ctx, auditReportID, userID, orgID)
@@ -573,7 +575,7 @@ func TestCompareEstimates_CarrierEstimateNotParsed(t *testing.T) {
 
 	// Create mock LLM client
 	mockLLM := new(MockLLMClient)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	err = auditService.CompareEstimates(ctx, auditReportID, userID, orgID)
@@ -595,7 +597,7 @@ func TestCompareEstimates_AuditReportNotFound(t *testing.T) {
 	// Create mock LLM client
 	mockLLM := new(MockLLMClient)
 	scopeService := NewScopeSheetService(db)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test with non-existent audit report ID
 	ctx := context.Background()
@@ -792,7 +794,7 @@ Sincerely,`
 	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.3, 2000).Return(mockResponse, nil)
 
 	// Create audit service
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	rebuttalID, err := auditService.GenerateRebuttal(ctx, auditReportID, userID, orgID)
@@ -852,7 +854,7 @@ func TestGenerateRebuttal_NoComparisonData(t *testing.T) {
 
 	// Create mock LLM client
 	mockLLM := new(MockLLMClient)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	rebuttalID, err := auditService.GenerateRebuttal(ctx, auditReportID, userID, orgID)
@@ -875,7 +877,7 @@ func TestGenerateRebuttal_AuditReportNotFound(t *testing.T) {
 	// Create mock LLM client
 	mockLLM := new(MockLLMClient)
 	scopeService := NewScopeSheetService(db)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test with non-existent audit report
 	ctx := context.Background()
@@ -922,7 +924,7 @@ func TestGetRebuttal_Success(t *testing.T) {
 
 	// Create mock LLM client
 	mockLLM := new(MockLLMClient)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test
 	rebuttal, err := auditService.GetRebuttal(ctx, rebuttalID, orgID)
@@ -946,7 +948,7 @@ func TestGetRebuttal_NotFound(t *testing.T) {
 	// Create mock LLM client
 	mockLLM := new(MockLLMClient)
 	scopeService := NewScopeSheetService(db)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	// Test with non-existent rebuttal
 	ctx := context.Background()
@@ -1053,7 +1055,7 @@ func TestAnalyzeClaimViability_PURSUE(t *testing.T) {
 	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.1, 1000).
 		Return(makeMockViabilityResponse(string(responseBytes)), nil)
 
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 	analysis, err := auditService.AnalyzeClaimViability(ctx, claimID, orgID)
 
 	assert.NoError(t, err)
@@ -1100,7 +1102,7 @@ func TestAnalyzeClaimViability_PursueWithConditions(t *testing.T) {
 	mockLLM.On("Chat", ctx, mock.AnythingOfType("[]llm.Message"), 0.1, 1000).
 		Return(makeMockViabilityResponse(string(responseBytes)), nil)
 
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 	analysis, err := auditService.AnalyzeClaimViability(ctx, claimID, orgID)
 
 	assert.NoError(t, err)
@@ -1121,7 +1123,7 @@ func TestAnalyzeClaimViability_ClaimNotFound(t *testing.T) {
 	orgID := createTestOrg(t, db)
 	mockLLM := new(MockLLMClient)
 	scopeService := NewScopeSheetService(db)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	analysis, err := auditService.AnalyzeClaimViability(ctx, "non-existent-claim-id", orgID)
 
@@ -1144,13 +1146,23 @@ func TestAnalyzeClaimViability_NoEstimate(t *testing.T) {
 
 	mockLLM := new(MockLLMClient)
 	scopeService := NewScopeSheetService(db)
-	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil)
+	auditService := NewAuditService(db, mockLLM, nil, scopeService, nil, nil)
 
 	analysis, err := auditService.AnalyzeClaimViability(ctx, claimID, orgID)
 
 	assert.Error(t, err)
 	assert.Nil(t, analysis)
 	assert.Contains(t, err.Error(), "no generated estimate found")
+}
+
+func TestNewAuditService_PDFServiceWired(t *testing.T) {
+	db, _, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	pdfSvc := &PDFReportService{}
+	svc := NewAuditService(db, nil, nil, nil, nil, pdfSvc)
+	assert.NotNil(t, svc.pdfReportService)
 }
 
 func TestBuildViabilityPrompt(t *testing.T) {

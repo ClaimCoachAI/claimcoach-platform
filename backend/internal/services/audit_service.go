@@ -21,21 +21,23 @@ type LLMClient interface {
 
 // AuditService handles AI-powered audit report generation
 type AuditService struct {
-	db           *sql.DB
-	llmClient    LLMClient
-	searchClient LLMClient    // OpenAI client for live pricing — nil means fall back to training data
-	scopeService *ScopeSheetService
-	asyncInvoker AsyncInvoker // nil in local dev — falls back to synchronous processing
+	db               *sql.DB
+	llmClient        LLMClient
+	searchClient     LLMClient    // OpenAI client for live pricing — nil means fall back to training data
+	scopeService     *ScopeSheetService
+	asyncInvoker     AsyncInvoker // nil in local dev — falls back to synchronous processing
+	pdfReportService *PDFReportService
 }
 
 // NewAuditService creates a new AuditService instance
-func NewAuditService(db *sql.DB, llmClient LLMClient, searchClient LLMClient, scopeService *ScopeSheetService, asyncInvoker AsyncInvoker) *AuditService {
+func NewAuditService(db *sql.DB, llmClient LLMClient, searchClient LLMClient, scopeService *ScopeSheetService, asyncInvoker AsyncInvoker, pdfReportService *PDFReportService) *AuditService {
 	return &AuditService{
-		db:           db,
-		llmClient:    llmClient,
-		searchClient: searchClient,
-		scopeService: scopeService,
-		asyncInvoker: asyncInvoker,
+		db:               db,
+		llmClient:        llmClient,
+		searchClient:     searchClient,
+		scopeService:     scopeService,
+		asyncInvoker:     asyncInvoker,
+		pdfReportService: pdfReportService,
 	}
 }
 
@@ -453,6 +455,13 @@ func (s *AuditService) ProcessEstimateJob(ctx context.Context, auditReportID, cl
 	// 7. Persist completed estimate
 	if err := s.updateAuditReportCompleted(ctx, auditReportID, estimateJSON); err != nil {
 		return fmt.Errorf("failed to save completed estimate: %w", err)
+	}
+
+	// Generate PDF report (non-blocking — failure only logs a warning)
+	if s.pdfReportService != nil {
+		if err := s.pdfReportService.GenerateAndStore(ctx, claimID, orgID, userID, auditReportID, estimateJSON, source.propertyAddress); err != nil {
+			log.Printf("Warning: failed to generate PDF report for auditReportID=%s: %v", auditReportID, err)
+		}
 	}
 
 	// 8. Log API usage

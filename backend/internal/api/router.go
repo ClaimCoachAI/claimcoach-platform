@@ -108,7 +108,8 @@ func NewRouter(cfg *config.Config, db *sql.DB) (*gin.Engine, *services.AuditServ
 	} else {
 		log.Println("⚠ Lambda async invoker disabled (running synchronously)")
 	}
-	auditService := services.NewAuditService(db, llmClient, searchClient, scopeSheetService, asyncInvoker)
+	pdfReportService := services.NewPDFReportService(db, storageClient)
+	auditService := services.NewAuditService(db, llmClient, searchClient, scopeSheetService, asyncInvoker, pdfReportService)
 	auditHandler := handlers.NewAuditHandler(auditService)
 	legalPackageService := services.NewLegalPackageService(db, storageClient, auditService)
 	legalPackageHandler := handlers.NewLegalPackageHandler(legalPackageService)
