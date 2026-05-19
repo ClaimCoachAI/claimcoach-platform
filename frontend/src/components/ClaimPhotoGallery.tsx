@@ -24,7 +24,11 @@ export default function ClaimPhotoGallery({ claimId, isActive }: ClaimPhotoGalle
   })
 
   const uploadMutation = useMutation({
-    mutationFn: (files: File[]) => Promise.all(files.map(f => uploadClaimPhoto(claimId, f))),
+    mutationFn: async (files: File[]) => {
+      for (const f of files) {
+        await uploadClaimPhoto(claimId, f)
+      }
+    },
     onSuccess: () => {
       setLocalPreviews([])
       queryClient.invalidateQueries({ queryKey: ['claim-media', claimId] })
