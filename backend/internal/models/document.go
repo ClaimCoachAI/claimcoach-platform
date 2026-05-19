@@ -27,6 +27,7 @@ const (
 	DocumentTypePAContract              = "pa_contract"
 	DocumentTypeLetterOfRepresentation  = "letter_of_representation"
 	DocumentTypeCarrierAcknowledgement  = "carrier_acknowledgement"
+	DocumentTypeAuditReport             = "audit_report"
 )
 
 // FileValidationRule defines validation rules for file uploads
@@ -73,6 +74,10 @@ var FileValidationRules = map[string]FileValidationRule{
 		MaxSizeBytes: 25 * 1024 * 1024, // 25MB
 		MimeTypes:    []string{"application/pdf"},
 	},
+	DocumentTypeAuditReport: {
+		MaxSizeBytes: 25 * 1024 * 1024, // 25MB
+		MimeTypes:    []string{"application/pdf"},
+	},
 }
 
 // ValidDocumentTypes is a list of all valid document types
@@ -86,6 +91,7 @@ var ValidDocumentTypes = []string{
 	DocumentTypePAContract,
 	DocumentTypeLetterOfRepresentation,
 	DocumentTypeCarrierAcknowledgement,
+	DocumentTypeAuditReport,
 }
 
 // IsValidDocumentType checks if a document type is valid
